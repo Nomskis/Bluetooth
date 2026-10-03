@@ -64,7 +64,9 @@ class ScreensSmokeTest {
                 )
             }
         }
-        compose.onNodeWithText("118 ms · Game mode on").assertIsDisplayed()
+        // Joining comes first, without scrolling; the explanations follow.
+        compose.onNodeWithText("Join call").assertIsDisplayed()
+        compose.onNodeWithText("118 ms · Game mode on").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Your earbuds have a game mode").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Use it for calls").performScrollTo().performClick()
         assertEquals(true, updated?.autoGameMode)

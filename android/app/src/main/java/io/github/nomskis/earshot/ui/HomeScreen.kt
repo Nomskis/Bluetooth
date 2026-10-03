@@ -177,37 +177,7 @@ fun HomeScreen(
                 }
             }
 
-            RouteCard(route, settings.audioMode, codec = codec)
-
-            DelayCard(
-                DelayRuns.latestFor(delayRuns, route.mediaOutput?.name),
-                estimate?.takeIf { it.first == route.mediaOutput?.name }?.second,
-                onOpenTuner,
-            )
-
-            if (earbuds.family != null && !settings.autoGameMode && !settings.gameModeHintDone) {
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Your earbuds have a game mode", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "${earbuds.earbuds} (${earbuds.family}) can switch to low latency, which typically halves their delay. " +
-                                "Earshot can turn it on for each call and back off afterwards.",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { onUpdateSettings { it.copy(autoGameMode = true, gameModeHintDone = true) } }) {
-                                Text("Use it for calls")
-                            }
-                            TextButton(onClick = { onUpdateSettings { it.copy(gameModeHintDone = true) } }) { Text("Not now") }
-                        }
-                    }
-                }
-            }
-
-            BackgroundCard(done = settings.backgroundGuideDone) { onUpdateSettings { it.copy(backgroundGuideDone = true) } }
-
-            AudioModePicker(settings.audioMode) { mode -> onUpdateSettings { it.copy(audioMode = mode) } }
-
+            // What you do every time first; what explains the setup below it.
             OutlinedTextField(
                 value = room,
                 onValueChange = { room = it },
@@ -232,6 +202,8 @@ fun HomeScreen(
                 Text("Camera", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 Switch(checked = withVideo, onCheckedChange = { withVideo = it })
             }
+
+            AudioModePicker(settings.audioMode) { mode -> onUpdateSettings { it.copy(audioMode = mode) } }
 
             Button(
                 onClick = { join() },
@@ -262,6 +234,36 @@ fun HomeScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            RouteCard(route, settings.audioMode, codec = codec)
+
+            DelayCard(
+                DelayRuns.latestFor(delayRuns, route.mediaOutput?.name),
+                estimate?.takeIf { it.first == route.mediaOutput?.name }?.second,
+                onOpenTuner,
+            )
+
+            if (earbuds.family != null && !settings.autoGameMode && !settings.gameModeHintDone) {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Your earbuds have a game mode", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "${earbuds.earbuds} (${earbuds.family}) can switch to low latency, which typically halves their delay. " +
+                                "Earshot can turn it on for each call and back off afterwards.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { onUpdateSettings { it.copy(autoGameMode = true, gameModeHintDone = true) } }) {
+                                Text("Use it for calls")
+                            }
+                            TextButton(onClick = { onUpdateSettings { it.copy(gameModeHintDone = true) } }) { Text("Not now") }
+                        }
+                    }
+                }
+            }
+
+            BackgroundCard(done = settings.backgroundGuideDone) { onUpdateSettings { it.copy(backgroundGuideDone = true) } }
+
         }
     }
 }
