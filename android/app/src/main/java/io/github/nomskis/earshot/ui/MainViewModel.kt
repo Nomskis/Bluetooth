@@ -1,13 +1,17 @@
 package io.github.nomskis.earshot.ui
 
 import android.app.Application
+import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.nomskis.earshot.BuildConfig
 import io.github.nomskis.earshot.appGraph
 import io.github.nomskis.earshot.audio.AudioProfile
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.audio.CodecInfo
 import io.github.nomskis.earshot.audio.Codecs
+import io.github.nomskis.earshot.audio.LatencyProbe
+import io.github.nomskis.earshot.audio.DeviceKind
 import io.github.nomskis.earshot.audio.FastestSetup
 import io.github.nomskis.earshot.audio.LinkConditions
 import io.github.nomskis.earshot.audio.SetupLabels
@@ -185,6 +189,44 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (outcome is SonarMeter.Outcome.Success) results += type to outcome.summary.delayMs
         }
         return results
+    }
+
+    /** Android's own belief about the connected earbuds' delay, from a silent probe: (device, ms). */
+    private val _estimate = MutableStateFlow<Pair<String, Double>?>(null)
+    val estimate: StateFlow<Pair<String, Double>?> = _estimate.asStateFlow()
+    private val probed = mutableSetOf<String>()
+
+    /** Probes once per earbuds per app run, only while nothing else plays through Earshot. */
+    fun estimateDelay(route: AudioRoute) {
+        val output = route.mediaOutput?.takeIf { it.kind == DeviceKind.BLUETOOTH_MUSIC } ?: return
+        if (session.value != null || _sonar.value is SonarState.Running || !probed.add(output.name)) return
+        viewModelScope.launch {
+            // Labelled as plain media, so the probe never switches Bluetooth latency modes under your music.
+            val profile = AudioProfile.forCall(graph.settings.current().copy(gameAudioLabel = false), route)
+            LatencyProbe.estimateMs(profile.playbackAttributes)?.let { _estimate.value = output.name to it }
+        }
+    }
+
+    /** A plain-text summary of this phone, these earbuds and every measurement, for sharing. */
+    fun report(route: AudioRoute): String {
+        val device = route.mediaOutput?.name
+        val runs = delayRuns.value.filter { it.device == device }
+        return buildString {
+            appendLine("Earshot ${BuildConfig.VERSION_NAME} delay report")
+            appendLine("Phone: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+            appendLine("Earbuds: ${device ?: "none"}" + (_earbuds.value.family?.let { " ($it driver)" } ?: ""))
+            graph.codecWatcher.latest.value?.let { appendLine("Codec: ${it.summary}") }
+            appendLine("Wi-Fi: ${when (wifiBand()) { WifiBand.GHZ_2_4 -> "2.4 GHz"; WifiBand.GHZ_5 -> "5 GHz"; WifiBand.GHZ_6 -> "6 GHz"; null -> "not on Wi-Fi" }}")
+            _estimate.value?.takeIf { it.first == device }?.let { appendLine("Android's estimate: ${it.second.toInt()} ms") }
+            if (runs.isEmpty()) appendLine("No measurements yet.")
+            runs.forEach { r ->
+                append("- ${r.label}: ${r.delayMs.toInt()} ms")
+                r.reportedMs?.let { append(" (Android believes ${it.toInt()} ms)") }
+                r.codec?.let { append(", $it") }
+                if (!r.calibrated) append(", uncalibrated")
+                appendLine()
+            }
+        }
     }
 
     data class OptimizerState(val busy: String? = null, val message: String? = null)

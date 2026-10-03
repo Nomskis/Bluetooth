@@ -79,6 +79,8 @@ fun HomeScreen(
     onDismissError: () -> Unit,
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
     delayRuns: List<DelayRun>,
+    estimate: Pair<String, Double>?,
+    onEstimate: () -> Unit,
     codec: CodecInfo?,
     onJoin: (room: String, withVideo: Boolean) -> Unit,
     onOpenSettings: () -> Unit,
@@ -90,6 +92,8 @@ fun HomeScreen(
     var withVideo by rememberSaveable { mutableStateOf(true) }
     var permissionError by remember { mutableStateOf<String?>(null) }
 
+    // A silent probe for Android's own estimate of these earbuds' delay, once per pair.
+    LaunchedEffect(route.mediaOutput?.name) { onEstimate() }
     LaunchedEffect(pendingRoom) {
         if (pendingRoom != null) {
             room = pendingRoom
@@ -168,7 +172,11 @@ fun HomeScreen(
 
             RouteCard(route, settings.audioMode, codec = codec)
 
-            DelayCard(DelayRuns.latestFor(delayRuns, route.mediaOutput?.name), onOpenTuner)
+            DelayCard(
+                DelayRuns.latestFor(delayRuns, route.mediaOutput?.name),
+                estimate?.takeIf { it.first == route.mediaOutput?.name }?.second,
+                onOpenTuner,
+            )
 
             BackgroundCard(done = settings.backgroundGuideDone) { onUpdateSettings { it.copy(backgroundGuideDone = true) } }
 
@@ -234,7 +242,7 @@ fun HomeScreen(
 
 /** Shows the earbuds' measured delay and opens the tuner. */
 @Composable
-private fun DelayCard(latest: DelayRun?, onOpenTuner: () -> Unit) {
+private fun DelayCard(latest: DelayRun?, estimateMs: Double?, onOpenTuner: () -> Unit) {
     Card(
         onClick = onOpenTuner,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -244,7 +252,9 @@ private fun DelayCard(latest: DelayRun?, onOpenTuner: () -> Unit) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("Earbud delay", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
-                    latest?.let { "${it.delayMs.toInt()} ms · ${it.label}" } ?: "Not measured yet",
+                    latest?.let { "${it.delayMs.toInt()} ms · ${it.label}" }
+                        ?: estimateMs?.let { "≈ ${it.toInt()} ms (Android's estimate)" }
+                        ?: "Not measured yet",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )

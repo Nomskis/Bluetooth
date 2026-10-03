@@ -85,6 +85,7 @@ fun TunerScreen(
     onMeasure: (label: String) -> Unit,
     optimizer: MainViewModel.OptimizerState,
     onFindFastest: () -> Unit,
+    onCopyReport: () -> String,
     onClearRuns: (device: String) -> Unit,
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
     earbuds: @Composable () -> Unit,
@@ -205,6 +206,11 @@ fun TunerScreen(
             }
 
             History(runs.filter { it.device == device }, onClear = { device?.let(onClearRuns) })
+            OutlinedButton(onClick = {
+                val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Earshot delay report", onCopyReport()))
+                android.widget.Toast.makeText(context, "Report copied. Paste it into an issue to help other people with these earbuds.", android.widget.Toast.LENGTH_LONG).show()
+            }) { Text("Copy report") }
 
             Text("What to try", style = MaterialTheme.typography.titleMedium)
             TunerAdvice.tips(AdviceInput(device, runs, wifiBand, settings.gameAudioLabel)).forEach { tip ->
