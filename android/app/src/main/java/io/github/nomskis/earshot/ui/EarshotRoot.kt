@@ -32,6 +32,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
     val turboBoost by viewModel.turboBoost.collectAsStateWithLifecycle()
     val optimizer by viewModel.optimizer.collectAsStateWithLifecycle()
     val estimate by viewModel.estimate.collectAsStateWithLifecycle()
+    val radioTest by viewModel.radioTest.collectAsStateWithLifecycle()
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -84,6 +85,8 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                         onAutoGameMode = { v -> viewModel.updateSettings { it.copy(autoGameMode = v) } },
                     )
                 },
+                radioTest = radioTest,
+                onRadioTest = viewModel::runRadioTest,
                 turbo = {
                     val turboStatus by viewModel.turboStatus.collectAsStateWithLifecycle()
                     TurboCard(

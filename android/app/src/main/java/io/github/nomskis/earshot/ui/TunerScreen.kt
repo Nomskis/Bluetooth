@@ -89,6 +89,8 @@ fun TunerScreen(
     onClearRuns: (device: String) -> Unit,
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
     earbuds: @Composable () -> Unit,
+    radioTest: MainViewModel.RadioTestState,
+    onRadioTest: () -> Unit,
     turbo: @Composable () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -218,6 +220,26 @@ fun TunerScreen(
             }
 
             earbuds()
+
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Does Wi-Fi slow your earbuds?", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Measures twice: with Wi-Fi quiet, then while the phone sends call-sized traffic to your router " +
+                            "(it stays on your network and is thrown away). Hold the earbud to the mic for about 20 seconds.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedButton(onClick = onRadioTest, enabled = !running && !inCall && radioTest.busy == null && wifiBand != null) {
+                        Text(if (wifiBand == null) "Connect to Wi-Fi to test" else "Run the radio test")
+                    }
+                    (radioTest.busy ?: radioTest.verdict?.text)?.let {
+                        Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    }
+                    if (radioTest.verdict?.recommendMobileData == true && !settings.mobileDataOn24GHz) {
+                        Button(onClick = { onUpdateSettings { it.copy(mobileDataOn24GHz = true) } }) { Text("Use mobile data on 2.4 GHz") }
+                    }
+                }
+            }
 
             turbo()
 

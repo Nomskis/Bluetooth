@@ -14,6 +14,7 @@ import io.github.nomskis.earshot.audio.LatencyProbe
 import io.github.nomskis.earshot.audio.DeviceKind
 import io.github.nomskis.earshot.audio.FastestSetup
 import io.github.nomskis.earshot.audio.LinkConditions
+import io.github.nomskis.earshot.audio.RadioTest
 import io.github.nomskis.earshot.audio.SetupLabels
 import io.github.nomskis.earshot.audio.SonarMeter
 import io.github.nomskis.earshot.audio.WifiBand
@@ -52,6 +53,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         const val CODEC_SETTLE_MS = 3_500L
         const val GAME_MODE_SETTLE_MS = 2_000L
         const val TURBO_READY_MS = 3_000L
+        const val RADIO_SETTLE_MS = 2_000L
     }
 
     private val graph = app.appGraph
@@ -95,13 +97,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { _sonar.value = SonarState.Done(measureOnce(label)) }
     }
 
-    private suspend fun measureOnce(label: String, codecOverride: String? = null): SonarMeter.Outcome {
+    private suspend fun measureOnce(label: String, codecOverride: String? = null, store: Boolean = true): SonarMeter.Outcome {
         val current = graph.settings.current()
         val profile = AudioProfile.forCall(current, graph.routeMonitor.snapshot())
         val outcome = SonarMeter(getApplication()).measure(profile.playbackAttributes) { stage ->
             _sonar.value = SonarState.Running(stage)
         }
-        if (outcome is SonarMeter.Outcome.Success) {
+        if (store && outcome is SonarMeter.Outcome.Success) {
             graph.settings.addDelayRun(
                 DelayRun(
                     device = outcome.deviceName,
@@ -225,6 +227,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 r.codec?.let { append(", $it") }
                 if (!r.calibrated) append(", uncalibrated")
                 appendLine()
+            }
+        }
+    }
+
+    data class RadioTestState(val busy: String? = null, val verdict: RadioTest.Verdict? = null)
+
+    private val _radioTest = MutableStateFlow(RadioTestState())
+    val radioTest: StateFlow<RadioTestState> = _radioTest.asStateFlow()
+
+    /** Measures the earbuds with Wi-Fi quiet, then while the phone transmits call-sized traffic. */
+    fun runRadioTest() {
+        if (_radioTest.value.busy != null || _sonar.value is SonarState.Running || session.value != null) return
+        viewModelScope.launch {
+            _radioTest.value = RadioTestState(busy = "Measuring with Wi-Fi quiet…")
+            val idle = measureOnce("Radio test: quiet", store = false).also { _sonar.value = SonarState.Done(it) }
+            _radioTest.value = RadioTestState(busy = "Measuring while Wi-Fi is busy…")
+            val load = RadioTest.startLoad(getApplication(), viewModelScope)
+            if (load == null) {
+                _radioTest.value = RadioTestState(verdict = RadioTest.Verdict("Connect to Wi-Fi to run this test.", false))
+                return@launch
+            }
+            try {
+                delay(RADIO_SETTLE_MS) // let the earbuds react to the busy radio
+                val busy = measureOnce("Radio test: busy", store = false).also { _sonar.value = SonarState.Done(it) }
+                val summary = { o: SonarMeter.Outcome -> (o as? SonarMeter.Outcome.Success)?.summary }
+                _radioTest.value = RadioTestState(verdict = RadioTest.verdict(summary(idle), summary(busy), wifiBand()))
+            } finally {
+                load.cancel()
             }
         }
     }
