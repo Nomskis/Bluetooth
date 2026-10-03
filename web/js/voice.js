@@ -78,13 +78,26 @@ export class RemoteVoiceWatcher {
     return total > 0 ? Math.round(total * 1000) : null;
   }
 
+  /**
+   * Call from the Join tap: Safari only lets an AudioContext start inside a
+   * user gesture, and the other side's stream arrives much later.
+   */
+  prime() {
+    const Ctx = globalThis.AudioContext || globalThis.webkitAudioContext;
+    if (!Ctx) return;
+    try {
+      this.#context ??= new Ctx({ latencyHint: 'interactive' });
+      this.#context.resume?.().catch(() => {});
+    } catch {
+      this.#context = null;
+    }
+  }
+
   watch(stream) {
     this.stop();
     if (!stream || stream.getAudioTracks().length === 0) return;
-    const Ctx = globalThis.AudioContext || globalThis.webkitAudioContext;
-    if (!Ctx) return;
-    this.#context ??= new Ctx({ latencyHint: 'interactive' });
-    this.#context.resume?.().catch(() => {});
+    this.prime();
+    if (!this.#context) return;
     this.#source = this.#context.createMediaStreamSource(stream);
     this.#analyser = this.#context.createAnalyser();
     // 480 samples is 10 ms at 48 kHz, one detector frame.

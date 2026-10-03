@@ -117,6 +117,8 @@ ui.form.addEventListener('submit', async (event) => {
     showLobbyError('Room codes are 3–64 letters, numbers or dashes.');
     return;
   }
+  // Inside the tap, before any await, so Safari lets the talking cue's audio start.
+  voice.prime();
   const name = ui.nameInput.value.trim();
   storage('localStorage')?.setItem('earshot.name', name);
   showLobbyError('');
