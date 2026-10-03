@@ -2,6 +2,7 @@ package io.github.nomskis.earshot
 
 import android.app.PictureInPictureParams
 import android.content.Intent
+import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
@@ -85,11 +86,16 @@ class MainActivity : ComponentActivity() {
         runCatching { setPictureInPictureParams(pipParams(autoEnter = inCall)) }
     }
 
-    private fun pipParams(autoEnter: Boolean = true): PictureInPictureParams =
-        PictureInPictureParams.Builder()
+    private fun pipParams(autoEnter: Boolean = true): PictureInPictureParams {
+        // The whole window shrinks into the floating video; telling Android where it
+        // starts makes the animation smooth instead of a jump.
+        val bounds = Rect().also { window.decorView.getGlobalVisibleRect(it) }
+        return PictureInPictureParams.Builder()
             .setAspectRatio(Rational(9, 16))
+            .apply { if (!bounds.isEmpty) setSourceRectHint(bounds) }
             .apply { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) setAutoEnterEnabled(autoEnter) }
             .build()
+    }
 
     /** earshot://join/<room>, optionally ?server=<https origin> from a web invite page. */
     private fun handleIntent(intent: Intent?) {

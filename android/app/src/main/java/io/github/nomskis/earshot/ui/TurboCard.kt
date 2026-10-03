@@ -1,7 +1,6 @@
 package io.github.nomskis.earshot.ui
 
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import io.github.nomskis.earshot.turbo.BluetoothOutputDiagnostics
 import io.github.nomskis.earshot.turbo.TurboClient
 import io.github.nomskis.earshot.ui.theme.Accent
@@ -55,7 +55,7 @@ fun TurboCard(
             )
             when (status) {
                 TurboClient.Status.NotInstalled -> OutlinedButton(onClick = {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TurboClient.SHIZUKU_SITE)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    context.startActivity(Intent(Intent.ACTION_VIEW, TurboClient.SHIZUKU_SITE.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }) { Text("Get Shizuku") }
                 TurboClient.Status.NotRunning -> {
                     Text("Shizuku is installed but not running. Open it and start it with Wireless debugging.", style = MaterialTheme.typography.bodySmall)
