@@ -13,9 +13,9 @@ import io.github.nomskis.earshot.settings.EchoCancellation
  * Hi-Fi mode is the core idea of Earshot. Android drags all audio into the
  * Bluetooth call link (HFP/SCO) as soon as an app (1) switches AudioManager
  * into communication mode or (2) records from a Bluetooth headset mic. Hi-Fi
- * mode does neither: playback is labelled as media and the microphone is the
- * phone's own, so the earbuds stay on A2DP and keep playing music at full
- * quality next to the call.
+ * mode does neither: playback is labelled as game/media audio and the
+ * microphone is the phone's own, so the earbuds stay on A2DP and keep playing
+ * music at full quality next to the call.
  */
 data class AudioProfile(
     val mode: AudioMode,
@@ -32,6 +32,8 @@ data class AudioProfile(
     val softwareEchoCancellation: Boolean,
     val softwareNoiseSuppression: Boolean,
     val softwareAutoGain: Boolean,
+    /** Use Android's fast playback path (PERFORMANCE_MODE_LOW_LATENCY) with an adaptive buffer. */
+    val lowLatencyPlayback: Boolean,
 ) {
     val playbackAttributes: AudioAttributes
         get() = AudioAttributes.Builder()
@@ -58,7 +60,10 @@ data class AudioProfile(
         fun forCall(settings: AppSettings, route: AudioRoute): AudioProfile = when (settings.audioMode) {
             AudioMode.HIFI -> AudioProfile(
                 mode = AudioMode.HIFI,
-                playbackUsage = AudioAttributes.USAGE_MEDIA,
+                // USAGE_GAME routes exactly like media (same audio strategy), but AudioFlinger
+                // asks a capable Bluetooth stack for its low-latency mode while a fast GAME
+                // track plays (frameworks/av Threads.cpp, MixerThread::setHalLatencyMode_l).
+                playbackUsage = if (settings.gameAudioLabel) AudioAttributes.USAGE_GAME else AudioAttributes.USAGE_MEDIA,
                 playbackContentType = AudioAttributes.CONTENT_TYPE_SPEECH,
                 audioSource = settings.micSource.androidSource,
                 preferBuiltInMic = true,
@@ -75,6 +80,7 @@ data class AudioProfile(
                 },
                 softwareNoiseSuppression = settings.noiseSuppression,
                 softwareAutoGain = settings.autoGainControl,
+                lowLatencyPlayback = settings.lowLatencyPlayback,
             )
 
             AudioMode.HEADSET -> AudioProfile(
@@ -89,6 +95,7 @@ data class AudioProfile(
                 softwareEchoCancellation = settings.echoCancellation != EchoCancellation.OFF,
                 softwareNoiseSuppression = settings.noiseSuppression,
                 softwareAutoGain = settings.autoGainControl,
+                lowLatencyPlayback = settings.lowLatencyPlayback,
             )
         }
     }

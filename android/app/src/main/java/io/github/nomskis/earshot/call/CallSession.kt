@@ -380,6 +380,7 @@ class CallSession(
                 RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY),
             )
         }
+        engine.preferRedundantAudio(l.pc)
         setPhase(CallPhase.NEGOTIATING)
         sendOffer(l, iceRestart = false)
     }
@@ -389,7 +390,7 @@ class CallSession(
         if (link !== l) return
         l.pc.awaitSetLocal(offer)
         if (link !== l) return
-        sendSignal(SignalData.Offer(l.session, offer.description))
+        sendSignal(SignalData.Offer(l.session, SdpTuning.preferLowLatencyAudio(offer.description)))
         offerTimeoutJob?.cancel()
         offerTimeoutJob = scope.launch {
             delay(OFFER_TIMEOUT_MS)
@@ -415,11 +416,12 @@ class CallSession(
         l.pc.awaitSetRemote(SessionDescription(SessionDescription.Type.OFFER, data.sdp))
         if (link !== l) return
         if (fresh) addLocalTracks(l)
+        engine.preferRedundantAudio(l.pc)
         val answer = l.pc.awaitCreateAnswer()
         if (link !== l) return
         l.pc.awaitSetLocal(answer)
         if (link !== l) return
-        sendSignal(SignalData.Answer(l.session, answer.description))
+        sendSignal(SignalData.Answer(l.session, SdpTuning.preferLowLatencyAudio(answer.description)))
         flushCandidates(l)
     }
 

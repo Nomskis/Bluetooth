@@ -66,6 +66,14 @@ data class AppSettings(
     val videoQuality: VideoQuality = VideoQuality.HIGH,
     val startWithBackCamera: Boolean = false,
     val keepScreenOn: Boolean = true,
+    /**
+     * Label the call's audio as game audio (still routed like media). On phones
+     * and earbuds whose Bluetooth stack supports it, Android then switches the
+     * link to its low-latency mode automatically.
+     */
+    val gameAudioLabel: Boolean = true,
+    /** Play through Android's low-latency (fast) path with a small, self-adjusting buffer. */
+    val lowLatencyPlayback: Boolean = true,
     /** Extra gain for the other person's voice, 1.0 = unchanged. */
     val voiceVolume: Float = 1f,
     val lastRoom: String = "",

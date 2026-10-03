@@ -25,3 +25,36 @@ export function preferLowLatencyAudio(sdp) {
   }
   return out.join('\r\n');
 }
+
+/**
+ * Puts RED (RFC 2198 redundant audio) first in the audio codec preferences.
+ * Each packet then also carries the previous one, so a single lost packet is
+ * repaired from the next instead of making the jitter buffer grow. Peers
+ * that don't support RED fall back to plain Opus during negotiation.
+ */
+export function preferRedundantAudio(pc) {
+  const caps = globalThis.RTCRtpReceiver?.getCapabilities?.('audio');
+  if (!caps) return;
+  const isRed = (c) => c.mimeType.toLowerCase() === 'audio/red';
+  const red = caps.codecs.filter(isRed);
+  if (red.length === 0) return;
+  const ordered = [...red, ...caps.codecs.filter((c) => !isRed(c))];
+  for (const t of pc.getTransceivers()) {
+    const kind = t.receiver.track?.kind;
+    if (kind === 'audio' && typeof t.setCodecPreferences === 'function') {
+      try {
+        t.setCodecPreferences(ordered);
+      } catch (err) {
+        console.warn('[earshot] could not prefer RED', err);
+      }
+    }
+  }
+}
+
+/** The codec name of the first payload type on the audio line, e.g. "red" or "opus". */
+export function firstAudioCodec(sdp) {
+  const m = sdp?.match(/^m=audio \S+ \S+ (\d+)/m);
+  if (!m) return null;
+  const rtpmap = sdp.match(new RegExp(`^a=rtpmap:${m[1]} ([^/\\s]+)`, 'm'));
+  return rtpmap ? rtpmap[1].toLowerCase() : null;
+}

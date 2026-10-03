@@ -168,3 +168,17 @@ test('both sides send 10 ms audio packets for lower delay', async ({ browser }) 
   await a.context.close();
   await b.context.close();
 });
+
+test('both sides negotiate redundant audio (RED) so lost packets are repaired instantly', async ({ browser }) => {
+  const room = uniqueRoom('red');
+  const a = await joinAs(browser, room, 'A');
+  const b = await joinAs(browser, room, 'B');
+  await expectRemoteVideo(a.page);
+  await expectRemoteVideo(b.page);
+  for (const side of [a, b]) {
+    const codec = await side.page.evaluate(() => window.earshot.engine.negotiated.audioCodec);
+    expect(codec).toBe('red');
+  }
+  await a.context.close();
+  await b.context.close();
+});

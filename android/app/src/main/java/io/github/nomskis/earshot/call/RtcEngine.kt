@@ -19,6 +19,7 @@ import org.webrtc.DefaultVideoEncoderFactory
 import org.webrtc.EglBase
 import org.webrtc.Logging
 import org.webrtc.MediaConstraints
+import org.webrtc.MediaStreamTrack
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.SurfaceTextureHelper
@@ -94,6 +95,9 @@ class RtcEngine(
             .setUseHardwareNoiseSuppressor(
                 profile.hardwareNoiseSuppressor && JavaAudioDeviceModule.isBuiltInNoiseSuppressorSupported(),
             )
+            // PERFORMANCE_MODE_LOW_LATENCY plus WebRTC's buffer manager, which starts small and
+            // only grows the buffer when it sees underruns.
+            .setUseLowLatency(profile.lowLatencyPlayback)
             .setAudioRecordErrorCallback(AudioErrorLogger)
             .setAudioTrackErrorCallback(AudioErrorLogger)
             .createAudioDeviceModule()
@@ -166,6 +170,22 @@ class RtcEngine(
         })
     }
 
+    /**
+     * Puts RED (RFC 2198 redundant audio) first for every audio transceiver, so
+     * each packet also carries the previous one. A single lost packet is then
+     * repaired from the next, instead of the jitter buffer growing to hide it.
+     */
+    fun preferRedundantAudio(pc: PeerConnection) {
+        val codecs = factory.getRtpReceiverCapabilities(MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO).codecs
+        val (red, rest) = codecs.partition { it.name.equals("red", ignoreCase = true) }
+        if (red.isEmpty()) return
+        for (transceiver in pc.transceivers) {
+            if (transceiver.mediaType != MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO) continue
+            runCatching { transceiver.setCodecPreferences(red + rest) }
+                .onFailure { Log.w(TAG, "Could not prefer RED", it) }
+        }
+    }
+
     fun createSendTracks(): SendTracks = SendTracks(
         audio = factory.createAudioTrack(Ids.random(6, "a"), audioSource),
         video = videoSource?.let { factory.createVideoTrack(Ids.random(6, "v"), it) },
@@ -185,6 +205,10 @@ class RtcEngine(
             // Keep gathering so a switch from Wi-Fi to mobile data can be recovered quickly.
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
             keyType = PeerConnection.KeyType.ECDSA
+            // Let the jitter buffer shrink quickly after a network hiccup instead of staying
+            // inflated, and cap how far it can grow (50 packets = 0.5 s at 10 ms packets).
+            audioJitterBufferFastAccelerate = true
+            audioJitterBufferMaxPackets = 50
         }
         return factory.createPeerConnection(rtcConfig, observer)
     }
@@ -250,10 +274,14 @@ class RtcEngine(
         private const val TAG = "EarshotRtc"
         private val initialized = AtomicBoolean(false)
 
+        /** Makes sure the RED encoder for Opus is available. */
+        private const val FIELD_TRIALS = "WebRTC-Audio-Red-For-Opus/Enabled/"
+
         fun initializeWebRtc(context: Context) {
             if (!initialized.compareAndSet(false, true)) return
             PeerConnectionFactory.initialize(
                 PeerConnectionFactory.InitializationOptions.builder(context.applicationContext)
+                    .setFieldTrials(FIELD_TRIALS)
                     .createInitializationOptions(),
             )
             if (BuildConfig.DEBUG) Logging.enableLogToDebugOutput(Logging.Severity.LS_WARNING)

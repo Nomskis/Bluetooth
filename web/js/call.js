@@ -15,7 +15,7 @@
  *   'error'         detail = { code, message }
  */
 
-import { preferLowLatencyAudio } from './sdp.js';
+import { firstAudioCodec, preferLowLatencyAudio, preferRedundantAudio } from './sdp.js';
 
 const ICE_RECOVERY_DELAY_MS = 4000;
 const OFFER_TIMEOUT_MS = 10_000;
@@ -100,6 +100,12 @@ export class CallEngine extends EventTarget {
   /** WebRTC stats for the current connection, or null when there is none. */
   async getStats() {
     return this.#pc ? this.#pc.getStats() : null;
+  }
+
+  /** What the current connection negotiated; for diagnostics and tests. */
+  get negotiated() {
+    const remote = this.#pc?.currentRemoteDescription?.sdp;
+    return { audioCodec: firstAudioCodec(remote) };
   }
 
   hangUp() {
@@ -214,6 +220,7 @@ export class CallEngine extends EventTarget {
     await pc.setRemoteDescription({ type: 'offer', sdp: data.sdp });
     if (this.#pc !== pc) return;
     if (fresh) this.#addLocalTracks(pc);
+    preferRedundantAudio(pc);
     const answer = await pc.createAnswer();
     if (this.#pc !== pc) return;
     await pc.setLocalDescription(answer);
@@ -289,6 +296,7 @@ export class CallEngine extends EventTarget {
     // Always offer to receive both kinds, even when we send no camera ourselves.
     if (this.#localStream.getVideoTracks().length === 0) pc.addTransceiver('video', { direction: 'recvonly' });
     if (this.#localStream.getAudioTracks().length === 0) pc.addTransceiver('audio', { direction: 'recvonly' });
+    preferRedundantAudio(pc);
     this.#setStatus('negotiating');
     await this.#sendOffer(pc, false);
   }

@@ -29,6 +29,8 @@ class SettingsRepository(private val context: Context) {
         val videoQuality = stringPreferencesKey("video_quality")
         val startWithBackCamera = booleanPreferencesKey("start_with_back_camera")
         val keepScreenOn = booleanPreferencesKey("keep_screen_on")
+        val gameAudioLabel = booleanPreferencesKey("game_audio_label")
+        val lowLatencyPlayback = booleanPreferencesKey("low_latency_playback")
         val voiceVolume = floatPreferencesKey("voice_volume")
         val lastRoom = stringPreferencesKey("last_room")
         val peerId = stringPreferencesKey("peer_id")
@@ -51,6 +53,8 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.videoQuality] = next.videoQuality.name
             prefs[Keys.startWithBackCamera] = next.startWithBackCamera
             prefs[Keys.keepScreenOn] = next.keepScreenOn
+            prefs[Keys.gameAudioLabel] = next.gameAudioLabel
+            prefs[Keys.lowLatencyPlayback] = next.lowLatencyPlayback
             prefs[Keys.voiceVolume] = next.voiceVolume
             prefs[Keys.lastRoom] = next.lastRoom
         }
@@ -82,6 +86,8 @@ class SettingsRepository(private val context: Context) {
             videoQuality = enumOrDefault(this[Keys.videoQuality], defaults.videoQuality),
             startWithBackCamera = this[Keys.startWithBackCamera] ?: defaults.startWithBackCamera,
             keepScreenOn = this[Keys.keepScreenOn] ?: defaults.keepScreenOn,
+            gameAudioLabel = this[Keys.gameAudioLabel] ?: defaults.gameAudioLabel,
+            lowLatencyPlayback = this[Keys.lowLatencyPlayback] ?: defaults.lowLatencyPlayback,
             voiceVolume = this[Keys.voiceVolume] ?: defaults.voiceVolume,
             lastRoom = this[Keys.lastRoom] ?: defaults.lastRoom,
         )

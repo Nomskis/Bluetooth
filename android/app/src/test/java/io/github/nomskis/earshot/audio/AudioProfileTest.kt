@@ -24,13 +24,22 @@ class AudioProfileTest {
     @Test
     fun hifiNeverTouchesCallMode() {
         val profile = AudioProfile.forCall(AppSettings(audioMode = AudioMode.HIFI), earbuds)
-        // These three together are what keep Bluetooth on A2DP.
-        assertEquals(AudioAttributes.USAGE_MEDIA, profile.playbackUsage)
+        // These together are what keep Bluetooth on A2DP. USAGE_GAME routes like media
+        // but lets a capable Bluetooth stack switch to its low-latency mode.
+        assertEquals(AudioAttributes.USAGE_GAME, profile.playbackUsage)
+        assertTrue(profile.lowLatencyPlayback)
         assertFalse(profile.useCallMode)
         assertTrue(profile.preferBuiltInMic)
         assertEquals(MediaRecorder.AudioSource.MIC, profile.audioSource)
         assertFalse(profile.hardwareEchoCanceler)
         assertEquals("hifi", profile.wireName)
+    }
+
+    @Test
+    fun mediaLabelCanBeChosenInstead() {
+        val profile = AudioProfile.forCall(AppSettings(gameAudioLabel = false, lowLatencyPlayback = false), earbuds)
+        assertEquals(AudioAttributes.USAGE_MEDIA, profile.playbackUsage)
+        assertFalse(profile.lowLatencyPlayback)
     }
 
     @Test
