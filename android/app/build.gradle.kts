@@ -75,6 +75,8 @@ android {
     testOptions {
         // android.util.Log and friends return defaults in JVM unit tests.
         unitTests.isReturnDefaultValues = true
+        // Robolectric UI smoke tests render the real screens on the JVM.
+        unitTests.isIncludeAndroidResources = true
         unitTests.all {
             // Shared protocol examples, also checked by the server tests.
             it.systemProperty("earshot.fixtures", rootProject.file("../protocol/fixtures").absolutePath)
@@ -112,4 +114,8 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.robolectric)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
 }

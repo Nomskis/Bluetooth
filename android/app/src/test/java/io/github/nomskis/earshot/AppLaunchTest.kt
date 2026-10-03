@@ -1,0 +1,35 @@
+package io.github.nomskis.earshot
+
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+/**
+ * Starts the whole app the way a phone does (the real Application, its
+ * dependency graph, MainActivity and the view model) and walks to each screen.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
+class AppLaunchTest {
+    @get:Rule
+    val compose = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun launchesAndOpensSettingsAndTheTuner() {
+        compose.onNodeWithText("Video calls that keep your earbuds in music quality.").assertIsDisplayed()
+        compose.onNodeWithText("Join call").performScrollTo().assertIsDisplayed()
+
+        compose.onNodeWithContentDescription("Settings").performClick()
+        compose.onNodeWithText("Open delay tuner").performScrollTo().performClick()
+        compose.onNodeWithText("Delay tuner").assertIsDisplayed()
+        compose.onNodeWithText("Find my fastest setup (about a minute)").performScrollTo().assertIsDisplayed()
+    }
+}
