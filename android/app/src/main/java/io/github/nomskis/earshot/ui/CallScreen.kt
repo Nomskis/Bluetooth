@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,6 +63,7 @@ import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.call.CallPhase
 import io.github.nomskis.earshot.call.CallSession
 import io.github.nomskis.earshot.call.CallState
+import io.github.nomskis.earshot.call.DelayBreakdown
 import io.github.nomskis.earshot.call.LipSync
 import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.ui.theme.Accent
@@ -226,6 +228,7 @@ private fun TopBar(state: CallState, route: AudioRoute, earbudBoost: EarbudBoost
             }
         }
         RouteChip(route, state.audioMode)
+        state.delay?.let { DelayChip(it) }
         // What Earshot is doing for the earbuds behind the scenes.
         val lipSync = state.lipSync?.takeIf { state.hasRemoteVideo }?.let {
             "Video held back ${it.videoDelayMs} ms to match the earbuds" +
@@ -239,6 +242,34 @@ private fun TopBar(state: CallState, route: AudioRoute, earbudBoost: EarbudBoost
                 "Your music app pauses instead of dipping, so the music dip is off for this call.",
                 color = Color.White.copy(alpha = 0.8f),
                 style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+/** "≈ 230 ms mouth to ear"; tap for where the time goes. */
+@Composable
+private fun DelayChip(delay: DelayBreakdown) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    val total = delay.totalMs ?: return
+    Column(
+        Modifier
+            .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+            .clickable { open = !open }
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text("≈ $total ms from their mouth to your ear", color = Color.White, style = MaterialTheme.typography.labelMedium)
+        if (open) {
+            val small = MaterialTheme.typography.bodySmall
+            val dim = Color.White.copy(alpha = 0.8f)
+            Text("Their phone ≈ ${delay.senderMs} ms (estimate)", color = dim, style = small)
+            Text("Network ${delay.networkMs} ms", color = dim, style = small)
+            Text("Smoothing buffer ${delay.jitterBufferMs} ms", color = dim, style = small)
+            Text(
+                "Your phone and earbuds ${delay.playoutMs} ms" + if (delay.playoutMeasured) " (measured)" else " (Android's estimate)",
+                color = dim,
+                style = small,
             )
         }
     }

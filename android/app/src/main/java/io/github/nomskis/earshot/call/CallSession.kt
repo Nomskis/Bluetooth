@@ -122,6 +122,9 @@ class CallSession(
     private var finished = false
     private var radioPlan = radioPlan
     private var statsJob: Job? = null
+    private val delayTracker = DelayTracker()
+    private var playoutMs: Double? = null
+    private var playoutMeasured = false
 
     /** One RTCPeerConnection and everything tied to it. */
     private class Link(val pc: PeerConnection, val session: String, val tracks: SendTracks) {
@@ -156,7 +159,7 @@ class CallSession(
         data object ReplayFinished : Event
         data object SmartDuckUnsupported : Event
         data class UpdateRadio(val plan: RadioPlan) : Event
-        data class SetLipSync(val plan: LipSync.Plan?) : Event
+        data class SetLipSync(val plan: LipSync.Plan?, val playoutMs: Double?, val measured: Boolean) : Event
         class Stats(val link: Link, val report: RTCStatsReport) : Event
         data object HangUp : Event
     }
@@ -190,7 +193,11 @@ class CallSession(
     fun onNetworkChanged() = post(Event.NetworkChanged)
     fun toggleReplay() = post(Event.ToggleReplay)
     fun updateRadioPlan(plan: RadioPlan) = post(Event.UpdateRadio(plan))
-    fun setLipSync(plan: LipSync.Plan?) = post(Event.SetLipSync(plan))
+    /**
+     * [playoutMs] is the app-to-ear delay in use (from the delay tuner when [measured]),
+     * [plan] how far to hold video back for it.
+     */
+    fun setPlayout(plan: LipSync.Plan?, playoutMs: Double?, measured: Boolean) = post(Event.SetLipSync(plan, playoutMs, measured))
     fun hangUp() = post(Event.HangUp)
 
     private fun post(event: Event) {
@@ -311,6 +318,8 @@ class CallSession(
             is Event.UpdateRadio -> onRadioPlan(event.plan)
             is Event.SetLipSync -> {
                 lipSyncSink.delayMs = event.plan?.videoDelayMs ?: 0
+                playoutMs = event.playoutMs
+                playoutMeasured = event.measured
                 _state.update { it.copy(lipSync = event.plan) }
             }
             is Event.Stats -> if (event.link === link) onStats(event.link, event.report)
@@ -347,6 +356,8 @@ class CallSession(
 
     private fun onStats(l: Link, report: RTCStatsReport) {
         val entries = report.statsMap.mapValues { (_, s) -> CallStats.Entry(s.type, s.members) }
+        val delay = delayTracker.update(entries, playoutMs, playoutMeasured)
+        _state.update { it.copy(delay = delay) }
         val path = RadioPlan.pathFor(CallStats.selectedNetworkType(entries)) ?: return
         if (path == _state.value.callPath) return
         Log.i(TAG, "Media now flows over $path")
@@ -729,6 +740,6 @@ class CallSession(
         const val OFFER_TIMEOUT_MS = 10_000L
         const val REQUEST_OFFER_DELAY_MS = 1_500L
         const val REPLAY_SECONDS = 8.0
-        const val STATS_INTERVAL_MS = 4_000L
+        const val STATS_INTERVAL_MS = 2_000L
     }
 }

@@ -54,6 +54,8 @@ data class CallState(
     val radioNote: String? = null,
     /** How far her video is held back to match the Bluetooth audio delay; null when not. */
     val lipSync: LipSync.Plan? = null,
+    /** Where her voice spends its time on the way to your ear, once stats arrive. */
+    val delay: DelayBreakdown? = null,
     val error: String? = null,
 ) {
     val isActive: Boolean

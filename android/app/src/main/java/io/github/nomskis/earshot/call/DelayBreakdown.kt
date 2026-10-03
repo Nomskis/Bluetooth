@@ -1,0 +1,67 @@
+package io.github.nomskis.earshot.call
+
+import kotlin.math.roundToInt
+
+/**
+ * Where her voice spends its time on the way to your ear, live from the
+ * call's stats plus what's known about the earbuds. Each part is either
+ * measured during the call or a stated estimate.
+ */
+data class DelayBreakdown(
+    /** Her microphone, encoder and packetisation (not visible from here; estimated). */
+    val senderMs: Int,
+    /** One way through the network: half the round trip of the connection in use. */
+    val networkMs: Int?,
+    /** Waiting in our jitter buffer, averaged over the last few seconds. */
+    val jitterBufferMs: Int?,
+    /** From the app to your ear: Android's audio path, Bluetooth and the earbuds. */
+    val playoutMs: Int?,
+    /** True when [playoutMs] came from a delay-tuner measurement rather than Android's own estimate. */
+    val playoutMeasured: Boolean,
+) {
+    /** Null until the parts that vary are known. */
+    val totalMs: Int? get() = if (networkMs == null || jitterBufferMs == null || playoutMs == null) null else senderMs + networkMs + jitterBufferMs + playoutMs
+
+    companion object {
+        /**
+         * 10 ms capture buffer + 10 ms packet + Opus look-ahead (6.5 ms) and
+         * encode time; the other side sends 10 ms packets because we ask.
+         */
+        const val SENDER_ESTIMATE_MS = 30
+    }
+}
+
+/**
+ * Turns successive stats reports into a [DelayBreakdown]. The jitter-buffer
+ * counters are cumulative, so the average over the last interval comes from
+ * the difference between two reports.
+ */
+class DelayTracker {
+    private var lastDelaySeconds: Double? = null
+    private var lastEmitted: Double? = null
+    private var jitterMs: Int? = null
+
+    /** [playoutMs] is the app-to-ear figure in use, [measured] whether it came from the delay tuner. */
+    fun update(report: Map<String, CallStats.Entry>, playoutMs: Double?, measured: Boolean): DelayBreakdown {
+        val rtt = CallStats.roundTripSeconds(report)
+        val (delay, emitted) = CallStats.audioJitterBuffer(report) ?: (null to null)
+        if (delay != null && emitted != null) {
+            val prevDelay = lastDelaySeconds
+            val prevEmitted = lastEmitted
+            if (prevDelay != null && prevEmitted != null && emitted > prevEmitted && delay >= prevDelay) {
+                jitterMs = ((delay - prevDelay) / (emitted - prevEmitted) * 1000).roundToInt()
+            } else if (prevDelay == null && emitted > 0) {
+                jitterMs = (delay / emitted * 1000).roundToInt()
+            }
+            lastDelaySeconds = delay
+            lastEmitted = emitted
+        }
+        return DelayBreakdown(
+            senderMs = DelayBreakdown.SENDER_ESTIMATE_MS,
+            networkMs = rtt?.let { (it * 1000 / 2).roundToInt() },
+            jitterBufferMs = jitterMs,
+            playoutMs = playoutMs?.roundToInt(),
+            playoutMeasured = measured,
+        )
+    }
+}

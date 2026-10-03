@@ -100,7 +100,7 @@ class CallManager(
             // Game mode only matters when the call plays over the music link next to your music.
             val boost = current.autoGameMode && profile.mode == AudioMode.HIFI
             val boostJob = if (boost) launch { earbudBoost.begin() } else null
-            val lipSyncJob = if (current.lipSync && profile.mode == AudioMode.HIFI) {
+            val lipSyncJob = if (profile.mode == AudioMode.HIFI) {
                 launch { keepLipSync(session, profile, current, boostJob) }
             } else {
                 null
@@ -121,32 +121,35 @@ class CallManager(
     }
 
     /**
-     * Keeps [LipSync] matched to wherever the audio is playing, re-planning
-     * when the output changes (earbuds connected or taken out).
+     * Keeps the app-to-ear delay, and [LipSync] with it, matched to wherever
+     * the audio is playing, re-planning when the output changes (earbuds
+     * connected or taken out).
      */
     private suspend fun keepLipSync(session: CallSession, profile: AudioProfile, current: AppSettings, boostJob: Job?) {
         // Game mode changes the delay; plan once it has settled.
         boostJob?.join()
         routeMonitor.route.map { it.mediaOutput }.distinctUntilChanged().collectLatest { output ->
-            if (output?.kind != DeviceKind.BLUETOOTH_MUSIC) {
-                session.setLipSync(null)
-                return@collectLatest
+            val onBluetooth = output?.kind == DeviceKind.BLUETOOTH_MUSIC
+            // Only Bluetooth outputs get measured in the delay tuner.
+            val measured = if (onBluetooth) {
+                DelayRuns.bestMatch(
+                    settings.delayRuns.first(),
+                    device = output.name,
+                    gameModeOn = earbudBoost.status.value?.active == true,
+                    codec = codec()?.takeIf { it.device == null || it.device == output.name }?.summary,
+                    gameAudio = current.gameAudioLabel,
+                )?.delayMs
+            } else {
+                null
             }
-            val runs = settings.delayRuns.first()
-            val measured = DelayRuns.bestMatch(
-                runs,
-                device = output.name,
-                gameModeOn = earbudBoost.status.value?.active == true,
-                codec = codec()?.takeIf { it.device == null || it.device == output.name }?.summary,
-                gameAudio = current.gameAudioLabel,
-            )?.delayMs
             val estimated = if (measured == null) {
                 delay(PROBE_SETTLE_MS) // let the call's own playback start first
                 LatencyProbe.estimateMs(profile.playbackAttributes)
             } else {
                 null
             }
-            session.setLipSync(LipSync.plan(onBluetooth = true, measuredMs = measured, estimatedMs = estimated))
+            val plan = if (current.lipSync) LipSync.plan(onBluetooth, measuredMs = measured, estimatedMs = estimated) else null
+            session.setPlayout(plan, playoutMs = measured ?: estimated, measured = measured != null)
         }
     }
 
