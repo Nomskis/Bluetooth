@@ -1,0 +1,19 @@
+# One-click hosting on Render (https://render.com): New > Blueprint, pick this
+# repository, done. The free plan sleeps when idle, so the first call after a
+# while takes about a minute to connect; a paid instance doesn't.
+services:
+  - type: web
+    name: earshot
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      # Optional relay for networks that block direct calls; see docs/deploy.md.
+      - key: TURN_URLS
+        sync: false
+      - key: TURN_USERNAME
+        sync: false
+      - key: TURN_CREDENTIAL
+        sync: false

@@ -1,0 +1,25 @@
+# Hosting on Fly.io: `fly launch --copy-config --no-deploy`, then `fly deploy`.
+# Pick an app name and the region closest to you when asked.
+app = "earshot"
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Keep one machine warm so calls connect instantly; set to "stop" to save money.
+  auto_stop_machines = "off"
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "5s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "3s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

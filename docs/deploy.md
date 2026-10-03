@@ -36,6 +36,21 @@ docker compose --profile https up -d
 `https://calls.example.com` (WebSockets included) to the server. Put
 `https://calls.example.com` into the app's Settings.
 
+## The quickest way: Render or Fly.io
+
+- **Render, free:** sign in at [render.com](https://render.com), choose
+  **New › Blueprint**, pick your copy of this repository and confirm. The
+  included [`render.yaml`](../render.yaml) does the rest. You get an address
+  like `https://earshot-xxxx.onrender.com`; put it into the app's Settings.
+  The free plan sleeps after a while without calls, so the first connection
+  afterwards takes about a minute.
+- **Fly.io:** install `flyctl`, then in the repository run
+  `fly launch --copy-config --no-deploy` and `fly deploy`. The included
+  [`fly.toml`](../fly.toml) keeps one small machine running so calls connect
+  instantly.
+
+Both deploy from the repository's default branch.
+
 ## Hosting platforms
 
 Anything that runs a Dockerfile or a Node app and terminates TLS for you works,
@@ -70,7 +85,12 @@ peer time-limited TURN credentials derived from `TURN_SECRET` (coturn's
 `use-auth-secret` scheme), so the secret itself never leaves the server.
 
 A hosted TURN service works too: set `TURN_URLS`, `TURN_USERNAME` and
-`TURN_CREDENTIAL` to the values it gives you.
+`TURN_CREDENTIAL` to the values it gives you. Several have free tiers
+(Cloudflare's TURN service and Metered's Open Relay, for example). A relay
+never sees the call's content: WebRTC media is encrypted end to end
+(DTLS-SRTP), and the relay only forwards the encrypted packets. Gyms with
+locked-down Wi-Fi are a common reason to set one up; pick a relay that
+offers TCP or TLS on port 443, which almost every network allows.
 
 ## Configuration
 
