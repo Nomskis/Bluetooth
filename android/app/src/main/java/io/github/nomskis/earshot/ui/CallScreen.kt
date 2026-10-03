@@ -62,6 +62,7 @@ import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.call.CallPhase
 import io.github.nomskis.earshot.call.CallSession
 import io.github.nomskis.earshot.call.CallState
+import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.ui.theme.Accent
 import io.github.nomskis.earshot.ui.theme.Danger
 import kotlin.math.roundToInt
@@ -72,6 +73,7 @@ fun CallScreen(
     route: AudioRoute,
     keepScreenOn: Boolean,
     inPictureInPicture: Boolean,
+    earbudBoost: EarbudBoost.Status?,
     onVoiceVolumeSaved: (Float) -> Unit,
     onLeaveScreen: () -> Unit,
 ) {
@@ -118,7 +120,7 @@ fun CallScreen(
 
         if (inPictureInPicture) return@Box
 
-        TopBar(state, route, Modifier.align(Alignment.TopCenter))
+        TopBar(state, route, earbudBoost, Modifier.align(Alignment.TopCenter))
 
         if (state.hasCamera && !state.cameraOff) {
             VideoRenderer(
@@ -192,7 +194,7 @@ private fun RemotePlaceholder(state: CallState, compact: Boolean) {
 }
 
 @Composable
-private fun TopBar(state: CallState, route: AudioRoute, modifier: Modifier) {
+private fun TopBar(state: CallState, route: AudioRoute, earbudBoost: EarbudBoost.Status?, modifier: Modifier) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -223,6 +225,10 @@ private fun TopBar(state: CallState, route: AudioRoute, modifier: Modifier) {
             }
         }
         RouteChip(route, state.audioMode)
+        // What Earshot is doing for the earbuds behind the scenes.
+        listOfNotNull(earbudBoost?.text, state.radioNote).forEach { note ->
+            Text(note, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall)
+        }
         if (state.smartDuckUnsupported) {
             Text(
                 "Your music app pauses instead of dipping, so the music dip is off for this call.",

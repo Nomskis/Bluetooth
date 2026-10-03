@@ -85,6 +85,7 @@ fun TunerScreen(
     onMeasure: (label: String) -> Unit,
     onClearRuns: (device: String) -> Unit,
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
+    earbuds: @Composable () -> Unit,
     turbo: @Composable () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -182,6 +183,8 @@ fun TunerScreen(
             TunerAdvice.tips(AdviceInput(device, runs, wifiBand, settings.gameAudioLabel)).forEach { tip ->
                 TipCard(tip, installedApps, context, onUpdateSettings)
             }
+
+            earbuds()
 
             turbo()
 
@@ -338,8 +341,13 @@ private fun TipCard(
                         )
                     }
                 }
-                Tip.Kind.WIFI_BAND -> OutlinedButton(onClick = { context.openSettings(Settings.ACTION_WIFI_SETTINGS) }) {
-                    Text("Wi-Fi settings")
+                Tip.Kind.WIFI_BAND -> {
+                    OutlinedButton(onClick = { context.openSettings(Settings.ACTION_WIFI_SETTINGS) }) {
+                        Text("Wi-Fi settings")
+                    }
+                    OutlinedButton(onClick = { onUpdateSettings { it.copy(mobileDataOn24GHz = true) } }) {
+                        Text("Use mobile data for calls on 2.4 GHz")
+                    }
                 }
                 Tip.Kind.GAME_AUDIO_LABEL -> OutlinedButton(onClick = { onUpdateSettings { it.copy(gameAudioLabel = true) } }) {
                     Text("Turn it on")
@@ -351,7 +359,7 @@ private fun TipCard(
 }
 
 @Composable
-private fun LabelledSwitch(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun LabelledSwitch(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)

@@ -43,6 +43,7 @@ import org.webrtc.MediaStreamTrack
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnection.IceConnectionState
 import org.webrtc.PeerConnection.SignalingState
+import org.webrtc.RTCStatsReport
 import org.webrtc.RtpReceiver
 import org.webrtc.RtpTransceiver
 import org.webrtc.SessionDescription
@@ -71,6 +72,8 @@ class CallSession(
     private val eglBase: EglBase,
     private val http: OkHttpClient,
     private val withVideo: Boolean,
+    /** How to treat the radio Wi-Fi shares with Bluetooth; updated as the network changes. */
+    radioPlan: RadioPlan = RadioPlan.NONE,
 ) {
     private val appContext = context.applicationContext
     private val executor = Executors.newSingleThreadExecutor { Thread(it, "EarshotCall") }
@@ -115,6 +118,8 @@ class CallSession(
     private var offerTimeoutJob: Job? = null
     private var requestOfferJob: Job? = null
     private var finished = false
+    private var radioPlan = radioPlan
+    private var statsJob: Job? = null
 
     /** One RTCPeerConnection and everything tied to it. */
     private class Link(val pc: PeerConnection, val session: String, val tracks: SendTracks) {
@@ -148,6 +153,8 @@ class CallSession(
         data object ToggleReplay : Event
         data object ReplayFinished : Event
         data object SmartDuckUnsupported : Event
+        data class UpdateRadio(val plan: RadioPlan) : Event
+        class Stats(val link: Link, val report: RTCStatsReport) : Event
         data object HangUp : Event
     }
 
@@ -179,6 +186,7 @@ class CallSession(
     fun setVoiceVolume(volume: Float) = post(Event.SetVoiceVolume(volume))
     fun onNetworkChanged() = post(Event.NetworkChanged)
     fun toggleReplay() = post(Event.ToggleReplay)
+    fun updateRadioPlan(plan: RadioPlan) = post(Event.UpdateRadio(plan))
     fun hangUp() = post(Event.HangUp)
 
     private fun post(event: Event) {
@@ -197,7 +205,9 @@ class CallSession(
             withVideo = withVideo,
             localPreview = localPreview,
         )
-        _state.update { it.copy(hasCamera = engine.hasVideo, frontCamera = engine.isFrontCamera) }
+        _state.update {
+            it.copy(hasCamera = engine.hasVideo, frontCamera = engine.isFrontCamera, radioNote = RadioPlan.describe(radioPlan, null))
+        }
         audioController.begin(profile)
         // Ducking only makes sense when the call plays next to music, i.e. in Hi-Fi mode.
         if (settings.smartDuck && profile.mode == AudioMode.HIFI) {
@@ -293,7 +303,55 @@ class CallSession(
                 smartDuck = null
                 _state.update { it.copy(smartDuckUnsupported = true) }
             }
+            is Event.UpdateRadio -> onRadioPlan(event.plan)
+            is Event.Stats -> if (event.link === link) onStats(event.link, event.report)
             Event.HangUp -> finish(CallPhase.ENDED)
+        }
+    }
+
+    // --- sharing the radio with Bluetooth ----------------------------------------------
+
+    private suspend fun onRadioPlan(plan: RadioPlan) {
+        if (plan == radioPlan) return
+        val old = radioPlan
+        radioPlan = plan
+        val l = link
+        if (l != null) {
+            if (old.preferCellular != plan.preferCellular) engine.setPreferCellular(l.pc, iceServers, plan.preferCellular)
+            applyVideoCap(l)
+            // The cap on what they send us travels in the SDP; renegotiate if we're the one who offers.
+            if (old.remoteVideoCap() != plan.remoteVideoCap() && isOfferer() && l.isHealthy &&
+                l.pc.signalingState() == SignalingState.STABLE
+            ) {
+                sendOffer(l, iceRestart = false)
+            }
+        }
+        _state.update { it.copy(radioNote = RadioPlan.describe(plan, it.callPath)) }
+    }
+
+    /** What we ask them to cap their video at. When mobile data is preferred we don't, so it isn't held back there. */
+    private fun RadioPlan.remoteVideoCap(): Int? = if (preferCellular) null else wifiVideoCapKbps
+
+    private fun applyVideoCap(l: Link) {
+        engine.capVideoSend(l.pc, radioPlan.videoCapFor(_state.value.callPath))
+    }
+
+    private fun onStats(l: Link, report: RTCStatsReport) {
+        val entries = report.statsMap.mapValues { (_, s) -> CallStats.Entry(s.type, s.members) }
+        val path = RadioPlan.pathFor(CallStats.selectedNetworkType(entries)) ?: return
+        if (path == _state.value.callPath) return
+        Log.i(TAG, "Media now flows over $path")
+        _state.update { it.copy(callPath = path, radioNote = RadioPlan.describe(radioPlan, path)) }
+        applyVideoCap(l)
+    }
+
+    private fun watchStats(l: Link) {
+        statsJob?.cancel()
+        statsJob = scope.launch {
+            while (true) {
+                l.pc.getStats { report -> post(Event.Stats(l, report)) }
+                delay(STATS_INTERVAL_MS)
+            }
         }
     }
 
@@ -438,7 +496,7 @@ class CallSession(
         if (link !== l) return
         l.pc.awaitSetLocal(offer)
         if (link !== l) return
-        sendSignal(SignalData.Offer(l.session, SdpTuning.preferLowLatencyAudio(offer.description)))
+        sendSignal(SignalData.Offer(l.session, tune(offer.description)))
         offerTimeoutJob?.cancel()
         offerTimeoutJob = scope.launch {
             delay(OFFER_TIMEOUT_MS)
@@ -469,9 +527,13 @@ class CallSession(
         if (link !== l) return
         l.pc.awaitSetLocal(answer)
         if (link !== l) return
-        sendSignal(SignalData.Answer(l.session, SdpTuning.preferLowLatencyAudio(answer.description)))
+        sendSignal(SignalData.Answer(l.session, tune(answer.description)))
         flushCandidates(l)
     }
+
+    /** Our tweaks to every description we send. */
+    private fun tune(sdp: String): String =
+        SdpTuning.capVideoBandwidth(SdpTuning.preferLowLatencyAudio(sdp), radioPlan.remoteVideoCap())
 
     private suspend fun onAnswer(data: SignalData.Answer) {
         val l = link ?: return
@@ -527,6 +589,8 @@ class CallSession(
                 recoveryJob?.cancel()
                 setPhase(CallPhase.CONNECTED)
                 sendMediaState()
+                applyVideoCap(l)
+                if (statsJob?.isActive != true) watchStats(l)
             }
             IceConnectionState.DISCONNECTED -> {
                 setPhase(CallPhase.RECONNECTING)
@@ -564,7 +628,7 @@ class CallSession(
 
     private fun createLink(session: String): Link {
         val observer = LinkObserver()
-        val pc = engine.createPeerConnection(iceServers, observer)
+        val pc = engine.createPeerConnection(iceServers, observer, radioPlan.preferCellular)
             ?: error("WebRTC could not create a peer connection")
         val tracks = engine.createSendTracks()
         tracks.audio.setEnabled(!_state.value.micMuted)
@@ -579,6 +643,7 @@ class CallSession(
     }
 
     private fun closeLink() {
+        statsJob?.cancel()
         recoveryJob?.cancel()
         offerTimeoutJob?.cancel()
         requestOfferJob?.cancel()
@@ -592,7 +657,7 @@ class CallSession(
             l.tracks.audio.dispose()
             l.tracks.video?.dispose()
         }
-        _state.update { it.copy(hasRemoteVideo = false, remoteSpeaking = false) }
+        _state.update { it.copy(hasRemoteVideo = false, remoteSpeaking = false, callPath = null) }
         smartDuck?.onRemoteSpeaking(false)
     }
 
@@ -655,5 +720,6 @@ class CallSession(
         const val OFFER_TIMEOUT_MS = 10_000L
         const val REQUEST_OFFER_DELAY_MS = 1_500L
         const val REPLAY_SECONDS = 8.0
+        const val STATS_INTERVAL_MS = 4_000L
     }
 }

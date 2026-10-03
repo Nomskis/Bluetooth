@@ -78,6 +78,22 @@ data class AppSettings(
     val headStartCue: Boolean = true,
     /** Dip your music while the other person talks (Android ducks it for us). */
     val smartDuck: Boolean = true,
+    /**
+     * Switch the earbuds' own game mode on for the call (and back after), on
+     * brands Earshot has a driver for. Off by default: it talks to the
+     * earbuds over their companion-app channel.
+     */
+    val autoGameMode: Boolean = false,
+    /**
+     * On 2.4 GHz Wi-Fi, which shares the phone's radio with Bluetooth, keep
+     * the call's video lighter so the earbuds get more airtime.
+     */
+    val bluetoothFriendlyVideo: Boolean = true,
+    /**
+     * On 2.4 GHz Wi-Fi, carry the call over mobile data instead, freeing the
+     * shared radio for the earbuds entirely. Uses your data plan.
+     */
+    val mobileDataOn24GHz: Boolean = false,
     /** Extra gain for the other person's voice, 1.0 = unchanged. */
     val voiceVolume: Float = 1f,
     val lastRoom: String = "",

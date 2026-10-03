@@ -28,6 +28,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
     val sonar by viewModel.sonar.collectAsStateWithLifecycle()
     val codec by viewModel.codec.collectAsStateWithLifecycle()
     val turboInfo by viewModel.turbo.collectAsStateWithLifecycle()
+    val earbudBoost by viewModel.earbudBoost.collectAsStateWithLifecycle()
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -39,6 +40,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 route = route,
                 keepScreenOn = current.keepScreenOn,
                 inPictureInPicture = inPictureInPicture,
+                earbudBoost = earbudBoost,
                 onVoiceVolumeSaved = { v -> viewModel.updateSettings { it.copy(voiceVolume = v) } },
                 onLeaveScreen = onLeaveCallScreen,
             )
@@ -65,6 +67,16 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 onMeasure = viewModel::measureDelay,
                 onClearRuns = viewModel::clearDelayRuns,
                 onUpdateSettings = viewModel::updateSettings,
+                earbuds = {
+                    val earbuds by viewModel.earbuds.collectAsStateWithLifecycle()
+                    EarbudCard(
+                        info = earbuds,
+                        autoGameMode = current.autoGameMode,
+                        onDetect = viewModel::detectEarbuds,
+                        onSwitch = viewModel::setEarbudGameMode,
+                        onAutoGameMode = { v -> viewModel.updateSettings { it.copy(autoGameMode = v) } },
+                    )
+                },
                 turbo = {
                     val turboStatus by viewModel.turboStatus.collectAsStateWithLifecycle()
                     TurboCard(

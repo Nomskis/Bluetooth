@@ -5,6 +5,8 @@ import android.content.Context
 import io.github.nomskis.earshot.audio.AudioRouteMonitor
 import io.github.nomskis.earshot.audio.CodecWatcher
 import io.github.nomskis.earshot.call.CallManager
+import io.github.nomskis.earshot.earbuds.EarbudBoost
+import io.github.nomskis.earshot.earbuds.EarbudControl
 import io.github.nomskis.earshot.settings.SettingsRepository
 import io.github.nomskis.earshot.turbo.TurboClient
 import okhttp3.OkHttpClient
@@ -21,7 +23,8 @@ class AppGraph(context: Context) {
         .pingInterval(15, TimeUnit.SECONDS)
         .connectTimeout(10, TimeUnit.SECONDS)
         .build()
-    val callManager = CallManager(context, settings, routeMonitor, http)
+    val earbuds = EarbudControl(context)
+    val callManager = CallManager(context, settings, routeMonitor, http, EarbudBoost(earbuds))
 }
 
 class EarshotApp : Application() {

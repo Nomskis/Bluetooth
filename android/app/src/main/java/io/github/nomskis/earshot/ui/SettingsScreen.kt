@@ -43,6 +43,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.nomskis.earshot.BuildConfig
+import io.github.nomskis.earshot.earbuds.EarbudDrivers
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.EchoCancellation
 import io.github.nomskis.earshot.settings.MicSource
@@ -172,6 +173,14 @@ fun SettingsScreen(
                 onUpdate { it.copy(headStartCue = v) }
             }
             Toggle("Dip my music while they talk", settings.smartDuck) { v -> onUpdate { it.copy(smartDuck = v) } }
+            Toggle("Turn on my earbuds' game mode during calls", settings.autoGameMode) { v ->
+                onUpdate { it.copy(autoGameMode = v) }
+            }
+            Hint(
+                "For earbuds whose game mode Earshot knows how to switch (" +
+                    EarbudDrivers.familyNames.joinToString(", ") +
+                    "). It goes back to how it was when the call ends. Needs the Nearby devices permission.",
+            )
             OutlinedButton(onClick = onOpenTuner) { Text("Open delay tuner") }
             Toggle("Noise suppression", settings.noiseSuppression) { v -> onUpdate { it.copy(noiseSuppression = v) } }
             Toggle("Automatic mic volume", settings.autoGainControl) { v -> onUpdate { it.copy(autoGainControl = v) } }
@@ -190,6 +199,20 @@ fun SettingsScreen(
                 onUpdate { it.copy(startWithBackCamera = v) }
             }
             Toggle("Keep the screen on during calls", settings.keepScreenOn) { v -> onUpdate { it.copy(keepScreenOn = v) } }
+
+            HorizontalDivider()
+            Section("Sharing the radio with Bluetooth")
+            Hint(
+                "Phones run 2.4 GHz Wi-Fi and Bluetooth on the same radio, taking turns. A video call over " +
+                    "2.4 GHz Wi-Fi takes turns away from your earbuds, which can make them stutter or lag.",
+            )
+            Toggle("Lighter video on 2.4 GHz Wi-Fi", settings.bluetoothFriendlyVideo) { v ->
+                onUpdate { it.copy(bluetoothFriendlyVideo = v) }
+            }
+            Toggle("Use mobile data instead of 2.4 GHz Wi-Fi", settings.mobileDataOn24GHz) { v ->
+                onUpdate { it.copy(mobileDataOn24GHz = v) }
+            }
+            Hint("Mobile data doesn't share the radio at all. Uses your data plan; falls back to Wi-Fi if mobile data fails.")
 
             HorizontalDivider()
             Section("About")

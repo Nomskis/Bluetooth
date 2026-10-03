@@ -33,6 +33,9 @@ class SettingsRepository(private val context: Context) {
         val lowLatencyPlayback = booleanPreferencesKey("low_latency_playback")
         val headStartCue = booleanPreferencesKey("head_start_cue")
         val smartDuck = booleanPreferencesKey("smart_duck")
+        val autoGameMode = booleanPreferencesKey("auto_game_mode")
+        val bluetoothFriendlyVideo = booleanPreferencesKey("bluetooth_friendly_video")
+        val mobileDataOn24GHz = booleanPreferencesKey("mobile_data_on_24ghz")
         val voiceVolume = floatPreferencesKey("voice_volume")
         val lastRoom = stringPreferencesKey("last_room")
         val peerId = stringPreferencesKey("peer_id")
@@ -75,6 +78,9 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.lowLatencyPlayback] = next.lowLatencyPlayback
             prefs[Keys.headStartCue] = next.headStartCue
             prefs[Keys.smartDuck] = next.smartDuck
+            prefs[Keys.autoGameMode] = next.autoGameMode
+            prefs[Keys.bluetoothFriendlyVideo] = next.bluetoothFriendlyVideo
+            prefs[Keys.mobileDataOn24GHz] = next.mobileDataOn24GHz
             prefs[Keys.voiceVolume] = next.voiceVolume
             prefs[Keys.lastRoom] = next.lastRoom
         }
@@ -110,6 +116,9 @@ class SettingsRepository(private val context: Context) {
             lowLatencyPlayback = this[Keys.lowLatencyPlayback] ?: defaults.lowLatencyPlayback,
             headStartCue = this[Keys.headStartCue] ?: defaults.headStartCue,
             smartDuck = this[Keys.smartDuck] ?: defaults.smartDuck,
+            autoGameMode = this[Keys.autoGameMode] ?: defaults.autoGameMode,
+            bluetoothFriendlyVideo = this[Keys.bluetoothFriendlyVideo] ?: defaults.bluetoothFriendlyVideo,
+            mobileDataOn24GHz = this[Keys.mobileDataOn24GHz] ?: defaults.mobileDataOn24GHz,
             voiceVolume = this[Keys.voiceVolume] ?: defaults.voiceVolume,
             lastRoom = this[Keys.lastRoom] ?: defaults.lastRoom,
         )

@@ -56,4 +56,33 @@ class SdpTuningTest {
         assertNull(SdpTuning.firstAudioCodec("v=0\r\n"))
         assertNull(SdpTuning.firstAudioCodec(null))
     }
+
+    @Test
+    fun capsIncomingVideoInTheVideoSectionOnly() {
+        val withC = offer.replace("m=video 9 UDP/TLS/RTP/SAVPF 96\r\n", "m=video 9 UDP/TLS/RTP/SAVPF 96\r\nc=IN IP4 0.0.0.0\r\n")
+        for (sdp in listOf(offer, withC)) {
+            val lines = SdpTuning.capVideoBandwidth(sdp, 800).split("\r\n")
+            val video = lines.indexOfFirst { it.startsWith("m=video") }
+            assertEquals(1, lines.count { it == "b=AS:800" })
+            assertEquals(1, lines.count { it == "b=TIAS:800000" })
+            assertTrue(lines.indexOf("b=AS:800") > video)
+            // b= follows c= when there is one (RFC 4566 order).
+            val c = lines.withIndex().firstOrNull { it.index > video && it.value.startsWith("c=") }?.index
+            if (c != null) assertEquals(c + 1, lines.indexOf("b=AS:800"))
+            // The audio section is untouched.
+            assertFalse(lines.subList(0, video).any { it.startsWith("b=") })
+        }
+    }
+
+    @Test
+    fun replacesOrRemovesAnExistingCap() {
+        val capped = SdpTuning.capVideoBandwidth(offer, 800)
+        val recapped = SdpTuning.capVideoBandwidth(capped, 500)
+        assertFalse(recapped.contains("b=AS:800"))
+        assertTrue(recapped.contains("b=AS:500"))
+        val removed = SdpTuning.capVideoBandwidth(capped, null)
+        assertFalse(removed.contains("b=AS"))
+        assertFalse(removed.contains("b=TIAS"))
+        assertEquals(offer, removed)
+    }
 }

@@ -29,6 +29,43 @@ object SdpTuning {
         return out.toString()
     }
 
+    /**
+     * Asks the other side to keep the video it sends us under [kbps]
+     * (b=AS, and b=TIAS in bits per second, in the video section; RFC 4566
+     * and RFC 3890). Null removes any cap. The browser and WebRTC encoders
+     * honour these as a ceiling for their bandwidth estimate.
+     */
+    fun capVideoBandwidth(sdp: String, kbps: Int?): String {
+        val lines = sdp.split("\r\n")
+        val out = ArrayList<String>(lines.size + 2)
+        var inVideo = false
+        var pendingCap = false
+        for (line in lines) {
+            if (line.startsWith("m=")) {
+                if (pendingCap) out += capLines(kbps!!) // video section without a c= line
+                inVideo = line.startsWith("m=video")
+                pendingCap = inVideo && kbps != null
+                out += line
+                continue
+            }
+            if (inVideo && (line.startsWith("b=AS:") || line.startsWith("b=TIAS:"))) continue
+            if (pendingCap && line.startsWith("c=")) {
+                out += line
+                out += capLines(kbps!!)
+                pendingCap = false
+                continue
+            }
+            if (pendingCap && !line.startsWith("i=")) {
+                out += capLines(kbps!!)
+                pendingCap = false
+            }
+            out += line
+        }
+        return out.joinToString("\r\n")
+    }
+
+    private fun capLines(kbps: Int) = listOf("b=AS:$kbps", "b=TIAS:${kbps * 1000L}")
+
     /** The codec name of the first payload type on the audio line, e.g. "red" or "opus". */
     fun firstAudioCodec(sdp: String?): String? {
         if (sdp == null) return null

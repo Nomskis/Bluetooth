@@ -191,14 +191,39 @@ class RtcEngine(
         video = videoSource?.let { factory.createVideoTrack(Ids.random(6, "v"), it) },
     )
 
-    fun createPeerConnection(iceServers: List<IceServerConfig>, observer: PeerConnection.Observer): PeerConnection? {
+    fun createPeerConnection(
+        iceServers: List<IceServerConfig>,
+        observer: PeerConnection.Observer,
+        preferCellular: Boolean = false,
+    ): PeerConnection? = factory.createPeerConnection(rtcConfiguration(iceServers, preferCellular), observer)
+
+    /**
+     * Tells ICE to prefer (or stop preferring) candidate pairs on mobile data.
+     * A preference, not a rule: if mobile data fails, the call stays on Wi-Fi.
+     */
+    fun setPreferCellular(pc: PeerConnection, iceServers: List<IceServerConfig>, prefer: Boolean) {
+        if (!pc.setConfiguration(rtcConfiguration(iceServers, prefer))) Log.w(TAG, "Could not change the network preference")
+    }
+
+    /** Caps the video we send ([kbps] null = no cap). Takes effect without renegotiating. */
+    fun capVideoSend(pc: PeerConnection, kbps: Int?) {
+        for (sender in pc.senders) {
+            val kind = runCatching { sender.track()?.kind() }.getOrNull()
+            if (kind != MediaStreamTrack.VIDEO_TRACK_KIND) continue
+            val parameters = sender.parameters
+            parameters.encodings.forEach { it.maxBitrateBps = kbps?.let { k -> k * 1000 } }
+            if (!sender.setParameters(parameters)) Log.w(TAG, "Could not cap video at $kbps kbps")
+        }
+    }
+
+    private fun rtcConfiguration(iceServers: List<IceServerConfig>, preferCellular: Boolean): PeerConnection.RTCConfiguration {
         val servers = iceServers.map { config ->
             val builder = PeerConnection.IceServer.builder(config.urls)
             config.username?.let { builder.setUsername(it) }
             config.credential?.let { builder.setPassword(it) }
             builder.createIceServer()
         }
-        val rtcConfig = PeerConnection.RTCConfiguration(servers).apply {
+        return PeerConnection.RTCConfiguration(servers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
             bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE
             rtcpMuxPolicy = PeerConnection.RtcpMuxPolicy.REQUIRE
@@ -209,8 +234,10 @@ class RtcEngine(
             // inflated, and cap how far it can grow (50 packets = 0.5 s at 10 ms packets).
             audioJitterBufferFastAccelerate = true
             audioJitterBufferMaxPackets = 50
+            // Ranks above network cost in ICE's choice, so a working mobile-data
+            // path wins over Wi-Fi; without it Wi-Fi (cheaper) always wins.
+            if (preferCellular) networkPreference = PeerConnection.AdapterType.CELLULAR
         }
-        return factory.createPeerConnection(rtcConfig, observer)
     }
 
     fun release() {

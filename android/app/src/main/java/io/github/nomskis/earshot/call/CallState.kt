@@ -48,6 +48,10 @@ data class CallState(
     val canReplay: Boolean = false,
     /** Smart dip turned itself off because the music app pauses instead of ducking. */
     val smartDuckUnsupported: Boolean = false,
+    /** Which network the media is flowing over, once known. */
+    val callPath: CallPath? = null,
+    /** What Earshot is doing to keep the shared radio free for the earbuds, if anything. */
+    val radioNote: String? = null,
     val error: String? = null,
 ) {
     val isActive: Boolean

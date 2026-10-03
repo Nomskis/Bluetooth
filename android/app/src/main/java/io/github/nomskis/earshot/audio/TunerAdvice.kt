@@ -77,7 +77,8 @@ object TunerAdvice {
                 Tip.Kind.WIFI_BAND,
                 "Switch to 5 GHz Wi-Fi if you can",
                 "Your Wi-Fi is on 2.4 GHz, the same band as Bluetooth, and the phone shares one radio chip " +
-                    "between them. Video call traffic there can make Bluetooth audio stutter and lag. A 5 GHz network or mobile data avoids that.",
+                    "between them. Video call traffic there can make Bluetooth audio stutter and lag. Earshot keeps " +
+                    "video lighter there; a 5 GHz network, or letting Earshot carry calls over mobile data, avoids it entirely.",
             )
         }
 

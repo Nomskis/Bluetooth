@@ -12,6 +12,9 @@ import io.github.nomskis.earshot.audio.LinkConditions
 import io.github.nomskis.earshot.audio.SonarMeter
 import io.github.nomskis.earshot.audio.WifiBand
 import io.github.nomskis.earshot.call.CallSession
+import io.github.nomskis.earshot.earbuds.DriverResult
+import io.github.nomskis.earshot.earbuds.EarbudBoost
+import io.github.nomskis.earshot.earbuds.describe
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.DelayRun
 import io.github.nomskis.earshot.signaling.ServerUrls
@@ -47,6 +50,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val session: StateFlow<CallSession?> = graph.callManager.session
     val lastError: StateFlow<String?> = graph.callManager.lastError
+    val earbudBoost: StateFlow<EarbudBoost.Status?> = graph.callManager.earbudBoost.status
 
     val route: StateFlow<AudioRoute> =
         graph.routeMonitor.route.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), graph.routeMonitor.snapshot())
@@ -175,6 +179,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val message = runCatching { block() }.getOrElse { "Failed: ${it.message}" }
             _turbo.value = _turbo.value.copy(busy = null, message = message)
+        }
+    }
+
+    private val _earbuds = MutableStateFlow(EarbudInfo())
+    val earbuds: StateFlow<EarbudInfo> = _earbuds.asStateFlow()
+
+    fun detectEarbuds() {
+        viewModelScope.launch {
+            val target = graph.earbuds.currentTarget()
+            _earbuds.value = EarbudInfo(
+                checked = true,
+                earbuds = target?.name,
+                family = target?.driver?.family,
+                experimental = target?.driver?.experimental == true,
+            )
+        }
+    }
+
+    /** Flips the earbuds' game mode now, so it can be measured. */
+    fun setEarbudGameMode(on: Boolean) {
+        if (_earbuds.value.busy != null) return
+        _earbuds.value = _earbuds.value.copy(busy = if (on) "Turning game mode on…" else "Turning game mode off…", message = null)
+        viewModelScope.launch {
+            val (_, result) = graph.earbuds.setGameMode(on)
+            val message = when {
+                result == null -> "Couldn't find the earbuds' switch."
+                result is DriverResult.Ok && on -> "Game mode is on. Measure now with the label \"Game mode on\"."
+                result is DriverResult.Ok -> "Game mode is off."
+                else -> result.describe()
+            }
+            _earbuds.value = _earbuds.value.copy(busy = null, message = message)
         }
     }
 
