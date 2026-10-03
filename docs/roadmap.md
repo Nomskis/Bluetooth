@@ -6,13 +6,23 @@ Roughly in order. Each item stands on its own; pick any.
 
 - **Confirm on real phones.** Run the [first test](../README.md#first-test-at-home)
   on as many phones as possible and keep a compatibility table (phone, Android
-  version, earbuds, result).
+  version, earbuds, result), including the delay tuner's numbers with and
+  without earbud game mode.
+- **Confirm the earbud drivers on real earbuds**, starting with the ones
+  marked experimental (Huawei/Honor, EarFun), and add brands as their
+  protocols get documented (Soundcore, Sony, JBL, Jabra have no public
+  game-mode commands yet).
+- **Measure radio sharing.** A tuner test that runs the sonar meter during a
+  call-sized download on 2.4 GHz vs 5 GHz, to show each phone's coexistence
+  cost.
+- **Web client parity.** The head-start cue and lip sync for the browser side.
 - **Switch audio mode during a call.** Today Hi-Fi vs headset mic is chosen
   before joining. Switching mid-call means rebuilding the audio device module
   and renegotiating.
 - **Text chat over a data channel**, handy when one side is muted at the gym.
 - **Connection quality indicator** from WebRTC stats (round-trip time, packet
-  loss, bitrate), plus a debug screen with the selected codec and candidate type.
+  loss, bitrate), plus a debug screen with the selected codec and candidate
+  type. The stats poller behind the mobile-data switch is the start of it.
 - **Release builds on GitHub Releases** with a proper signing key, so updates
   install over each other without uninstalling.
 - **App links** so `https://<server>/r/<room>` opens the Android app when it's

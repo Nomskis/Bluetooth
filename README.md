@@ -27,11 +27,54 @@ phone's built-in mic, so Android has no reason to leave the music link. The
 full story, with the Android rules involved, is in
 [docs/how-it-works.md](docs/how-it-works.md).
 
+## Built to be fast, with any earbuds
+
+Music-quality Bluetooth has more delay than the call link, so most of Earshot
+is about winning that back, or making what's left not matter. Everything in
+this list works with every pair of classic Bluetooth earbuds:
+
+- **Leaner network path.** 10 ms audio packets instead of 20, redundant audio
+  (RED) so a lost packet is repaired without the jitter buffer growing, and a
+  jitter buffer that shrinks right back after a hiccup.
+- **Android's low-latency path.** Her voice is played on Android's fast audio
+  path and labelled as game audio, which on phones that support it switches
+  the Bluetooth link into its low-latency mode by itself.
+- **Measure it, by sound.** The delay tuner plays chirps through an earbud held
+  to the phone's mic and measures the real app-to-ear delay (calibrated against
+  the phone's own speaker), then helps you find the fastest setup.
+- **Hear her before you hear her.** Earshot sees her voice arrive 100–250 ms
+  before the earbuds play it: the call screen lights up as she starts talking,
+  your music dips while she talks, and you can replay the last 8 seconds.
+- **Keeps the radio free for your earbuds.** On 2.4 GHz Wi-Fi, which shares
+  the phone's radio with Bluetooth, video is kept lighter in both directions;
+  optionally the call moves to mobile data, which doesn't share it at all.
+- **Lips in time with her voice.** Her video is held back by exactly the
+  Bluetooth delay that WebRTC doesn't know about, using your measurement when
+  there is one.
+- **HD voice.** The earbuds stay on the music link, so her voice is sent at
+  near-transparent quality (48 kbps Opus instead of 32).
+- **Calls survive your pocket.** A per-phone-brand guide through the battery
+  switches HyperOS, ColorOS, EMUI, Funtouch and One UI use to stop background
+  apps.
+
+And two optional extras that go further:
+
+- **Earbud game mode, automatically.** Classic Bluetooth has no standard
+  "less delay, please" command, but many brands have their own. Earshot can
+  switch it on for the call and back afterwards on OPPO, OnePlus and realme,
+  Nothing and CMF, Xiaomi and Redmi, and (new) Huawei, Honor and EarFun earbuds.
+- **Turbo (no root, via Shizuku).** Unlocks Android's system-only Bluetooth
+  controls: read the earbuds' own delay report, shrink the phone-side buffer,
+  and sweep every codec the earbuds offer to keep the fastest.
+
+The research behind all of this, with sources, is in
+[docs/research/latency.md](docs/research/latency.md).
+
 ## What's in this repository
 
 | Part | What it is |
 | --- | --- |
-| [`android/`](android) | The Android app (Kotlin, Jetpack Compose, WebRTC). Hi-Fi audio mode, live "where is my audio going" check, background calls, picture-in-picture. |
+| [`android/`](android) | The Android app (Kotlin, Jetpack Compose, WebRTC). Hi-Fi audio mode, live "where is my audio going" check, delay tuner, earbud game mode, background calls, picture-in-picture. |
 | [`web/`](web) | Browser client. The other person can join from a link on any phone or computer, no install needed. |
 | [`server/`](server) | Small Node.js signaling server (one dependency). Introduces the two sides; the call itself goes directly between devices. Also serves the web client. |
 | [`protocol/`](protocol) | Example messages shared by the server and Android tests, so the implementations can't drift apart. |
@@ -100,9 +143,9 @@ network switches, browser and Android clients.
 | Tested | How |
 | --- | --- |
 | Server | 28 unit and integration tests |
-| Browser calls | 5 end-to-end tests: two real Chromium browsers calling each other through the server (video, audio, mute state, reloads, dropped connections, room full, camera-less join) |
-| Android app | 29 unit tests (protocol against the shared examples, signaling reconnects against a scripted server, audio-mode decisions), Android lint, debug and release builds |
-| Android on a real phone | **Not yet.** The audio routing has to be confirmed on real hardware; that's what the in-app audio check is for. |
+| Browser calls | 8 end-to-end tests: two real Chromium browsers calling each other through the server (video, audio, reloads, dropped connections, room full, camera-less join, 10 ms packets, redundant audio, HD voice) |
+| Android app | 104 unit tests: protocol against the shared examples, signaling reconnects against a scripted server, audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio and lip-sync planning, SDP tweaks. Android lint, debug and release builds |
+| Android on a real phone | **Not yet.** The audio routing and the earbud drivers have to be confirmed on real hardware; the in-app audio check and the delay tuner are there for exactly that. |
 
 ## Trade-offs to know about
 
@@ -111,9 +154,10 @@ network switches, browser and Android clients.
   it won't sound like a headset mic. If you want the earbud mic, switch the
   call to **Headset mic** mode, which behaves like a normal call.
 - **A little extra delay.** The music link buffers more than the call link, so
-  the other person's voice reaches you a bit later (typically 0.1 to 0.3
-  seconds, depending on the earbuds). Fine for chatting; you won't notice it
-  while they're watching.
+  the other person's voice reaches your ears later than on a normal call:
+  typically 0.15 to 0.3 seconds from the phone to your ear, depending on the
+  earbuds, and much less in game mode. Everything listed above exists to
+  shrink that or hide it; the delay tuner tells you what your earbuds do.
 - **The call follows your media volume**, so the volume keys change music and
   voice together. The call screen has a separate slider for their voice.
 

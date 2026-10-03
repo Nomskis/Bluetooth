@@ -30,9 +30,13 @@ call, so does your music.
 
 Earshot's **Hi-Fi mode** simply never declares a call:
 
-1. **Playback is labelled as media.** The other person's voice is played with
-   `AudioAttributes.USAGE_MEDIA` (content type speech). To Android it looks the
-   same as a podcast. It goes wherever media goes: your earbuds, over A2DP.
+1. **Playback is labelled as game audio (or media).** The other person's
+   voice is played with `AudioAttributes.USAGE_GAME` by default, or
+   `USAGE_MEDIA` if you turn the "game audio label" off. Both are routed
+   exactly like music: to your earbuds, over A2DP. Game audio has one extra
+   effect: on phones whose Bluetooth stack supports a low-latency mode,
+   Android switches to it while a game-audio track plays on the fast path
+   ([research §2.1](research/latency.md)).
 2. **The phone's own microphone records you.** Capture uses the plain
    `MediaRecorder.AudioSource.MIC` preset (configurable) and is pinned to the
    built-in mic (`AudioDeviceInfo.TYPE_BUILTIN_MIC`), so the earbud mic, and
@@ -74,10 +78,97 @@ and automatic gain stay on by default; a gym is loud.
 
 ## Latency
 
-A2DP buffers more than SCO, so the other person's voice reaches your ears
-somewhat later than in a normal call, typically 0.1 to 0.3 seconds depending
-on the earbuds and codec. For a conversation between sets that's fine. Your own
-voice isn't affected: the phone mic doesn't go through Bluetooth at all.
+A2DP buffers more than SCO, so the other person's voice reaches your ears later
+than in a normal call: typically 0.15 to 0.3 seconds from the app to your ear,
+depending on the earbuds and codec. Your own voice isn't affected: the phone
+mic doesn't go through Bluetooth at all.
+
+Most of that delay sits in a buffer inside the earbuds, and classic Bluetooth
+has no standard command to make it smaller. Earshot attacks the rest of the
+path and makes the part it can't remove matter less. The research and sources
+are in [research/latency.md](research/latency.md); in short:
+
+| What | How | Works with |
+| --- | --- | --- |
+| Shorter network path | 10 ms Opus packets (`a=ptime:10`), redundant audio (RED) preferred, a jitter buffer that shrinks quickly (`audioJitterBufferFastAccelerate`) | everything |
+| Fast playback path | `PERFORMANCE_MODE_LOW_LATENCY` with a self-adjusting buffer (`setUseLowLatency`), game-audio label | everything; low-latency Bluetooth where the phone supports it |
+| Measure it | The sonar meter in the delay tuner: chirps through an earbud held to the mic, matched filter, calibrated against the phone speaker | everything |
+| See her talk first | A voice detector on her decoded audio, 100–250 ms ahead of your ears: the call screen glows, music dips (`AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`), 8-second replay | everything |
+| Free the radio | On 2.4 GHz Wi-Fi with Bluetooth audio: video capped at 800 kbps both ways; optionally media moved to mobile data | everything |
+| Lip sync | Her video held back by the Bluetooth delay WebRTC doesn't know about | everything |
+| Earbud game mode | Each brand's own command, on for the call and back after | OPPO/OnePlus/realme, Nothing/CMF, Xiaomi/Redmi, Huawei/Honor, EarFun |
+| Turbo | Android's privileged Bluetooth controls, through Shizuku | Android 13+ with Wireless debugging |
+
+## Sharing the radio with Bluetooth
+
+Phones run Wi-Fi and Bluetooth on one combo chip, and on 2.4 GHz they take
+turns on the same antenna. Each Wi-Fi packet of a video call is time the A2DP
+stream can't use; retransmissions go up, and earbuds with adaptive buffers
+answer by buffering more, which means more delay and the occasional dropout.
+5 GHz, 6 GHz and mobile data don't share the band.
+
+When the phone is on 2.4 GHz Wi-Fi and audio is on Bluetooth
+([`call/RadioPlan.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/RadioPlan.kt)):
+
+- **Lighter video**, on by default: our video is capped through the sender's
+  encoding parameters (`maxBitrateBps`), and theirs by `b=AS` / `b=TIAS` in
+  the descriptions we send, which WebRTC and browsers treat as a ceiling.
+- **Mobile data instead**, off by default because it uses your data plan:
+  Earshot keeps mobile data up next to Wi-Fi (`ConnectivityManager.requestNetwork`)
+  and sets ICE's `networkPreference` to cellular. That preference ranks above
+  network cost, so a working mobile-data path wins, but it's only a
+  preference: if mobile data fails, the call stays on Wi-Fi. WebRTC's stats
+  show which network the media really uses, and the video cap lifts once
+  it's on mobile data.
+
+## Lip sync
+
+WebRTC lines video up with audio assuming the audio takes a fixed time to
+play once it leaves the jitter buffer. In the Android library that is 75 ms
+(the Java audio module is built with a 150 ms "high latency" estimate and
+reports half of it). Over A2DP the real figure is typically 150–300 ms, so
+her lips move before you hear the words, often by more than the ~125 ms at
+which people notice (ITU-R BT.1359).
+
+Earshot holds her video back by the difference
+([`call/LipSync.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/LipSync.kt),
+[`call/DelayedVideoSink.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/DelayedVideoSink.kt)).
+The figure comes from your delay-tuner measurement that best matches the setup
+(earbuds, game mode, codec); without one, from a silent probe that reads
+Android's own playback timestamps, which over A2DP include the delay the
+earbuds report. Holding video back adds nothing to the conversation's delay,
+since the voice is the slower stream anyway.
+
+## Earbud game mode
+
+Many earbuds have a low-latency "game" mode that roughly halves their buffer,
+normally switched from the brand's app. Earshot speaks those apps' control
+protocols over RFCOMM for the brands whose protocols are publicly documented
+([`earbuds/`](../android/app/src/main/java/io/github/nomskis/earshot/earbuds)).
+Each driver reads the current state first, writes the switch, reads it back
+(an acknowledgement alone doesn't prove the earbuds applied it), and reports
+what the state was, so the call can restore it afterwards. Earbuds without a
+driver lose nothing. It's off by default; turn it on in Settings or try it from
+the delay tuner, where you can measure the difference.
+
+The control channel is the one the brand's own app uses. If that app is
+connected to the earbuds at the same moment, Earshot can't get in and says so.
+
+## HD voice
+
+On the call link voice is squeezed to 16 kHz or less, so WebRTC's default of
+32 kbps Opus is plenty. In Hi-Fi mode the earbuds play the full music-quality
+stream, so both clients ask for 48 kbps Opus (`maxaveragebitrate` on the Opus
+line, RFC 7587), which WebRTC encoders take as their target.
+
+## Keeping calls alive with the screen off
+
+The call runs in a foreground service with a microphone (and camera) type and
+holds a low-latency Wi-Fi lock. That's enough on stock Android. Xiaomi
+(HyperOS/MIUI), Huawei and Honor, OPPO, realme and OnePlus, vivo and Samsung
+add their own battery managers that can stop it anyway, so the home screen
+shows the switches for the phone in hand, with a button to each maker's own
+screen ([`system/BackgroundHealth.kt`](../android/app/src/main/java/io/github/nomskis/earshot/system/BackgroundHealth.kt)).
 
 ## Headset mic mode
 

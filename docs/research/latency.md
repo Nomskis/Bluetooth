@@ -40,9 +40,13 @@ low-latency mode saves around a hundred.
 - Lip sync: audio lagging video becomes noticeable at ~125 ms and
   unacceptable at ~185 ms (ITU-R BT.1359,
   [summary](https://en.wikipedia.org/wiki/Audio-to-video_synchronization)).
-  WebRTC already delays video to match audio by its own estimate, so the
-  leftover mismatch is usually under the threshold. **Lip-sync correction is
-  low priority.**
+  WebRTC delays video to match audio by its own estimate, but on Android that
+  estimate is a fixed 75 ms **[WebRTC source]**: the Java audio module is
+  created with `kHighLatencyModeDelayEstimateInMilliseconds` (150 ms) and
+  `PlayoutDelay()` reports half of it. With A2DP at 150–300 ms app-to-ear the
+  leftover is 75–225 ms, often past the threshold. (An earlier version of this
+  document assumed WebRTC's estimate tracked the real path and ranked
+  lip-sync correction low; the source says otherwise. Built, see §2.10.)
 
 ## 2. Findings that open doors
 
@@ -106,6 +110,29 @@ low-latency toggle), Sony, Nothing, Soundcore and Xiaomi
 are GPL or AGPL. Earshot (Apache-2.0) has to reimplement from protocol facts
 and must not copy their code.
 
+**Built:** drivers for OPPO/OnePlus/realme, Nothing/CMF, Xiaomi/Redmi,
+Huawei/Honor and EarFun (`android/.../earbuds/`), from facts documented by
+QuickBuds (Apache-2.0), Gadgetbridge, BudsLink and OppoPods. Details that
+matter:
+
+- OPPO family: game mode is feature switch `06` on most models but `28` on
+  models with "game sound" (handshake bitmap bit 49 = command `0x0423`); the
+  driver asks the earbuds which ids they have (`0x010D`) instead of guessing,
+  and reads the switch back after writing, because an OK ack doesn't prove the
+  write took (QuickBuds §2). realme Buds Air 8 Pro is in HeyMelody's model
+  list (`066C12`).
+- Xiaomi/Redmi refuse settings until a mutual challenge-response. The function
+  is the Bluetooth Core spec's SAFER+ Ar' keyed with the challenge (last byte
+  XOR 6) over a fixed block; Earshot's implementation is written from the spec
+  and matches reference vectors from two independent projects.
+- Nothing/CMF: one low-latency command (`0xF040`) across ~20 models; frames
+  carry CRC-16/MODBUS.
+- Huawei: service `0x2B`, command `0x6C`, TLV `01 = on`, unencrypted on
+  earbuds; only FreeClip 2 is confirmed by Gadgetbridge, so it's marked
+  experimental, as is EarFun (Qualcomm GAIA framing, command `0x0312`).
+- Galaxy Buds have a game-mode message (`0x87`), but Samsung phones send it
+  themselves and it appears to need Samsung's own codec; not built.
+
 ### 2.4 The privileged controls are reachable without root, through Shizuku [AOSP]
 
 The useful system controls are `@SystemApi`:
@@ -167,26 +194,53 @@ her, with no help from her side, so it works with any client.
 - **DRED** (Opus 1.5/1.6 neural redundancy, up to 1 s of recovery) isn't in
   libWebRTC or Chrome yet ([BlogGeek](https://bloggeek.me/webrtcglossary/dred/)).
   Revisit later.
-- **Wi-Fi plus mobile data.** WebRTC on Android already tracks both networks
-  and can request mobile data (`NetworkMonitorAutoDetect.requestMobileNetwork`,
-  in the shipped library). A second, muted, already-primed connection on mobile
-  data could take over instantly when gym Wi-Fi stalls
-  (`RTCConfiguration.networkPreference`). Experimental.
+- **Wi-Fi plus mobile data.** WebRTC on Android tracks every network and binds
+  sockets to each, so with mobile data kept up next to Wi-Fi
+  (`ConnectivityManager.requestNetwork`), ICE gathers candidates on both.
+  `RTCConfiguration.networkPreference` ranks above network cost in ICE's
+  choice, so it can steer media onto mobile data while keeping Wi-Fi as the
+  fallback. **Built** as part of §2.9.
+- **HD voice.** WebRTC's Opus encoder takes `maxaveragebitrate` from the
+  receiver's fmtp line as its target (tested in Chrome: the outbound stream
+  reports a 48 kbps target). Not a latency gain, but the music link can play
+  it. **Built** (48 kbps).
 
 ### 2.8 Phone makers
 
 HyperOS stops background apps aggressively, even with a foreground service.
 Users need to allow Background autostart, set battery to No restrictions, and
 lock the app in Recents
-([guide](https://docs.sportstracklive.com/android-battery-saving/xiaomi)). The
-app should detect Xiaomi and walk through it. HyperOS also resets codec choices
-on reconnect (the reason a codec-fixing tool for it exists).
+([guide](https://docs.sportstracklive.com/android-battery-saving/xiaomi),
+[dontkillmyapp](https://dontkillmyapp.com/xiaomi)). HyperOS also resets codec
+choices on reconnect (the reason a codec-fixing tool for it exists).
+**Built:** a per-brand guide on the home screen with direct links into each
+maker's battery and autostart screens.
+
+### 2.9 Wi-Fi and Bluetooth share one radio on 2.4 GHz
+
+Phone combo chips run Bluetooth and 2.4 GHz Wi-Fi on a shared antenna with
+time-division coexistence. A video call over 2.4 GHz Wi-Fi (1–3 Mbit/s each
+way, more with retransmissions on a crowded gym network) takes airtime from
+A2DP; earbuds respond to the extra retransmissions by holding more in their
+buffer, or drop out. 5/6 GHz and mobile data avoid it.
+**Built:** with Bluetooth audio on 2.4 GHz Wi-Fi, video is capped at 800 kbps
+both ways (`maxBitrateBps` on our sender, `b=AS`/`b=TIAS` for theirs), and
+optionally media moves to mobile data (§2.7), with the cap lifted once stats
+show it's there. The effect varies by chip and can be measured with the sonar
+meter during a call-sized download.
+
+### 2.10 Lip sync
+
+See §1. **Built:** her video is held back by (app-to-ear delay − 75 ms −
+display time), from the sonar measurement that best matches the current
+setup, or else from a silent probe of Android's playback timestamps (which
+over A2DP include the earbuds' reported delay, §2.5). Hardware-decoded frames
+are copied to I420 while held, so the decoder never waits.
 
 ## 3. Ideas researched and set aside
 
 | Idea | Why not now |
 | --- | --- |
-| Lip-sync correction (delay her video) | Leftover mismatch is usually below the ~125 ms detection threshold; costs a GPU copy per frame |
 | Replace WebRTC with a custom audio engine | Saves ~10–30 ms at most, against ~100+ ms from the earbuds; very large effort |
 | DRED | Not available in WebRTC or Chrome |
 | Predicting speech to hide delay | Research-grade (tens of ms, artefacts) |
