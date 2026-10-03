@@ -104,6 +104,8 @@ data class AppSettings(
     val turboDuringCalls: Boolean = true,
     /** Hold her video back to match the Bluetooth audio delay, so lips match words. */
     val lipSync: Boolean = true,
+    /** The home screen's "your earbuds have a game mode" suggestion was answered. */
+    val gameModeHintDone: Boolean = false,
     /** The "keep calls alive with the screen off" guide was finished or dismissed. */
     val backgroundGuideDone: Boolean = false,
     /** Extra gain for the other person's voice, 1.0 = unchanged. */

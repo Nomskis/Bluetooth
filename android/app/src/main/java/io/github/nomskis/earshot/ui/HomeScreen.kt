@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -81,6 +82,8 @@ fun HomeScreen(
     delayRuns: List<DelayRun>,
     estimate: Pair<String, Double>?,
     onEstimate: () -> Unit,
+    earbuds: EarbudInfo,
+    onDetectEarbuds: () -> Unit,
     codec: CodecInfo?,
     onJoin: (room: String, withVideo: Boolean) -> Unit,
     onOpenSettings: () -> Unit,
@@ -92,8 +95,12 @@ fun HomeScreen(
     var withVideo by rememberSaveable { mutableStateOf(true) }
     var permissionError by remember { mutableStateOf<String?>(null) }
 
-    // A silent probe for Android's own estimate of these earbuds' delay, once per pair.
-    LaunchedEffect(route.mediaOutput?.name) { onEstimate() }
+    // A silent probe for Android's own estimate of these earbuds' delay, once per pair,
+    // and a look at whether Earshot can switch their game mode.
+    LaunchedEffect(route.mediaOutput?.name) {
+        onEstimate()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || context.hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) onDetectEarbuds()
+    }
     LaunchedEffect(pendingRoom) {
         if (pendingRoom != null) {
             room = pendingRoom
@@ -177,6 +184,25 @@ fun HomeScreen(
                 estimate?.takeIf { it.first == route.mediaOutput?.name }?.second,
                 onOpenTuner,
             )
+
+            if (earbuds.family != null && !settings.autoGameMode && !settings.gameModeHintDone) {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Your earbuds have a game mode", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "${earbuds.earbuds} (${earbuds.family}) can switch to low latency, which typically halves their delay. " +
+                                "Earshot can turn it on for each call and back off afterwards.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { onUpdateSettings { it.copy(autoGameMode = true, gameModeHintDone = true) } }) {
+                                Text("Use it for calls")
+                            }
+                            TextButton(onClick = { onUpdateSettings { it.copy(gameModeHintDone = true) } }) { Text("Not now") }
+                        }
+                    }
+                }
+            }
 
             BackgroundCard(done = settings.backgroundGuideDone) { onUpdateSettings { it.copy(backgroundGuideDone = true) } }
 

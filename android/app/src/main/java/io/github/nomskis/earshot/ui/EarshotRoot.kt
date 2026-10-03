@@ -33,6 +33,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
     val optimizer by viewModel.optimizer.collectAsStateWithLifecycle()
     val estimate by viewModel.estimate.collectAsStateWithLifecycle()
     val radioTest by viewModel.radioTest.collectAsStateWithLifecycle()
+    val earbudInfo by viewModel.earbuds.collectAsStateWithLifecycle()
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -113,6 +114,8 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 delayRuns = delayRuns,
                 estimate = estimate,
                 onEstimate = { viewModel.estimateDelay(route) },
+                earbuds = earbudInfo,
+                onDetectEarbuds = viewModel::detectEarbuds,
                 codec = codec,
                 onJoin = viewModel::startCall,
                 onOpenSettings = { screen = Screen.SETTINGS },
