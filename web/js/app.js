@@ -1,6 +1,8 @@
 import { CallEngine, randomId } from './call.js';
+import { DelayTracker } from './delay.js';
 import { generateRoomCode, normalizeRoom } from './rooms.js';
 import { SignalingClient } from './signaling.js';
+import { RemoteVoiceWatcher } from './voice.js';
 
 const VERSION = '0.1.0';
 const $ = (id) => document.getElementById(id);
@@ -22,6 +24,7 @@ const ui = {
   copyLink: $('copy-link'),
   peerName: $('peer-name'),
   peerBadges: $('peer-badges'),
+  delay: $('delay-readout'),
   roomLabel: $('room-label'),
   unmute: $('unmute-audio'),
   mic: $('toggle-mic'),
@@ -153,6 +156,17 @@ function describeMediaError(err) {
 
 let engine = null;
 let wakeLock = null;
+let remoteMedia = null;
+
+// The head-start cue: lights up as their voice is decoded, before your
+// speakers or Bluetooth headphones play it.
+const voice = new RemoteVoiceWatcher((speaking) => {
+  ui.call.classList.toggle('speaking', speaking);
+  renderBadges(remoteMedia);
+});
+const delayTracker = new DelayTracker();
+let delayTimer = null;
+let delayOpen = false;
 
 function startCall(room, name, stream) {
   history.replaceState(null, '', `/r/${encodeURIComponent(room)}`);
@@ -181,7 +195,10 @@ function startCall(room, name, stream) {
     renderBadges(null);
   });
   engine.addEventListener('remote-media', (e) => renderBadges(e.detail));
-  engine.addEventListener('remote-stream', (e) => attachRemote(e.detail));
+  engine.addEventListener('remote-stream', (e) => {
+    attachRemote(e.detail);
+    voice.watch(e.detail);
+  });
   engine.addEventListener('error', (e) => {
     const { code, message } = e.detail;
     if (code === 'room-full') toast('That room already has two people in it.');
@@ -194,9 +211,36 @@ function startCall(room, name, stream) {
   signaling.connect();
   renderStatus(engine.status);
   // Handy from the devtools console, and used by the end-to-end tests.
-  window.earshot = { engine, signaling };
+  window.earshot = { engine, signaling, voice };
   requestWakeLock();
+  clearInterval(delayTimer);
+  delayTimer = setInterval(updateDelay, 2000);
 }
+
+/** "≈ 230 ms from their mouth to your ears"; tap for the parts. */
+async function updateDelay() {
+  if (!engine || engine.status !== 'connected') {
+    ui.delay.hidden = true;
+    return;
+  }
+  const stats = await engine.getStats();
+  if (!stats) return;
+  const d = delayTracker.update(stats.values(), voice.outputLatencyMs);
+  window.earshot.delay = d;
+  if (d.totalMs === null) {
+    ui.delay.hidden = true;
+    return;
+  }
+  ui.delay.hidden = false;
+  ui.delay.textContent = delayOpen
+    ? `Their phone ≈ ${d.senderMs} ms · network ${d.networkMs} ms · buffer ${d.jitterBufferMs} ms · your device ${d.outputMs} ms`
+    : `≈ ${d.totalMs} ms from their mouth to your ears`;
+}
+
+ui.delay.addEventListener('click', () => {
+  delayOpen = !delayOpen;
+  updateDelay();
+});
 
 function renderStatus(status) {
   const connected = status === 'connected';
@@ -210,7 +254,14 @@ function renderStatus(status) {
 }
 
 function renderBadges(media) {
+  remoteMedia = media;
   ui.peerBadges.replaceChildren();
+  if (voice.speaking) {
+    const talking = document.createElement('span');
+    talking.className = 'badge talking';
+    talking.textContent = 'Talking';
+    ui.peerBadges.append(talking);
+  }
   if (!media) return;
   const add = (text, cls = '') => {
     const span = document.createElement('span');
@@ -236,6 +287,7 @@ function attachRemote(stream) {
 }
 
 ui.unmute.addEventListener('click', () => {
+  voice.resume();
   ui.remoteVideo.play().then(() => (ui.unmute.hidden = true));
 });
 
@@ -291,6 +343,8 @@ ui.copyLink.addEventListener('click', async () => {
 });
 
 ui.hangUp.addEventListener('click', () => {
+  voice.stop();
+  clearInterval(delayTimer);
   engine?.hangUp();
   for (const track of ui.localVideo.srcObject?.getTracks() ?? []) track.stop();
 });

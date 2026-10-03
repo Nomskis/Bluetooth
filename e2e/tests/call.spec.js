@@ -205,3 +205,30 @@ test('both sides ask for HD voice and encode at that bitrate', async ({ browser 
   await a.context.close();
   await b.context.close();
 });
+
+test('the browser lights up as the other side talks, and shows the delay', async ({ browser }) => {
+  const room = uniqueRoom('cue');
+  const a = await joinAs(browser, room, 'A');
+  const b = await joinAs(browser, room, 'B');
+  await expectRemoteVideo(a.page);
+  await expectRemoteVideo(b.page);
+  // Chromium's fake microphone beeps; the detector should catch the beeps arriving.
+  await a.page.evaluate(() => {
+    window.__cueSeen = false;
+    const check = setInterval(() => {
+      if (document.getElementById('call').classList.contains('speaking')) {
+        window.__cueSeen = true;
+        clearInterval(check);
+      }
+    }, 5);
+  });
+  await expect.poll(() => a.page.evaluate(() => window.__cueSeen), { timeout: 10_000 }).toBe(true);
+  // Network and buffer are known from stats; the total needs the output latency the browser reports.
+  await expect
+    .poll(() => a.page.evaluate(() => window.earshot.delay?.jitterBufferMs ?? null), { timeout: 10_000 })
+    .not.toBeNull();
+  const delay = await a.page.evaluate(() => window.earshot.delay);
+  expect(delay.networkMs).toBeGreaterThanOrEqual(0);
+  await a.context.close();
+  await b.context.close();
+});

@@ -192,6 +192,43 @@ input:not([type='checkbox']) {
   background: rgba(255, 255, 255, 0.16);
 }
 
+.badge.talking {
+  background: #3ccf91;
+  color: #06140d;
+}
+
+/* The head-start cue: a green edge as their voice arrives, before you hear it. */
+.call::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 6px solid #3ccf91;
+  opacity: 0;
+  transition: opacity 0.4s;
+  pointer-events: none;
+}
+
+.call.speaking::after {
+  opacity: 1;
+  transition: opacity 0.06s;
+}
+
+.delay-readout {
+  position: absolute;
+  top: calc(max(0.8rem, env(safe-area-inset-top)) + 2.6rem);
+  left: 1rem;
+  max-width: calc(100% - 2rem);
+  padding: 0.25rem 0.6rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+
 .badge.hifi {
   background: rgba(60, 207, 145, 0.25);
   color: #9ff0cb;
