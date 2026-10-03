@@ -315,6 +315,10 @@ internal fun TopBar(state: CallState, route: AudioRoute, boostNotes: List<String
                 Spacer(Modifier.width(8.dp))
                 Badge("Muted")
             }
+            if (state.delay?.weakConnection == true && state.phase == CallPhase.CONNECTED) {
+                Spacer(Modifier.width(8.dp))
+                Badge("Weak connection")
+            }
             if (!state.signalingOnline && state.phase == CallPhase.CONNECTED) {
                 Spacer(Modifier.width(8.dp))
                 Badge("Server offline")

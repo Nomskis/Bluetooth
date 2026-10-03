@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
 import { ChatLog, MAX_CHAT_LENGTH, parseChat } from '../../web/js/chat.js';
-import { DelayTracker, SENDER_ESTIMATE_MS, relayed } from '../../web/js/delay.js';
+import { DelayTracker, SENDER_ESTIMATE_MS, isWeak, relayed } from '../../web/js/delay.js';
 import { opusMaxAverageBitrate, preferHdVoice } from '../../web/js/sdp.js';
 import { VoiceActivityDetector, rms } from '../../web/js/voice.js';
 
@@ -144,4 +144,13 @@ test('delay tracker says whether the connection is relayed', () => {
   assert.equal(relayed(base), false);
   assert.equal(relayed([...base, { id: 'R', type: 'remote-candidate', candidateType: 'relay' }]), true);
   assert.equal(relayed([]), null);
+});
+
+test('weak connection: loss, network delay or jitter past the thresholds', () => {
+  const fine = { lossPercent: 1, networkMs: 40, jitterBufferMs: 60 };
+  assert.equal(isWeak(fine), false);
+  assert.equal(isWeak({ ...fine, lossPercent: 12 }), true);
+  assert.equal(isWeak({ ...fine, networkMs: 350 }), true);
+  assert.equal(isWeak({ ...fine, jitterBufferMs: 300 }), true);
+  assert.equal(isWeak({ lossPercent: null, networkMs: null, jitterBufferMs: null }), false);
 });

@@ -23,6 +23,14 @@ data class DelayBreakdown(
     /** Through a TURN relay rather than direct; null until known. */
     val relayed: Boolean? = null,
 ) {
+    /**
+     * Enough loss, network delay or jitter that the call will stutter or lag
+     * noticeably, so it's the connection rather than the earbuds. Same
+     * thresholds as web/js/delay.js.
+     */
+    val weakConnection: Boolean
+        get() = (lossPercent ?: 0.0) >= WEAK_LOSS_PERCENT || (networkMs ?: 0) >= WEAK_NETWORK_MS || (jitterBufferMs ?: 0) >= WEAK_BUFFER_MS
+
     /** Null until the parts that vary are known. */
     val totalMs: Int? get() = if (networkMs == null || jitterBufferMs == null || playoutMs == null) null else senderMs + networkMs + jitterBufferMs + playoutMs
 
@@ -32,6 +40,9 @@ data class DelayBreakdown(
          * encode time; the other side sends 10 ms packets because we ask.
          */
         const val SENDER_ESTIMATE_MS = 30
+        const val WEAK_LOSS_PERCENT = 8.0
+        const val WEAK_NETWORK_MS = 300
+        const val WEAK_BUFFER_MS = 250
     }
 }
 

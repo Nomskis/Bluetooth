@@ -20,6 +20,11 @@ function selectedPair(stats) {
   return null;
 }
 
+/** Loss, network delay or jitter bad enough to stutter or lag. Same thresholds as DelayBreakdown.kt. */
+export function isWeak(d) {
+  return (d.lossPercent ?? 0) >= 8 || (d.networkMs ?? 0) >= 300 || (d.jitterBufferMs ?? 0) >= 250;
+}
+
 /** True when the connection in use goes through a TURN relay; null until known. */
 export function relayed(stats) {
   const list = [...stats];

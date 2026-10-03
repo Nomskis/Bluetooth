@@ -235,6 +235,10 @@ input:not([type='checkbox']) {
   cursor: pointer;
 }
 
+.delay-readout.weak {
+  background: rgba(229, 72, 77, 0.55);
+}
+
 .badge.hifi {
   background: rgba(60, 207, 145, 0.25);
   color: #9ff0cb;

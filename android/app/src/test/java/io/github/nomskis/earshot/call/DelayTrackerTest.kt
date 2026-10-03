@@ -33,6 +33,16 @@ class DelayTrackerTest {
     }
 
     @Test
+    fun flagsAWeakConnection() {
+        val fine = DelayBreakdown(30, networkMs = 40, jitterBufferMs = 60, playoutMs = 200, playoutMeasured = false, lossPercent = 1.0)
+        assertEquals(false, fine.weakConnection)
+        assertEquals(true, fine.copy(lossPercent = 12.0).weakConnection)
+        assertEquals(true, fine.copy(networkMs = 350).weakConnection)
+        assertEquals(true, fine.copy(jitterBufferMs = 300).weakConnection)
+        assertEquals(false, fine.copy(networkMs = null, jitterBufferMs = null, lossPercent = null).weakConnection)
+    }
+
+    @Test
     fun saysWhetherTheConnectionIsRelayed() {
         val direct = report(0.05, 10.0, 500) +
             ("L" to CallStats.Entry("local-candidate", mapOf("candidateType" to "srflx")))
