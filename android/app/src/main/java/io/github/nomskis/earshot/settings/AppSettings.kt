@@ -94,6 +94,12 @@ data class AppSettings(
      * shared radio for the earbuds entirely. Uses your data plan.
      */
     val mobileDataOn24GHz: Boolean = false,
+    /**
+     * Keep mobile data ready next to Wi-Fi during calls, so a Wi-Fi stall
+     * moves the call there in about a second. It carries the call only then;
+     * otherwise it costs a few kilobytes a minute of connection checks.
+     */
+    val mobileDataBackup: Boolean = true,
     /** Hold her video back to match the Bluetooth audio delay, so lips match words. */
     val lipSync: Boolean = true,
     /** The "keep calls alive with the screen off" guide was finished or dismissed. */

@@ -94,7 +94,7 @@ class CallManager(
             _lastError.value = null
             _session.value = session
             CallService.start(appContext)
-            if (radioPlan.preferCellular) cellular.acquire()
+            if (radioPlan.preferCellular || current.mobileDataBackup) cellular.acquire()
             watchNetwork(session, current)
             session.start()
             // Game mode only matters when the call plays over the music link next to your music.

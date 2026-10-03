@@ -218,6 +218,10 @@ fun SettingsScreen(
                 onUpdate { it.copy(mobileDataOn24GHz = v) }
             }
             Hint("Mobile data doesn't share the radio at all. Uses your data plan; falls back to Wi-Fi if mobile data fails.")
+            Toggle("Mobile data as a backup during calls", settings.mobileDataBackup) { v ->
+                onUpdate { it.copy(mobileDataBackup = v) }
+            }
+            Hint("If Wi-Fi stalls, the call moves to mobile data in about a second, and back when Wi-Fi recovers. Until then it only costs a few kilobytes a minute.")
 
             HorizontalDivider()
             Section("About")

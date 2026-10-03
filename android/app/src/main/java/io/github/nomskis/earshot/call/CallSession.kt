@@ -361,7 +361,9 @@ class CallSession(
         val path = RadioPlan.pathFor(CallStats.selectedNetworkType(entries)) ?: return
         if (path == _state.value.callPath) return
         Log.i(TAG, "Media now flows over $path")
-        _state.update { it.copy(callPath = path, radioNote = RadioPlan.describe(radioPlan, path)) }
+        val note = RadioPlan.describe(radioPlan, path)
+            ?: if (path == CallPath.CELLULAR) "Wi-Fi stalled, so the call moved to mobile data" else null
+        _state.update { it.copy(callPath = path, radioNote = note) }
         applyVideoCap(l)
     }
 

@@ -237,6 +237,16 @@ class RtcEngine(
             // Ranks above network cost in ICE's choice, so a working mobile-data
             // path wins over Wi-Fi; without it Wi-Fi (cheaper) always wins.
             if (preferCellular) networkPreference = PeerConnection.AdapterType.CELLULAR
+            // Fail over in about a second instead of several. WebRTC's defaults
+            // check backup paths every 25 s and call a path dead after 5 s
+            // without an answer; at the gym, a Wi-Fi stall should move the call
+            // to its standby path (mobile data, or a relay) before the jitter
+            // buffer runs dry. Costs a few extra STUN pings per second.
+            iceConnectionReceivingTimeout = FAILOVER_RECEIVE_TIMEOUT_MS
+            iceBackupCandidatePairPingInterval = BACKUP_PING_INTERVAL_MS
+            stableWritableConnectionPingIntervalMs = STABLE_PING_INTERVAL_MS
+            iceUnwritableTimeMs = UNWRITABLE_TIME_MS
+            iceUnwritableMinChecks = UNWRITABLE_MIN_CHECKS
         }
     }
 
@@ -300,6 +310,14 @@ class RtcEngine(
     companion object {
         private const val TAG = "EarshotRtc"
         private val initialized = AtomicBoolean(false)
+
+        /** No packets for this long on the path in use: switch to another that's receiving. */
+        const val FAILOVER_RECEIVE_TIMEOUT_MS = 1_000
+        /** Keep standby paths checked often, so they're known-good when needed. */
+        const val BACKUP_PING_INTERVAL_MS = 2_000
+        const val STABLE_PING_INTERVAL_MS = 1_000
+        const val UNWRITABLE_TIME_MS = 2_500
+        const val UNWRITABLE_MIN_CHECKS = 3
 
         /** Makes sure the RED encoder for Opus is available. */
         private const val FIELD_TRIALS = "WebRTC-Audio-Red-For-Opus/Enabled/"
