@@ -60,6 +60,8 @@ data class CallState(
     val earbudMic: Boolean = false,
     /** The earbuds can carry a call, so the earbud mic can be switched on. */
     val earbudMicAvailable: Boolean = false,
+    /** Their voice is paused because the earbuds went away mid-call; see [OutputHold]. */
+    val outputHeld: Boolean = false,
     /** Echo cancellation switched on mid-call because the call now plays out loud. */
     val echoGuard: Boolean = false,
     /** Text chat with the other person, oldest first. */

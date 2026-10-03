@@ -198,6 +198,9 @@ class RtcEngine(
 
     fun createAudioTrack(): AudioTrack = factory.createAudioTrack(Ids.random(6, "a"), audioSource)
 
+    /** Silences their voice at the output; everything else (decoding, the talking cue) carries on. */
+    fun setPlaybackMuted(muted: Boolean) = audioDeviceModule.setSpeakerMute(muted)
+
     /**
      * Turns the software echo canceller on or off. The setting travels with the
      * audio source (WebRTC applies a source's options when its track is set on

@@ -79,7 +79,13 @@ loudspeaker, the canceller comes on at once, so the other person doesn't hear
 themselves; it goes off again a couple of seconds after the earbuds are back.
 WebRTC takes the setting from the microphone's audio source, so the switch
 moves the call onto a fresh source, without renegotiating or stopping the
-recording. You can force it either way in Settings. Noise suppression and
+recording.
+
+Hi-Fi calls play as media, so they follow Android's rule for media too: when
+headphones go away, playback pauses instead of carrying on out loud. If the
+earbuds drop mid-call, their voice is paused (they can still hear you, and
+the talking cue still lights up) until the earbuds are back or you tap
+**Play on speaker**. A call that starts on the speaker is never paused. You can force it either way in Settings. Noise suppression and
 automatic gain stay on by default; a gym is loud.
 
 ## Latency

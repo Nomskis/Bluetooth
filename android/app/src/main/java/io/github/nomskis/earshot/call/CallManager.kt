@@ -204,8 +204,11 @@ class CallManager(
      */
     private suspend fun followRoute(session: CallSession, profile: AudioProfile, current: AppSettings) {
         val echoFollowsRoute = profile.mode == AudioMode.HIFI && current.echoCancellation == EchoCancellation.AUTO
+        val hold = OutputHold(startedPersonal = routeMonitor.snapshot().outputIsPersonal)
         routeMonitor.route.collectLatest { route ->
             session.updateRadioPlan(radioPlan(current, route))
+            // In Hi-Fi the call plays as media, so it gets media's manners.
+            if (profile.mode == AudioMode.HIFI) hold.onOutput(route.outputIsPersonal)?.let(session::setOutputHeld)
             if (!echoFollowsRoute) return@collectLatest
             val personal = route.outputIsPersonal
             // On at once (an echo is heard right away); off only once the earbuds have settled.

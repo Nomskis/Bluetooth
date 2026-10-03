@@ -168,6 +168,14 @@ fun CallScreen(
             )
         }
 
+        if (state.outputHeld) {
+            OutputHeldBanner(
+                name = state.remotePeer?.name?.takeIf { it.isNotBlank() },
+                onPlayOutLoud = { session.setOutputHeld(false) },
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+
         bubble?.let { message ->
             ChatBubble(
                 name = state.remotePeer?.name?.takeIf { it.isNotBlank() } ?: "They",
@@ -207,6 +215,31 @@ fun CallScreen(
 }
 
 private const val BUBBLE_MS = 6_000L
+
+/** Earbuds went away mid-call: their voice waits rather than coming out of the loudspeaker. */
+@Composable
+internal fun OutputHeldBanner(name: String?, onPlayOutLoud: () -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .padding(24.dp)
+            .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            "Your earbuds disconnected, so ${name?.let { "$it's" } ?: "their"} voice is paused. They can still hear you.",
+            color = Color.White,
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        FilledTonalButton(onClick = onPlayOutLoud) {
+            Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("Play on speaker")
+        }
+    }
+}
 
 @Composable
 private fun RemotePlaceholder(state: CallState, compact: Boolean) {

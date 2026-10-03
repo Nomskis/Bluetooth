@@ -76,6 +76,15 @@ class CallScreenPartsTest {
     }
 
     @Test
+    fun heldVoiceBannerOffersTheSpeaker() {
+        var played = 0
+        compose.setContent { EarshotTheme { OutputHeldBanner(name = "Sam", onPlayOutLoud = { played++ }) } }
+        compose.onNodeWithText("Your earbuds disconnected, so Sam's voice is paused. They can still hear you.").assertIsDisplayed()
+        compose.onNodeWithText("Play on speaker").performClick()
+        assertEquals(1, played)
+    }
+
+    @Test
     fun controlsOfferTheEarbudMicAndHangUp() {
         var earbudMic = 0
         var hungUp = 0

@@ -176,6 +176,7 @@ class CallSession(
         class ChatIncoming(val link: Link, val text: String) : Event
         data class SendChat(val text: String) : Event
         data class SetEchoCancellation(val on: Boolean) : Event
+        data class SetOutputHeld(val held: Boolean) : Event
         data object HangUp : Event
     }
 
@@ -217,6 +218,8 @@ class CallSession(
     fun sendChat(text: String) = post(Event.SendChat(text))
     /** For when the call moves between earbuds and a loudspeaker; no-op if unchanged. */
     fun setEchoCancellation(on: Boolean) = post(Event.SetEchoCancellation(on))
+    /** Their voice paused because the earbuds went away ([OutputHold]); false plays it again. */
+    fun setOutputHeld(held: Boolean) = post(Event.SetOutputHeld(held))
     fun hangUp() = post(Event.HangUp)
 
     private fun post(event: Event) {
@@ -359,6 +362,10 @@ class CallSession(
                 publishChat()
             }
             is Event.SetEchoCancellation -> setEchoCancellationNow(event.on)
+            is Event.SetOutputHeld -> if (event.held != _state.value.outputHeld) {
+                engine.setPlaybackMuted(event.held)
+                _state.update { it.copy(outputHeld = event.held) }
+            }
             Event.HangUp -> finish(CallPhase.ENDED)
         }
     }
