@@ -20,6 +20,8 @@ data class DelayBreakdown(
     val playoutMeasured: Boolean,
     /** Share of her audio packets lost over the last interval, 0..100 (before repair by RED and concealment). */
     val lossPercent: Double? = null,
+    /** Through a TURN relay rather than direct; null until known. */
+    val relayed: Boolean? = null,
 ) {
     /** Null until the parts that vary are known. */
     val totalMs: Int? get() = if (networkMs == null || jitterBufferMs == null || playoutMs == null) null else senderMs + networkMs + jitterBufferMs + playoutMs
@@ -78,6 +80,7 @@ class DelayTracker {
             playoutMs = playoutMs?.roundToInt(),
             playoutMeasured = measured,
             lossPercent = lossPercent,
+            relayed = CallStats.relayed(report),
         )
     }
 }

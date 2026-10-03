@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
 import { ChatLog, MAX_CHAT_LENGTH, parseChat } from '../../web/js/chat.js';
-import { DelayTracker, SENDER_ESTIMATE_MS } from '../../web/js/delay.js';
+import { DelayTracker, SENDER_ESTIMATE_MS, relayed } from '../../web/js/delay.js';
 import { opusMaxAverageBitrate, preferHdVoice } from '../../web/js/sdp.js';
 import { VoiceActivityDetector, rms } from '../../web/js/voice.js';
 
@@ -133,4 +133,15 @@ test('chat: parser accepts the shared fixtures and rejects junk', () => {
   assert.equal(parseChat(JSON.stringify({ kind: 'chat', text: 'no id' })), null);
   assert.equal(parseChat(JSON.stringify({ kind: 'typing', id: 'a' })), null);
   assert.equal(parseChat(JSON.stringify({ kind: 'chat', id: 'a', text: 'x'.repeat(5000) })).text.length, MAX_CHAT_LENGTH);
+});
+
+test('delay tracker says whether the connection is relayed', () => {
+  const base = [
+    { id: 'T', type: 'transport', selectedCandidatePairId: 'P' },
+    { id: 'P', type: 'candidate-pair', localCandidateId: 'L', remoteCandidateId: 'R' },
+    { id: 'L', type: 'local-candidate', candidateType: 'srflx' },
+  ];
+  assert.equal(relayed(base), false);
+  assert.equal(relayed([...base, { id: 'R', type: 'remote-candidate', candidateType: 'relay' }]), true);
+  assert.equal(relayed([]), null);
 });

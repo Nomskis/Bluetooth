@@ -20,6 +20,17 @@ function selectedPair(stats) {
   return null;
 }
 
+/** True when the connection in use goes through a TURN relay; null until known. */
+export function relayed(stats) {
+  const list = [...stats];
+  const pair = selectedPair(list);
+  if (!pair) return null;
+  const types = [pair.localCandidateId, pair.remoteCandidateId]
+    .map((id) => list.find((s) => s.id === id)?.candidateType)
+    .filter(Boolean);
+  return types.length ? types.includes('relay') : null;
+}
+
 /**
  * Keeps the previous report's cumulative jitter-buffer counters so the
  * buffer figure is the recent average, not the call's lifetime one.
@@ -66,6 +77,7 @@ export class DelayTracker {
       jitterBufferMs: this.#jitterMs,
       outputMs: outputMs ?? null,
       lossPercent: this.#lossPercent,
+      relayed: relayed(list),
     };
     const known = networkMs !== null && this.#jitterMs !== null && parts.outputMs !== null;
     return { ...parts, totalMs: known ? SENDER_ESTIMATE_MS + networkMs + this.#jitterMs + parts.outputMs : null };

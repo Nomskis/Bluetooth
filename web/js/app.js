@@ -265,7 +265,7 @@ async function updateDelay() {
   }
   ui.delay.hidden = false;
   ui.delay.textContent = delayOpen
-    ? `Their phone ≈ ${d.senderMs} ms · network ${d.networkMs} ms${d.lossPercent ? ` (${d.lossPercent.toFixed(1)}% lost)` : ''} · buffer ${d.jitterBufferMs} ms · your device ${d.outputMs} ms`
+    ? `Their phone ≈ ${d.senderMs} ms · network ${d.networkMs} ms${d.relayed ? ' via relay' : d.relayed === false ? ' direct' : ''}${d.lossPercent ? ` (${d.lossPercent.toFixed(1)}% lost)` : ''} · buffer ${d.jitterBufferMs} ms · your device ${d.outputMs} ms`
     : `≈ ${d.totalMs} ms from their mouth to your ears`;
 }
 
@@ -348,7 +348,11 @@ let chatOpen = false;
 let unread = 0;
 let bubbleTimer;
 
+const baseTitle = document.title;
+
 function renderChatButton() {
+  // The tab title counts unread messages, for when this tab is in the background.
+  document.title = unread ? `(${unread}) ${baseTitle}` : baseTitle;
   ui.chatButton.hidden = !engine?.remoteHasChat;
   ui.chatButton.setAttribute('aria-expanded', String(chatOpen));
   ui.chatUnread.hidden = unread === 0;

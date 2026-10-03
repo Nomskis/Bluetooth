@@ -33,6 +33,17 @@ class DelayTrackerTest {
     }
 
     @Test
+    fun saysWhetherTheConnectionIsRelayed() {
+        val direct = report(0.05, 10.0, 500) +
+            ("L" to CallStats.Entry("local-candidate", mapOf("candidateType" to "srflx")))
+        assertEquals(false, DelayTracker().update(direct, null, false).relayed)
+        val relayed = direct + ("P" to CallStats.Entry("candidate-pair", mapOf("localCandidateId" to "L", "remoteCandidateId" to "R"))) +
+            ("R" to CallStats.Entry("remote-candidate", mapOf("candidateType" to "relay")))
+        assertEquals(true, DelayTracker().update(relayed, null, false).relayed)
+        assertNull(DelayTracker().update(report(0.05, 10.0, 500), null, false).relayed)
+    }
+
+    @Test
     fun survivesAReconnectResettingTheCounters() {
         val tracker = DelayTracker()
         tracker.update(report(0.05, 4_800.0, 96_000), null, false)

@@ -36,6 +36,14 @@ object CallStats {
         return received to lost
     }
 
+    /** True when the connection in use goes through a TURN relay (either end's candidate is "relay"). */
+    fun relayed(report: Map<String, Entry>): Boolean? {
+        val pair = selectedPair(report) ?: return null
+        val types = listOf("localCandidateId", "remoteCandidateId")
+            .mapNotNull { key -> report[pair.members[key] as? String]?.members?.get("candidateType") as? String }
+        return if (types.isEmpty()) null else "relay" in types
+    }
+
     private fun number(value: Any?): Double? = (value as? Number)?.toDouble()
 
     internal fun selectedPair(report: Map<String, Entry>): Entry? {
