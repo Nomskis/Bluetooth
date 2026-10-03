@@ -8,6 +8,7 @@ import io.github.nomskis.earshot.call.CallManager
 import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.earbuds.EarbudControl
 import io.github.nomskis.earshot.settings.SettingsRepository
+import io.github.nomskis.earshot.turbo.TurboBoost
 import io.github.nomskis.earshot.turbo.TurboClient
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -24,7 +25,14 @@ class AppGraph(context: Context) {
         .connectTimeout(10, TimeUnit.SECONDS)
         .build()
     val earbuds = EarbudControl(context)
-    val callManager = CallManager(context, settings, routeMonitor, http, EarbudBoost(earbuds)) { codecWatcher.latest.value }
+    val callManager = CallManager(
+        context,
+        settings,
+        routeMonitor,
+        http,
+        earbudBoost = EarbudBoost(earbuds),
+        turboBoost = TurboBoost { turbo },
+    ) { codecWatcher.latest.value }
 }
 
 class EarshotApp : Application() {

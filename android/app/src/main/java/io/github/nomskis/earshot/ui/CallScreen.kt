@@ -77,6 +77,7 @@ fun CallScreen(
     keepScreenOn: Boolean,
     inPictureInPicture: Boolean,
     earbudBoost: EarbudBoost.Status?,
+    turboNote: String?,
     onVoiceVolumeSaved: (Float) -> Unit,
     onLeaveScreen: () -> Unit,
 ) {
@@ -123,7 +124,7 @@ fun CallScreen(
 
         if (inPictureInPicture) return@Box
 
-        TopBar(state, route, earbudBoost, Modifier.align(Alignment.TopCenter))
+        TopBar(state, route, listOfNotNull(earbudBoost?.text, turboNote), Modifier.align(Alignment.TopCenter))
 
         if (state.hasCamera && !state.cameraOff) {
             VideoRenderer(
@@ -197,7 +198,7 @@ private fun RemotePlaceholder(state: CallState, compact: Boolean) {
 }
 
 @Composable
-private fun TopBar(state: CallState, route: AudioRoute, earbudBoost: EarbudBoost.Status?, modifier: Modifier) {
+private fun TopBar(state: CallState, route: AudioRoute, boostNotes: List<String>, modifier: Modifier) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -234,7 +235,7 @@ private fun TopBar(state: CallState, route: AudioRoute, earbudBoost: EarbudBoost
             "Video held back ${it.videoDelayMs} ms to match the earbuds" +
                 if (it.source == LipSync.Source.MEASURED) " (measured)" else ""
         }
-        listOfNotNull(earbudBoost?.text, state.radioNote, lipSync).forEach { note ->
+        (boostNotes + listOfNotNull(state.radioNote, lipSync)).forEach { note ->
             Text(note, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall)
         }
         if (state.smartDuckUnsupported) {

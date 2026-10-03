@@ -113,6 +113,13 @@ object Codecs {
         else -> "Codec $type"
     }
 
+    /** The reverse of [name]: "SBC" -> 0, "Codec 9" -> 9; null if unknown. */
+    fun typeOf(name: String): Int? {
+        val n = name.trim()
+        (0..6).firstOrNull { name(it).equals(n, ignoreCase = true) }?.let { return it }
+        return n.removePrefix("Codec ").toIntOrNull()?.takeIf { n.startsWith("Codec ") }
+    }
+
     /** BluetoothCodecConfig.SAMPLE_RATE_* are bit flags. */
     fun sampleRate(flags: Int): Int? = when {
         flags and 0x20 != 0 -> 192_000

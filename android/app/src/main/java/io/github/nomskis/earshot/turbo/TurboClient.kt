@@ -11,7 +11,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import rikka.shizuku.Shizuku
 
 /**
@@ -105,6 +107,21 @@ class TurboClient(context: Context) {
         if (s.dynamicBufferSupport() == 0) return@call null
         val min = s.minBufferMillis(codecType)
         if (min > 0 && s.setBufferMillis(codecType, min)) min else null
+    }
+
+    /** Puts the phone-side Bluetooth buffer back to the stack's default for a codec. */
+    suspend fun defaultBuffer(codecType: Int): Int? = call { s ->
+        if (s.dynamicBufferSupport() == 0) return@call null
+        val ms = s.defaultBufferMillis(codecType)
+        if (ms > 0 && s.setBufferMillis(codecType, ms)) ms else null
+    }
+
+    /** Waits briefly for the helper to be ready; false if Shizuku isn't set up or running. */
+    suspend fun awaitReady(timeoutMs: Long): Boolean {
+        refresh()
+        return withTimeoutOrNull(timeoutMs) {
+            status.first { it is Status.Ready || it is Status.Failed || it is Status.NotInstalled || it is Status.NotRunning || it is Status.NeedsPermission }
+        } is Status.Ready
     }
 
     private suspend fun <T> call(block: (ITurboService) -> T): T? = withContext(Dispatchers.IO) {

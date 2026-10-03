@@ -29,6 +29,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
     val codec by viewModel.codec.collectAsStateWithLifecycle()
     val turboInfo by viewModel.turbo.collectAsStateWithLifecycle()
     val earbudBoost by viewModel.earbudBoost.collectAsStateWithLifecycle()
+    val turboBoost by viewModel.turboBoost.collectAsStateWithLifecycle()
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -41,6 +42,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 keepScreenOn = current.keepScreenOn,
                 inPictureInPicture = inPictureInPicture,
                 earbudBoost = earbudBoost,
+                turboNote = turboBoost?.text,
                 onVoiceVolumeSaved = { v -> viewModel.updateSettings { it.copy(voiceVolume = v) } },
                 onLeaveScreen = onLeaveCallScreen,
             )

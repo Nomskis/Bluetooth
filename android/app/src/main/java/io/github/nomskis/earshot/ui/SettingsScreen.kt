@@ -181,6 +181,10 @@ fun SettingsScreen(
                     EarbudDrivers.familyNames.joinToString(", ") +
                     "). It goes back to how it was when the call ends. Needs the Nearby devices permission.",
             )
+            Toggle("Use Turbo during calls (when Shizuku is set up)", settings.turboDuringCalls) { v ->
+                onUpdate { it.copy(turboDuringCalls = v) }
+            }
+            Hint("Low-latency Bluetooth, the shortest buffer, and the codec the delay tuner measured fastest, for each call. Your music codec comes back afterwards.")
             OutlinedButton(onClick = onOpenTuner) { Text("Open delay tuner") }
             Toggle("Noise suppression", settings.noiseSuppression) { v -> onUpdate { it.copy(noiseSuppression = v) } }
             Toggle("Automatic mic volume", settings.autoGainControl) { v -> onUpdate { it.copy(autoGainControl = v) } }

@@ -113,12 +113,17 @@ class TurboService(private val context: Context) : ITurboService.Stub() {
         BluetoothA2dp::class.java.getMethod("getDynamicBufferSupport").invoke(proxy) as Int
     }.getOrDefault(0)
 
-    override fun minBufferMillis(codecType: Int): Int = runCatching {
+    override fun minBufferMillis(codecType: Int): Int = bufferConstraint(codecType, "getMinMillis")
+
+    override fun defaultBufferMillis(codecType: Int): Int = bufferConstraint(codecType, "getDefaultMillis")
+
+    /** BluetoothA2dp.getBufferConstraints().forCodec(type).<getter>(), or -1. */
+    private fun bufferConstraint(codecType: Int, getter: String): Int = runCatching {
         val proxy = a2dp ?: return -1
         val constraints = BluetoothA2dp::class.java.getMethod("getBufferConstraints").invoke(proxy) ?: return -1
         val constraint = constraints.javaClass.getMethod("forCodec", Int::class.javaPrimitiveType).invoke(constraints, codecType)
             ?: return -1
-        constraint.javaClass.getMethod("getMinMillis").invoke(constraint) as Int
+        constraint.javaClass.getMethod(getter).invoke(constraint) as Int
     }.getOrDefault(-1)
 
     override fun setBufferMillis(codecType: Int, millis: Int): Boolean = runCatching {

@@ -100,6 +100,8 @@ data class AppSettings(
      * otherwise it costs a few kilobytes a minute of connection checks.
      */
     val mobileDataBackup: Boolean = true,
+    /** With Shizuku set up: Turbo's codec, buffer and low-latency switches for each call, undone after. */
+    val turboDuringCalls: Boolean = true,
     /** Hold her video back to match the Bluetooth audio delay, so lips match words. */
     val lipSync: Boolean = true,
     /** The "keep calls alive with the screen off" guide was finished or dismissed. */

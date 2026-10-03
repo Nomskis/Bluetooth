@@ -38,6 +38,7 @@ class SettingsRepository(private val context: Context) {
         val mobileDataOn24GHz = booleanPreferencesKey("mobile_data_on_24ghz")
         val lipSync = booleanPreferencesKey("lip_sync")
         val mobileDataBackup = booleanPreferencesKey("mobile_data_backup")
+        val turboDuringCalls = booleanPreferencesKey("turbo_during_calls")
         val backgroundGuideDone = booleanPreferencesKey("background_guide_done")
         val voiceVolume = floatPreferencesKey("voice_volume")
         val lastRoom = stringPreferencesKey("last_room")
@@ -86,6 +87,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.mobileDataOn24GHz] = next.mobileDataOn24GHz
             prefs[Keys.lipSync] = next.lipSync
             prefs[Keys.mobileDataBackup] = next.mobileDataBackup
+            prefs[Keys.turboDuringCalls] = next.turboDuringCalls
             prefs[Keys.backgroundGuideDone] = next.backgroundGuideDone
             prefs[Keys.voiceVolume] = next.voiceVolume
             prefs[Keys.lastRoom] = next.lastRoom
@@ -127,6 +129,7 @@ class SettingsRepository(private val context: Context) {
             mobileDataOn24GHz = this[Keys.mobileDataOn24GHz] ?: defaults.mobileDataOn24GHz,
             lipSync = this[Keys.lipSync] ?: defaults.lipSync,
             mobileDataBackup = this[Keys.mobileDataBackup] ?: defaults.mobileDataBackup,
+            turboDuringCalls = this[Keys.turboDuringCalls] ?: defaults.turboDuringCalls,
             backgroundGuideDone = this[Keys.backgroundGuideDone] ?: defaults.backgroundGuideDone,
             voiceVolume = this[Keys.voiceVolume] ?: defaults.voiceVolume,
             lastRoom = this[Keys.lastRoom] ?: defaults.lastRoom,

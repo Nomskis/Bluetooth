@@ -25,4 +25,7 @@ interface ITurboService {
 
     // BluetoothA2dp.setBufferLengthMillis.
     boolean setBufferMillis(int codecType, int millis) = 7;
+
+    // The stack's default buffer for a codec, in ms, or -1.
+    int defaultBufferMillis(int codecType) = 8;
 }

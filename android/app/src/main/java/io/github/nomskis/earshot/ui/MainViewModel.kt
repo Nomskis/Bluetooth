@@ -19,6 +19,7 @@ import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.DelayRun
 import io.github.nomskis.earshot.signaling.ServerUrls
 import io.github.nomskis.earshot.turbo.BluetoothOutputDiagnostics
+import io.github.nomskis.earshot.turbo.TurboBoost
 import io.github.nomskis.earshot.turbo.TurboClient
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +52,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val session: StateFlow<CallSession?> = graph.callManager.session
     val lastError: StateFlow<String?> = graph.callManager.lastError
     val earbudBoost: StateFlow<EarbudBoost.Status?> = graph.callManager.earbudBoost.status
+    val turboBoost: StateFlow<TurboBoost.Status?> = graph.callManager.turboBoost?.status ?: MutableStateFlow(null)
 
     val route: StateFlow<AudioRoute> =
         graph.routeMonitor.route.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), graph.routeMonitor.snapshot())

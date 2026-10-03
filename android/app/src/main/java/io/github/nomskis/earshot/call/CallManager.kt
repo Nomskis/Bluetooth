@@ -18,6 +18,7 @@ import io.github.nomskis.earshot.settings.DelayRuns
 import io.github.nomskis.earshot.service.CallService
 import io.github.nomskis.earshot.settings.SettingsRepository
 import io.github.nomskis.earshot.signaling.ServerUrls
+import io.github.nomskis.earshot.turbo.TurboBoost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -48,6 +49,8 @@ class CallManager(
     private val http: OkHttpClient,
     /** Earbud game mode for the length of a call, where a driver exists. */
     val earbudBoost: EarbudBoost,
+    /** Turbo's privileged switches for the length of a call, when Shizuku is set up. */
+    val turboBoost: TurboBoost? = null,
     /** The Bluetooth codec in use, when known; picks the matching delay measurement. */
     private val codec: () -> CodecInfo? = { null },
 ) {
@@ -100,8 +103,13 @@ class CallManager(
             // Game mode only matters when the call plays over the music link next to your music.
             val boost = current.autoGameMode && profile.mode == AudioMode.HIFI
             val boostJob = if (boost) launch { earbudBoost.begin() } else null
+            val turbo = turboBoost?.takeIf { current.turboDuringCalls && profile.mode == AudioMode.HIFI }
+            val turboJob = turbo?.let {
+                val device = route.mediaOutput?.takeIf { o -> o.kind == DeviceKind.BLUETOOTH_MUSIC }?.name
+                launch { it.begin(settings.delayRuns.first(), device) }
+            }
             val lipSyncJob = if (profile.mode == AudioMode.HIFI) {
-                launch { keepLipSync(session, profile, current, boostJob) }
+                launch { keepLipSync(session, profile, current, listOfNotNull(boostJob, turboJob)) }
             } else {
                 null
             }
@@ -113,9 +121,15 @@ class CallManager(
             cellular.release()
             if (_session.value === session) _session.value = null
             // Let a switch still in progress finish first, so end() knows what to undo.
-            if (boostJob != null) withContext(NonCancellable) {
-                boostJob.join()
-                earbudBoost.end()
+            withContext(NonCancellable) {
+                if (boostJob != null) {
+                    boostJob.join()
+                    earbudBoost.end()
+                }
+                if (turboJob != null) {
+                    turboJob.join()
+                    turbo.end()
+                }
             }
         }
     }
@@ -125,9 +139,9 @@ class CallManager(
      * the audio is playing, re-planning when the output changes (earbuds
      * connected or taken out).
      */
-    private suspend fun keepLipSync(session: CallSession, profile: AudioProfile, current: AppSettings, boostJob: Job?) {
-        // Game mode changes the delay; plan once it has settled.
-        boostJob?.join()
+    private suspend fun keepLipSync(session: CallSession, profile: AudioProfile, current: AppSettings, settling: List<Job>) {
+        // Game mode and Turbo change the delay; plan once they have settled.
+        settling.forEach { it.join() }
         routeMonitor.route.map { it.mediaOutput }.distinctUntilChanged().collectLatest { output ->
             val onBluetooth = output?.kind == DeviceKind.BLUETOOTH_MUSIC
             // Only Bluetooth outputs get measured in the delay tuner.
