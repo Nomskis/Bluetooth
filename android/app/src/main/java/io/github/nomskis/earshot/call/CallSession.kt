@@ -368,8 +368,11 @@ class CallSession(
                 sendOffer(l, iceRestart = false)
             }
         }
-        _state.update { it.copy(radioNote = RadioPlan.describe(plan, it.callPath)) }
+        _state.update { it.copy(radioNote = radioNote(plan, it.callPath)) }
     }
+
+    private fun radioNote(plan: RadioPlan, path: CallPath?): String? =
+        RadioPlan.describe(plan, path) ?: if (path == CallPath.CELLULAR) "Wi-Fi stalled, so the call moved to mobile data" else null
 
     /** What we ask them to cap their video at. When mobile data is preferred we don't, so it isn't held back there. */
     private fun RadioPlan.remoteVideoCap(): Int? = if (preferCellular) null else wifiVideoCapKbps
@@ -387,9 +390,7 @@ class CallSession(
         val path = RadioPlan.pathFor(CallStats.selectedNetworkType(entries)) ?: return
         if (path == _state.value.callPath) return
         Log.i(TAG, "Media now flows over $path")
-        val note = RadioPlan.describe(radioPlan, path)
-            ?: if (path == CallPath.CELLULAR) "Wi-Fi stalled, so the call moved to mobile data" else null
-        _state.update { it.copy(callPath = path, radioNote = note) }
+        _state.update { it.copy(callPath = path, radioNote = radioNote(radioPlan, path)) }
         applyVideoCap(l)
     }
 
