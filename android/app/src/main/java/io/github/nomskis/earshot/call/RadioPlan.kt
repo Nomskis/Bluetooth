@@ -22,6 +22,15 @@ data class RadioPlan(
     val preferCellular: Boolean,
     /** Cap for video in both directions while the call runs over 2.4 GHz Wi-Fi; null = no cap. */
     val wifiVideoCapKbps: Int?,
+    /**
+     * Mark the call's packets for Wi-Fi's priority queue (DSCP EF/AF42, which
+     * phones' Wi-Fi drivers map to the WMM video access category). Busy Wi-Fi
+     * then lets them through ahead of everyone's best-effort traffic: less
+     * queueing on the way out, less jitter for the other side to buffer.
+     * Off on 2.4 GHz next to Bluetooth audio, where priority Wi-Fi traffic
+     * could take airtime from the earbuds.
+     */
+    val priorityMarking: Boolean = true,
 ) {
     /** The cap to apply right now, given where media is actually flowing. */
     fun videoCapFor(path: CallPath?): Int? = if (path == CallPath.CELLULAR) null else wifiVideoCapKbps
@@ -42,6 +51,7 @@ data class RadioPlan(
             return RadioPlan(
                 preferCellular = settings.mobileDataOn24GHz,
                 wifiVideoCapKbps = if (settings.bluetoothFriendlyVideo) VIDEO_CAP_KBPS else null,
+                priorityMarking = false,
             )
         }
 

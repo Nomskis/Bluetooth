@@ -23,6 +23,7 @@ import org.webrtc.MediaConstraints
 import org.webrtc.MediaStreamTrack
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
+import org.webrtc.Priority
 import org.webrtc.SurfaceTextureHelper
 import org.webrtc.VideoFrame
 import org.webrtc.VideoSink
@@ -217,6 +218,28 @@ class RtcEngine(
         }
     }
 
+    /**
+     * DSCP marks for our packets: EF for voice and AF42 for video when [high],
+     * unmarked otherwise. Phones' Wi-Fi drivers map both to WMM's video access
+     * category, which wins airtime over best-effort traffic on a busy network.
+     * (With BUNDLE, audio and video share one socket, so the mark in force is
+     * whichever was set last; both land in the same queue.)
+     */
+    fun setPacketPriority(pc: PeerConnection, high: Boolean) {
+        for (sender in pc.senders) {
+            val kind = runCatching { sender.track()?.kind() }.getOrNull() ?: continue
+            val priority = when {
+                !high -> Priority.LOW
+                kind == MediaStreamTrack.AUDIO_TRACK_KIND -> Priority.HIGH
+                else -> Priority.MEDIUM
+            }
+            val parameters = sender.parameters
+            if (parameters.encodings.isEmpty() || parameters.encodings.all { it.networkPriority == priority }) continue
+            parameters.encodings.forEach { it.networkPriority = priority }
+            if (!sender.setParameters(parameters)) Log.w(TAG, "Could not set $kind packet priority")
+        }
+    }
+
     private fun rtcConfiguration(iceServers: List<IceServerConfig>, preferCellular: Boolean): PeerConnection.RTCConfiguration {
         val servers = iceServers.map { config ->
             val builder = PeerConnection.IceServer.builder(config.urls)
@@ -231,6 +254,8 @@ class RtcEngine(
             // Keep gathering so a switch from Wi-Fi to mobile data can be recovered quickly.
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
             keyType = PeerConnection.KeyType.ECDSA
+            // Lets setPacketPriority's marks reach the sockets; without it they're ignored.
+            enableDscp = true
             // Let the jitter buffer shrink quickly after a network hiccup instead of staying
             // inflated, and cap how far it can grow (50 packets = 0.5 s at 10 ms packets).
             audioJitterBufferFastAccelerate = true

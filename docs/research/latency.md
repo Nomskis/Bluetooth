@@ -206,6 +206,21 @@ them, with no help from their side, so it works with any client.
   receiver's fmtp line as its target (tested in Chrome: the outbound stream
   reports a 48 kbps target). Not a latency gain, but the music link can play
   it. **Built** (48 kbps).
+- **Priority marks (DSCP) for Wi-Fi's fast queue.** With
+  `RTCConfiguration.enableDscp`, a sender's `networkPriority` sets the DSCP
+  of its packets (RFC 8837: high audio = EF 46, medium video = AF42 36).
+  Wi-Fi drivers derive the 802.11e user priority from DSCP (Linux
+  `cfg80211_classify8021d` takes the top three bits, so EF and AF42 both map
+  to user priority 5 or 4, the WMM video access category; Qualcomm's and
+  MediaTek's drivers use similar tables). That category has a shorter
+  backoff than best effort, so on a busy network our packets queue less on
+  the way out. Caveats: with BUNDLE, audio and video share one socket, so
+  the last mark set wins (both end up in the video category); the mark
+  helps the phone-to-router hop, and only as far as the network keeps it;
+  and on 2.4 GHz, priority Wi-Fi frames could take airtime from Bluetooth
+  on combo chips, so marking stays off there while Bluetooth audio plays.
+  A few networks mishandle marked packets: if the connection falters within
+  15 s of the marks going on, the call drops them. **Built** (Android).
 
 ### 2.8 Phone makers
 

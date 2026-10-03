@@ -22,6 +22,16 @@ class RadioPlanTest {
     }
 
     @Test
+    fun priorityMarksStayOffWhereTheyWouldCompeteWithTheEarbuds() {
+        assertTrue(RadioPlan.decide(WifiBand.GHZ_5, bluetoothAudio = true, defaults).priorityMarking)
+        assertTrue(RadioPlan.decide(WifiBand.GHZ_2_4, bluetoothAudio = false, defaults).priorityMarking)
+        assertTrue(RadioPlan.decide(null, bluetoothAudio = true, defaults).priorityMarking)
+        assertFalse(RadioPlan.decide(WifiBand.GHZ_2_4, bluetoothAudio = true, defaults).priorityMarking)
+        // Even with the video cap switched off.
+        assertFalse(RadioPlan.decide(WifiBand.GHZ_2_4, true, defaults.copy(bluetoothFriendlyVideo = false)).priorityMarking)
+    }
+
+    @Test
     fun mobileDataLiftsTheCapOnceMediaIsOnIt() {
         val plan = RadioPlan.decide(WifiBand.GHZ_2_4, true, defaults.copy(mobileDataOn24GHz = true))
         assertTrue(plan.preferCellular)

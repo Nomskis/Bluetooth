@@ -1,6 +1,7 @@
 package io.github.nomskis.earshot.call
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import io.github.nomskis.earshot.BuildConfig
 import io.github.nomskis.earshot.audio.AudioProfile
@@ -129,6 +130,8 @@ class CallSession(
     /** Lives across reconnects, so what's unacknowledged goes again on the next connection. */
     private val chat = ChatLog()
     private var lastPeerId: String? = null
+    /** The network seemed to choke on priority-marked packets; leave them unmarked for this call. */
+    private var markingBroken = false
 
     /** One RTCPeerConnection and everything tied to it. */
     private class Link(val pc: PeerConnection, val session: String, val tracks: SendTracks) {
@@ -137,6 +140,8 @@ class CallSession(
         var remoteAudio: AudioTrack? = null
         var remoteVideoTrack: VideoTrack? = null
         var chatChannel: DataChannel? = null
+        /** When priority marks were switched on for this connection; 0 = not marked. */
+        var markedAt = 0L
 
         val isHealthy: Boolean
             get() = pc.iceConnectionState().let {
@@ -384,6 +389,7 @@ class CallSession(
         if (l != null) {
             if (old.preferCellular != plan.preferCellular) engine.setPreferCellular(l.pc, iceServers, plan.preferCellular)
             applyVideoCap(l)
+            if (l.isHealthy) applyPacketPriority(l)
             // The cap on what they send us travels in the SDP; renegotiate if we're the one who offers.
             if (old.remoteVideoCap() != plan.remoteVideoCap() && isOfferer() && l.isHealthy &&
                 l.pc.signalingState() == SignalingState.STABLE
@@ -402,6 +408,25 @@ class CallSession(
 
     private fun applyVideoCap(l: Link) {
         engine.capVideoSend(l.pc, radioPlan.videoCapFor(_state.value.callPath))
+    }
+
+    private fun applyPacketPriority(l: Link) {
+        val mark = radioPlan.priorityMarking && !markingBroken
+        if (mark && l.markedAt == 0L) l.markedAt = SystemClock.elapsedRealtime()
+        if (!mark) l.markedAt = 0L
+        engine.setPacketPriority(l.pc, mark)
+    }
+
+    /**
+     * A few networks drop or delay marked packets. If the connection falters
+     * right after the marks went on, take them off for the rest of the call.
+     */
+    private fun suspectMarking(l: Link) {
+        if (markingBroken || l.markedAt == 0L) return
+        if (SystemClock.elapsedRealtime() - l.markedAt > MARKING_TRIAL_MS) return
+        Log.w(TAG, "Connection faltered right after marking packets for priority; sending them unmarked")
+        markingBroken = true
+        applyPacketPriority(l)
     }
 
     private fun onStats(l: Link, report: RTCStatsReport) {
@@ -662,9 +687,11 @@ class CallSession(
                 setPhase(CallPhase.CONNECTED)
                 sendMediaState()
                 applyVideoCap(l)
+                applyPacketPriority(l)
                 if (statsJob?.isActive != true) watchStats(l)
             }
             IceConnectionState.DISCONNECTED -> {
+                suspectMarking(l)
                 setPhase(CallPhase.RECONNECTING)
                 recoveryJob?.cancel()
                 recoveryJob = scope.launch {
@@ -673,6 +700,7 @@ class CallSession(
                 }
             }
             IceConnectionState.FAILED -> {
+                suspectMarking(l)
                 setPhase(CallPhase.RECONNECTING)
                 post(Event.Recover(l))
             }
@@ -843,5 +871,7 @@ class CallSession(
         const val REQUEST_OFFER_DELAY_MS = 1_500L
         const val REPLAY_SECONDS = 8.0
         const val STATS_INTERVAL_MS = 2_000L
+        /** A drop this soon after marking packets is blamed on the marks. */
+        const val MARKING_TRIAL_MS = 15_000L
     }
 }
