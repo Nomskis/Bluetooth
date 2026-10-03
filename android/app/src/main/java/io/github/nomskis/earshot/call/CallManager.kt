@@ -33,7 +33,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import org.webrtc.EglBase
 
@@ -69,13 +68,23 @@ class CallManager(
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private val cellular = CellularStandby(appContext)
 
+    /** Putting earbud game mode and the codec back after the last call; the next call waits for it. */
+    private var cleanup: Job? = null
+
+    /** A call is being set up but its session doesn't exist yet (main thread only). */
+    private var starting = false
+
     fun startCall(room: String, withVideo: Boolean) {
-        if (_session.value != null) return
+        if (_session.value != null || starting) return
+        starting = true
         scope.launch {
+            // A call ended a moment ago may still be restoring the earbuds; don't overlap.
+            cleanup?.join()
             val current = settings.current()
             val base = ServerUrls.normalizeBase(current.serverUrl)
             if (base == null) {
                 _lastError.value = "Add your server address in Settings first."
+                starting = false
                 return@launch
             }
             settings.update { it.copy(lastRoom = room) }
@@ -96,6 +105,7 @@ class CallManager(
             )
             _lastError.value = null
             _session.value = session
+            starting = false
             CallService.start(appContext)
             if (radioPlan.preferCellular || current.mobileDataBackup) cellular.acquire()
             watchNetwork(session, current)
@@ -121,7 +131,7 @@ class CallManager(
             cellular.release()
             if (_session.value === session) _session.value = null
             // Let a switch still in progress finish first, so end() knows what to undo.
-            withContext(NonCancellable) {
+            cleanup = scope.launch(NonCancellable) {
                 if (boostJob != null) {
                     boostJob.join()
                     earbudBoost.end()
