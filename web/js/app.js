@@ -424,6 +424,17 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && chatOpen) setChatOpen(false);
 });
 
+// iOS Safari lays the keyboard over fixed elements instead of resizing the page
+// (Chrome resizes, see the viewport meta), so lift the chat above it.
+function liftChatAboveKeyboard() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const covered = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+  ui.chatPanel.style.bottom = covered > 0 ? `${covered}px` : '';
+}
+window.visualViewport?.addEventListener('resize', liftChatAboveKeyboard);
+window.visualViewport?.addEventListener('scroll', liftChatAboveKeyboard);
+
 ui.unmute.addEventListener('click', () => {
   voice.resume();
   ui.remoteVideo.play().then(() => (ui.unmute.hidden = true));
