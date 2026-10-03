@@ -130,6 +130,8 @@ matter:
 - Huawei: service `0x2B`, command `0x6C`, TLV `01 = on`, unencrypted on
   earbuds; only FreeClip 2 is confirmed by Gadgetbridge, so it's marked
   experimental, as is EarFun (Qualcomm GAIA framing, command `0x0312`).
+- Soundcore: command `01 87` with an on/off byte in `08 EE` frames with an
+  8-bit sum checksum, on eight models (OpenSCQ30); experimental.
 - Galaxy Buds have a game-mode message (`0x87`), but Samsung phones send it
   themselves and it appears to need Samsung's own codec; not built.
 

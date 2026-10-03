@@ -96,7 +96,7 @@ are in [research/latency.md](research/latency.md); in short:
 | See them talk first | A voice detector on their decoded audio, 100–250 ms ahead of your ears: the call screen glows, music dips (`AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`), 8-second replay | everything |
 | Free the radio | On 2.4 GHz Wi-Fi with Bluetooth audio: video capped at 800 kbps both ways; optionally media moved to mobile data | everything |
 | Lip sync | Their video held back by the Bluetooth delay WebRTC doesn't know about | everything |
-| Earbud game mode | Each brand's own command, on for the call and back after | OPPO/OnePlus/realme, Nothing/CMF, Xiaomi/Redmi, Huawei/Honor, EarFun |
+| Earbud game mode | Each brand's own command, on for the call and back after | OPPO/OnePlus/realme, Nothing/CMF, Xiaomi/Redmi, Huawei/Honor, Soundcore, EarFun |
 | Turbo | Android's privileged Bluetooth controls, through Shizuku: for each call, low-latency mode, the codec measured fastest, the shortest buffer; undone after | Android 13+ with Wireless debugging |
 | Fast failover | Mobile data on standby, ICE tuned to swap a stalled path in ~1 s | everything |
 | Live readout | Mouth-to-ear delay from stats plus the measured app-to-ear figure | everything |
