@@ -170,6 +170,8 @@ fun HomeScreen(
 
             DelayCard(DelayRuns.latestFor(delayRuns, route.mediaOutput?.name), onOpenTuner)
 
+            BackgroundCard(done = settings.backgroundGuideDone) { onUpdateSettings { it.copy(backgroundGuideDone = true) } }
+
             AudioModePicker(settings.audioMode) { mode -> onUpdateSettings { it.copy(audioMode = mode) } }
 
             OutlinedTextField(
