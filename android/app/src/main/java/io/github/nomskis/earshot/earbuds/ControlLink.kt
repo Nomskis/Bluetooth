@@ -55,12 +55,39 @@ class PacketReader<P>(private val link: ControlLink, private val decoder: FrameD
     }
 }
 
+/**
+ * The last exchanges with earbuds, in hex, for the tuner's shareable report:
+ * the drivers are built from documented protocols, and when one misbehaves on
+ * a real pair this shows exactly what was said.
+ */
+object DriverLog {
+    private const val MAX_LINES = 60
+    private const val MAX_BYTES_SHOWN = 48
+    private val lines = ArrayDeque<String>()
+
+    @Synchronized
+    fun add(line: String) {
+        lines.addLast(line)
+        while (lines.size > MAX_LINES) lines.removeFirst()
+    }
+
+    fun bytes(direction: String, data: ByteArray, count: Int = data.size) {
+        val shown = minOf(count, MAX_BYTES_SHOWN)
+        val hex = (0 until shown).joinToString(" ") { "%02X".format(data[it]) } + if (count > shown) " …(+${count - shown})" else ""
+        add("$direction $hex")
+    }
+
+    @Synchronized
+    fun snapshot(): List<String> = lines.toList()
+}
+
 /** RFCOMM socket as a [ControlLink]. */
 private class SocketLink(private val socket: BluetoothSocket) : ControlLink {
     private val input = socket.inputStream
     private val output = socket.outputStream
 
     override fun write(bytes: ByteArray) {
+        DriverLog.bytes(">", bytes)
         output.write(bytes)
         output.flush()
     }
@@ -71,7 +98,7 @@ private class SocketLink(private val socket: BluetoothSocket) : ControlLink {
             if (System.currentTimeMillis() >= deadline) return 0
             Thread.sleep(10)
         }
-        return input.read(buffer)
+        return input.read(buffer).also { if (it > 0) DriverLog.bytes("<", buffer, it) }
     }
 }
 
@@ -119,16 +146,18 @@ abstract class RfcommDriver : EarbudDriver {
             } catch (_: InterruptedException) {
             }
         }
+        DriverLog.add("$family: connecting to $uuid")
         return try {
             try {
                 socket.connect()
             } catch (e: IOException) {
                 Log.i(TAG, "$family: channel $uuid unavailable: ${e.message}")
+                DriverLog.add("$family: $uuid unavailable (${e.message})")
                 return DriverResult.ChannelBusy
             } finally {
                 watchdog.interrupt()
             }
-            session(SocketLink(socket), enabled)
+            session(SocketLink(socket), enabled).also { DriverLog.add("$family ${if (enabled) "on" else "off"}: $it") }
         } catch (e: IOException) {
             DriverResult.Failed(e.message ?: e.javaClass.simpleName)
         } finally {

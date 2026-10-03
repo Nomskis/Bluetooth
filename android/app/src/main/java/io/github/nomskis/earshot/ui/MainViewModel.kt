@@ -19,6 +19,7 @@ import io.github.nomskis.earshot.audio.SetupLabels
 import io.github.nomskis.earshot.audio.SonarMeter
 import io.github.nomskis.earshot.audio.WifiBand
 import io.github.nomskis.earshot.call.CallSession
+import io.github.nomskis.earshot.earbuds.DriverLog
 import io.github.nomskis.earshot.earbuds.DriverResult
 import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.earbuds.EarbudControl
@@ -227,6 +228,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 r.codec?.let { append(", $it") }
                 if (!r.calibrated) append(", uncalibrated")
                 appendLine()
+            }
+            val log = DriverLog.snapshot()
+            if (log.isNotEmpty()) {
+                appendLine("Earbud control log (bytes sent > and received <):")
+                log.forEach { appendLine("  $it") }
             }
         }
     }
