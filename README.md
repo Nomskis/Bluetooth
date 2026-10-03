@@ -133,16 +133,23 @@ Before relying on it at the gym:
 
 1. Connect your earbuds and start some music in YouTube Music.
 2. In Earshot, check the **Audio output** card on the home screen. It should
-   name your earbuds and say *High-quality music link (A2DP)*.
-3. Join a call (call yourself from a laptop browser if nobody's around).
-4. During the call, the chip at the top of the call screen should still say
-   **Hi-Fi · (your earbuds)**, and the music should sound exactly as good as
-   before the call.
+   name your earbuds and say *High-quality music link (A2DP)*. Work through
+   the **Keep calls going with the screen off** card if your phone shows it.
+3. Open the **delay tuner**, hold one earbud's speaker against the phone's
+   microphone, and tap **Find my fastest setup**. It measures your earbuds,
+   tries their game mode and (with Turbo) every codec, and keeps the fastest
+   for calls. On 2.4 GHz Wi-Fi, run the **radio test** too.
+4. Join a call (call yourself from a laptop browser if nobody's around).
+5. During the call, the chip at the top of the call screen should still say
+   **Hi-Fi · (your earbuds)**, the music should sound exactly as good as
+   before the call, and the readout below it shows roughly how long their
+   voice takes to reach you.
 
 If the chip turns yellow and says *call quality*, something switched the
 phone into call mode. That's a bug or a phone quirk worth
-[reporting](../../issues) with your phone model. The app reads Android's own
-routing to tell you this; it isn't guessing.
+[reporting](../../issues) with your phone model (the tuner's **Copy report**
+button gathers the details). The app reads Android's own routing to tell you
+this; it isn't guessing.
 
 ## Status
 
