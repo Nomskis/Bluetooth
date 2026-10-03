@@ -317,3 +317,15 @@ input:not([type='checkbox']) {
   font-size: 0.9rem;
   z-index: 10;
 }
+
+.open-app {
+  display: block;
+  margin-top: 0.75rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: #9ff0cb;
+}
+
+.open-app[hidden] {
+  display: none;
+}

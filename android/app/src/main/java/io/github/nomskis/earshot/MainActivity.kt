@@ -91,11 +91,11 @@ class MainActivity : ComponentActivity() {
             .apply { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) setAutoEnterEnabled(autoEnter) }
             .build()
 
-    /** earshot://join/<room> */
+    /** earshot://join/<room>, optionally ?server=<https origin> from a web invite page. */
     private fun handleIntent(intent: Intent?) {
         val data = intent?.data ?: return
         if (data.scheme != "earshot" || data.host != "join") return
         val room = data.pathSegments.firstOrNull()?.let(RoomCodes::normalize) ?: return
-        viewModel.offerRoom(room)
+        viewModel.offerRoom(room, server = data.getQueryParameter("server"))
     }
 }

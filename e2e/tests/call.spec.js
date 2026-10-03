@@ -232,3 +232,25 @@ test('the browser lights up as the other side talks, and shows the delay', async
   await a.context.close();
   await b.context.close();
 });
+
+test('on Android, the invite page offers the app with the room and server', async ({ browser }) => {
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (Linux; Android 16; POCO X8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36',
+  });
+  const page = await context.newPage();
+  await page.goto('/r/calm-otter-4821');
+  const link = page.locator('#open-app');
+  await expect(link).toBeVisible();
+  const href = await link.getAttribute('href');
+  expect(href).toContain('intent://join/calm-otter-4821?server=');
+  expect(href).toContain('scheme=earshot');
+  expect(href).toContain('S.browser_fallback_url=');
+  await context.close();
+
+  // Desktop browsers don't see it.
+  const desktop = await browser.newContext();
+  const desktopPage = await desktop.newPage();
+  await desktopPage.goto('/r/calm-otter-4821');
+  await expect(desktopPage.locator('#open-app')).toBeHidden();
+  await desktop.close();
+});

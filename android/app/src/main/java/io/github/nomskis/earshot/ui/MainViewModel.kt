@@ -378,8 +378,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearError() = graph.callManager.clearError()
 
-    fun offerRoom(room: String?) {
+    /**
+     * From an invite link. [server] is the inviting server's address; it's
+     * only adopted when none is set yet, so a link can't move an existing
+     * setup to another server.
+     */
+    fun offerRoom(room: String?, server: String? = null) {
         _pendingRoom.value = room
+        val base = server?.let(ServerUrls::normalizeBase) ?: return
+        viewModelScope.launch {
+            graph.settings.update { if (it.serverUrl.isBlank()) it.copy(serverUrl = base) else it }
+        }
     }
 
     fun consumePendingRoom() {

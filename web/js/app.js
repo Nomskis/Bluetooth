@@ -90,8 +90,23 @@ const roomFromPath = location.pathname.match(/^\/r\/([^/]+)\/?$/);
 ui.roomInput.value = roomFromPath ? decodeURIComponent(roomFromPath[1]) : '';
 ui.nameInput.value = storage('localStorage')?.getItem('earshot.name') ?? '';
 
+// On Android, offer the app: it keeps Bluetooth earbuds on the music link,
+// which a browser can't. Without the app installed, Chrome stays on this page.
+const openApp = $('open-app');
+function updateOpenApp() {
+  const room = normalizeRoom(ui.roomInput.value);
+  openApp.hidden = !(room && /Android/i.test(navigator.userAgent));
+  if (openApp.hidden) return;
+  const fallback = encodeURIComponent(location.href);
+  const server = encodeURIComponent(location.origin);
+  openApp.href = `intent://join/${encodeURIComponent(room)}?server=${server}#Intent;scheme=earshot;S.browser_fallback_url=${fallback};end`;
+}
+ui.roomInput.addEventListener('input', updateOpenApp);
+updateOpenApp();
+
 ui.generate.addEventListener('click', () => {
   ui.roomInput.value = generateRoomCode();
+  updateOpenApp();
   showLobbyError('');
 });
 
