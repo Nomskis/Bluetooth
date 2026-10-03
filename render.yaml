@@ -10,7 +10,14 @@ services:
     healthCheckPath: /healthz
     autoDeploy: true
     envVars:
-      # Optional relay for networks that block direct calls; see docs/deploy.md.
+      # Optional relay for networks that block direct calls (mobile data, gym
+      # Wi-Fi); see docs/deploy.md. Easiest: a Cloudflare TURN key.
+      - key: CLOUDFLARE_TURN_KEY_ID
+        sync: false
+      - key: CLOUDFLARE_TURN_API_TOKEN
+        sync: false
+      - key: TURN_CREDENTIALS_URL
+        sync: false
       - key: TURN_URLS
         sync: false
       - key: TURN_USERNAME

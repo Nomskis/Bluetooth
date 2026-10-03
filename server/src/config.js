@@ -44,6 +44,10 @@ export function loadConfig(env = process.env) {
       turnUsername: env.TURN_USERNAME || null,
       turnCredential: env.TURN_CREDENTIAL || null,
       turnTtlSeconds: int(env.TURN_TTL_SECONDS, 12 * 60 * 60),
+      // A hosted TURN service the server fetches credentials from (see turn-service.js).
+      cloudflareTurnKeyId: env.CLOUDFLARE_TURN_KEY_ID || null,
+      cloudflareTurnApiToken: env.CLOUDFLARE_TURN_API_TOKEN || null,
+      turnCredentialsUrl: env.TURN_CREDENTIALS_URL || null,
     },
   };
 }

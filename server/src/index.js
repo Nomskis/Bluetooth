@@ -5,7 +5,11 @@ const config = loadConfig();
 const server = createEarshotServer(config);
 const address = await server.listen();
 
-const turn = config.ice.turnUrls.length > 0 ? `TURN: ${config.ice.turnUrls.join(', ')}` : 'TURN: not configured';
+const turn = server.turnService
+  ? `TURN: ${server.turnService.name}${server.turnService.current().length ? '' : ' (no credentials yet, retrying)'}`
+  : config.ice.turnUrls.length > 0
+    ? `TURN: ${config.ice.turnUrls.join(', ')}`
+    : 'TURN: not configured';
 console.log(`Earshot server listening on http://${address.address}:${address.port}`);
 console.log(`Serving web client from ${config.webRoot}`);
 console.log(turn);

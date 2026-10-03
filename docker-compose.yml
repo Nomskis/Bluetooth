@@ -15,6 +15,10 @@ services:
       STUN_URLS: ${STUN_URLS:-stun:stun.l.google.com:19302}
       TURN_URLS: ${TURN_URLS:-}
       TURN_SECRET: ${TURN_SECRET:-}
+      # Or a hosted relay instead of coturn (docs/deploy.md):
+      CLOUDFLARE_TURN_KEY_ID: ${CLOUDFLARE_TURN_KEY_ID:-}
+      CLOUDFLARE_TURN_API_TOKEN: ${CLOUDFLARE_TURN_API_TOKEN:-}
+      TURN_CREDENTIALS_URL: ${TURN_CREDENTIALS_URL:-}
 
   caddy:
     image: caddy:2-alpine

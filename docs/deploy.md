@@ -68,7 +68,38 @@ for example Render, Fly.io or Railway:
 
 Most calls connect directly. Some networks (certain mobile carriers, strict
 corporate or gym Wi-Fi) block that, and then a TURN relay is needed to carry
-the media. Symptoms: both sides see each other "connecting…" forever.
+the media. Symptoms: both sides see each other "connecting…" forever; after
+15 seconds the apps say so and point here.
+
+### The easy way: a hosted relay
+
+This works on any host, including Render's free plan (which can't run a relay
+itself). The server fetches short-lived credentials from the relay service and
+hands them to each caller; nothing else to run.
+
+- **Cloudflare** (the first 1,000 GB a month are free, shared with its SFU
+  product; a relayed video call uses roughly 1 to 2 GB an hour). In the Cloudflare
+  dashboard, open Realtime, create a TURN key, and set its two values:
+
+  ```sh
+  CLOUDFLARE_TURN_KEY_ID=...
+  CLOUDFLARE_TURN_API_TOKEN=...
+  ```
+
+- **Any service that serves an ICE server list over GET**, for example
+  Metered's Open Relay:
+
+  ```sh
+  TURN_CREDENTIALS_URL=https://<your-app>.metered.live/api/v1/turn/credentials?apiKey=...
+  ```
+
+Credentials last `TURN_TTL_SECONDS` (12 hours by default; Cloudflare uses the
+value you set) and are renewed every quarter of that, so a caller always gets
+ones with most of their lifetime left. If the service can't be reached, the
+server keeps handing out the last good set and retries every minute. The
+server's start-up log says which relay it uses.
+
+### Running your own
 
 The bundled compose file can run [coturn](https://github.com/coturn/coturn):
 
@@ -84,10 +115,8 @@ Open UDP/TCP 3478 and UDP 49160–49200 in your firewall. The server hands each
 peer time-limited TURN credentials derived from `TURN_SECRET` (coturn's
 `use-auth-secret` scheme), so the secret itself never leaves the server.
 
-A hosted TURN service works too: set `TURN_URLS`, `TURN_USERNAME` and
-`TURN_CREDENTIAL` to the values it gives you. Several have free tiers
-(Cloudflare's TURN service and Metered's Open Relay, for example). A relay
-never sees the call's content: WebRTC media is encrypted end to end
+A relay with fixed credentials works too: set `TURN_URLS`, `TURN_USERNAME`
+and `TURN_CREDENTIAL`. A relay never sees the call's content: WebRTC media is encrypted end to end
 (DTLS-SRTP), and the relay only forwards the encrypted packets. Gyms with
 locked-down Wi-Fi are a common reason to set one up; pick a relay that
 offers TCP or TLS on port 443, which almost every network allows.
@@ -107,6 +136,8 @@ offers TCP or TLS on port 443, which almost every network allows.
 | `TURN_SECRET` | none | Shared secret for time-limited TURN credentials |
 | `TURN_USERNAME`, `TURN_CREDENTIAL` | none | Fixed TURN credentials, if not using a secret |
 | `TURN_TTL_SECONDS` | `43200` | Lifetime of issued TURN credentials |
+| `CLOUDFLARE_TURN_KEY_ID`, `CLOUDFLARE_TURN_API_TOKEN` | none | Cloudflare's hosted relay; the server fetches credentials |
+| `TURN_CREDENTIALS_URL` | none | Any URL that returns an ICE server list (`[...]` or `{ "iceServers": [...] }`) on GET |
 
 ## Privacy
 

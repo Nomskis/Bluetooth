@@ -4,6 +4,7 @@ import { buildIceServers } from './ice.js';
 import { ErrorCode, ProtocolError, parseClientMessage } from './protocol.js';
 import { RoomManager } from './rooms.js';
 import { createStaticHandler } from './static.js';
+import { createTurnService } from './turn-service.js';
 
 const MAX_MESSAGE_BYTES = 64 * 1024;
 // Token bucket per connection: bursts of ICE candidates are fine, floods are not.
@@ -17,11 +18,12 @@ const RATE_REFILL_PER_SECOND = 50;
  *   GET  /, /r/:id  browser client
  *   WS   /ws        signaling (see docs/protocol.md)
  */
-export function createEarshotServer(config, { log = console } = {}) {
+export function createEarshotServer(config, { log = console, fetchImpl = globalThis.fetch } = {}) {
+  const turnService = createTurnService(config.ice, { fetchImpl, log });
   const rooms = new RoomManager({
     maxPeersPerRoom: config.maxPeersPerRoom,
     reconnectGraceMs: config.reconnectGraceMs,
-    iceServersFor: (peerId) => buildIceServers(config.ice, peerId),
+    iceServersFor: (peerId) => [...buildIceServers(config.ice, peerId), ...(turnService?.current() ?? [])],
   });
   const serveStatic = createStaticHandler(config.webRoot);
 
@@ -134,7 +136,10 @@ export function createEarshotServer(config, { log = console } = {}) {
   return {
     httpServer,
     rooms,
-    listen(port = config.port, host = config.host) {
+    turnService,
+    async listen(port = config.port, host = config.host) {
+      // Credentials first, so the first caller after a cold start gets a relay too.
+      await turnService?.start();
       return new Promise((resolve, reject) => {
         httpServer.once('error', reject);
         httpServer.listen(port, host, () => {
@@ -145,6 +150,7 @@ export function createEarshotServer(config, { log = console } = {}) {
     },
     async close() {
       clearInterval(heartbeat);
+      turnService?.stop();
       for (const ws of wss.clients) ws.terminate();
       rooms.dispose();
       await new Promise((resolve) => wss.close(() => resolve()));
