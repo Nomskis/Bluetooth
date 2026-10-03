@@ -27,6 +27,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
     val delayRuns by viewModel.delayRuns.collectAsStateWithLifecycle()
     val sonar by viewModel.sonar.collectAsStateWithLifecycle()
     val codec by viewModel.codec.collectAsStateWithLifecycle()
+    val turboInfo by viewModel.turbo.collectAsStateWithLifecycle()
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -64,6 +65,19 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 onMeasure = viewModel::measureDelay,
                 onClearRuns = viewModel::clearDelayRuns,
                 onUpdateSettings = viewModel::updateSettings,
+                turbo = {
+                    val turboStatus by viewModel.turboStatus.collectAsStateWithLifecycle()
+                    TurboCard(
+                        status = turboStatus,
+                        info = turboInfo,
+                        onRefresh = viewModel::refreshTurbo,
+                        onRequestPermission = viewModel::requestTurboPermission,
+                        onLoadDiagnostics = viewModel::loadTurboDiagnostics,
+                        onEnableLowLatency = viewModel::turboEnableLowLatency,
+                        onShortestBuffer = viewModel::turboShortestBuffer,
+                        onSweepCodecs = viewModel::turboSweepCodecs,
+                    )
+                },
                 onBack = { screen = Screen.HOME },
             )
             else -> HomeScreen(

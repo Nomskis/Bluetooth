@@ -7,6 +7,7 @@ import io.github.nomskis.earshot.appGraph
 import io.github.nomskis.earshot.audio.AudioProfile
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.audio.CodecInfo
+import io.github.nomskis.earshot.audio.Codecs
 import io.github.nomskis.earshot.audio.LinkConditions
 import io.github.nomskis.earshot.audio.SonarMeter
 import io.github.nomskis.earshot.audio.WifiBand
@@ -14,6 +15,9 @@ import io.github.nomskis.earshot.call.CallSession
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.DelayRun
 import io.github.nomskis.earshot.signaling.ServerUrls
+import io.github.nomskis.earshot.turbo.BluetoothOutputDiagnostics
+import io.github.nomskis.earshot.turbo.TurboClient
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,6 +36,10 @@ sealed interface ServerCheck {
 }
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
+    private companion object {
+        const val CODEC_SETTLE_MS = 3_500L
+    }
+
     private val graph = app.appGraph
 
     val settings: StateFlow<AppSettings?> =
@@ -68,28 +76,105 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun measureDelay(label: String) {
         if (_sonar.value is SonarState.Running || session.value != null) return
         _sonar.value = SonarState.Running(SonarMeter.Stage.CALIBRATING)
+        viewModelScope.launch { _sonar.value = SonarState.Done(measureOnce(label)) }
+    }
+
+    private suspend fun measureOnce(label: String, codecOverride: String? = null): SonarMeter.Outcome {
+        val current = graph.settings.current()
+        val profile = AudioProfile.forCall(current, graph.routeMonitor.snapshot())
+        val outcome = SonarMeter(getApplication()).measure(profile.playbackAttributes) { stage ->
+            _sonar.value = SonarState.Running(stage)
+        }
+        if (outcome is SonarMeter.Outcome.Success) {
+            graph.settings.addDelayRun(
+                DelayRun(
+                    device = outcome.deviceName,
+                    label = label,
+                    delayMs = outcome.summary.delayMs,
+                    reportedMs = outcome.summary.reportedMs,
+                    calibrated = outcome.summary.calibrated,
+                    gameAudio = current.gameAudioLabel,
+                    codec = codecOverride ?: graph.codecWatcher.latest.value
+                        ?.takeIf { it.device == null || it.device == outcome.deviceName }?.summary,
+                    atMillis = System.currentTimeMillis(),
+                ),
+            )
+        }
+        return outcome
+    }
+
+    // --- Turbo (Shizuku) ----------------------------------------------------------
+
+    val turboStatus: StateFlow<TurboClient.Status> get() = graph.turbo.status
+
+    data class TurboInfo(
+        val diagnostics: BluetoothOutputDiagnostics? = null,
+        val message: String? = null,
+        val busy: String? = null,
+    )
+
+    private val _turbo = MutableStateFlow(TurboInfo())
+    val turbo: StateFlow<TurboInfo> = _turbo.asStateFlow()
+
+    fun refreshTurbo() {
+        graph.turbo.refresh()
+        if (graph.turbo.status.value == TurboClient.Status.Ready) loadTurboDiagnostics()
+    }
+
+    fun requestTurboPermission() = graph.turbo.requestPermission()
+
+    fun loadTurboDiagnostics() {
         viewModelScope.launch {
-            val current = graph.settings.current()
-            val profile = AudioProfile.forCall(current, graph.routeMonitor.snapshot())
-            val outcome = SonarMeter(getApplication()).measure(profile.playbackAttributes) { stage ->
-                _sonar.value = SonarState.Running(stage)
-            }
-            if (outcome is SonarMeter.Outcome.Success) {
-                graph.settings.addDelayRun(
-                    DelayRun(
-                        device = outcome.deviceName,
-                        label = label,
-                        delayMs = outcome.summary.delayMs,
-                        reportedMs = outcome.summary.reportedMs,
-                        calibrated = outcome.summary.calibrated,
-                        gameAudio = current.gameAudioLabel,
-                        codec = graph.codecWatcher.latest.value
-                            ?.takeIf { it.device == null || it.device == outcome.deviceName }?.summary,
-                        atMillis = System.currentTimeMillis(),
-                    ),
-                )
-            }
+            _turbo.value = _turbo.value.copy(diagnostics = graph.turbo.diagnostics())
+        }
+    }
+
+    fun turboEnableLowLatency() = turboAction("Turning on Bluetooth low-latency mode…") {
+        if (graph.turbo.enableVariableLatency()) {
+            "Bluetooth low-latency mode is on. Calls labelled as game audio can now use it where the hardware allows."
+        } else {
+            "This phone didn't accept it."
+        }
+    }
+
+    fun turboShortestBuffer() = turboAction("Shrinking the Bluetooth buffer…") {
+        val status = graph.turbo.codecStatus()
+        val ms = status?.let { graph.turbo.shortestBuffer(it.codecType) }
+        if (ms != null) "Phone-side Bluetooth buffer set to $ms ms. Measure again to see the effect."
+        else "This phone doesn't let apps change its Bluetooth buffer."
+    }
+
+    /** Switches through every codec the earbuds support, measures each by sound, and keeps the fastest. */
+    fun turboSweepCodecs() = turboAction("Testing codecs…") {
+        val status = graph.turbo.codecStatus() ?: return@turboAction "Couldn't read the codecs from the system."
+        val candidates = status.selectableTypes.ifEmpty { listOf(status.codecType) }
+        val results = mutableListOf<Pair<Int, Double>>()
+        for ((index, type) in candidates.withIndex()) {
+            val name = Codecs.name(type)
+            _turbo.value = _turbo.value.copy(busy = "Testing $name (${index + 1} of ${candidates.size})…")
+            if (!graph.turbo.setCodec(type)) continue
+            delay(CODEC_SETTLE_MS) // The stream restarts with the new codec.
+            val outcome = measureOnce("Codec: $name (auto)", codecOverride = name)
             _sonar.value = SonarState.Done(outcome)
+            if (outcome is SonarMeter.Outcome.Success) results += type to outcome.summary.delayMs
+        }
+        val best = results.minByOrNull { it.second }
+        if (best == null) {
+            graph.turbo.setCodec(status.codecType, status.codecSpecific1)
+            "Couldn't measure any codec. Hold the earbud against the mic for the whole test."
+        } else {
+            graph.turbo.setCodec(best.first)
+            loadTurboDiagnostics()
+            "Fastest: ${Codecs.name(best.first)} at ${best.second.toInt()} ms. Earshot switched to it."
+        }
+    }
+
+    private fun turboAction(busy: String, block: suspend () -> String) {
+        if (_turbo.value.busy != null) return
+        _turbo.value = _turbo.value.copy(busy = busy, message = null)
+        viewModelScope.launch {
+            val message = runCatching { block() }.getOrElse { "Failed: ${it.message}" }
+            _turbo.value = _turbo.value.copy(busy = null, message = message)
         }
     }
 

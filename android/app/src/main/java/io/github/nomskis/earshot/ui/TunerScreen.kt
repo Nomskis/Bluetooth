@@ -85,6 +85,7 @@ fun TunerScreen(
     onMeasure: (label: String) -> Unit,
     onClearRuns: (device: String) -> Unit,
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
+    turbo: @Composable () -> Unit,
     onBack: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
@@ -181,6 +182,8 @@ fun TunerScreen(
             TunerAdvice.tips(AdviceInput(device, runs, wifiBand, settings.gameAudioLabel)).forEach { tip ->
                 TipCard(tip, installedApps, context, onUpdateSettings)
             }
+
+            turbo()
 
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

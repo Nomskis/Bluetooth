@@ -6,6 +6,7 @@ import io.github.nomskis.earshot.audio.AudioRouteMonitor
 import io.github.nomskis.earshot.audio.CodecWatcher
 import io.github.nomskis.earshot.call.CallManager
 import io.github.nomskis.earshot.settings.SettingsRepository
+import io.github.nomskis.earshot.turbo.TurboClient
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -14,6 +15,7 @@ class AppGraph(context: Context) {
     val settings = SettingsRepository(context)
     val routeMonitor = AudioRouteMonitor(context)
     val codecWatcher = CodecWatcher(context)
+    val turbo by lazy { TurboClient(context) }
     val http: OkHttpClient = OkHttpClient.Builder()
         // Detects dead signaling connections (common when switching networks).
         .pingInterval(15, TimeUnit.SECONDS)

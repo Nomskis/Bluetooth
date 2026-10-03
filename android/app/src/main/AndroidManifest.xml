@@ -34,6 +34,8 @@
         <package android:name="com.jabra.moments" />
         <package android:name="com.bose.bosemusic" />
         <package android:name="com.google.android.apps.wearables.maestro.companion" />
+        <!-- Shizuku, for the optional Turbo controls. -->
+        <package android:name="moe.shizuku.privileged.api" />
     </queries>
 
     <application
@@ -66,6 +68,15 @@
                 <data android:scheme="earshot" android:host="join" />
             </intent-filter>
         </activity>
+
+        <!-- Lets Shizuku hand Earshot its binder (Turbo). -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
         <service
             android:name=".service.CallService"
