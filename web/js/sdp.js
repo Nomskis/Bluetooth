@@ -51,6 +51,45 @@ export function preferRedundantAudio(pc) {
   }
 }
 
+/** Opus target when the listener's earbuds stay on the music link (default is 32 kbps). */
+export const HD_VOICE_BITRATE = 48000;
+
+/**
+ * Asks the other side to encode their voice at a higher Opus bitrate
+ * (maxaveragebitrate in the Opus fmtp line we send; RFC 7587). The listener's
+ * earbuds stay on the music link, so they can actually play the difference.
+ * WebRTC encoders use this as their target.
+ */
+export function preferHdVoice(sdp, bitrate = HD_VOICE_BITRATE) {
+  const opus = sdp.match(/^a=rtpmap:(\d+) opus\/48000/im);
+  if (!opus) return sdp;
+  const pt = opus[1];
+  const lines = sdp.split('\r\n');
+  const fmtpIndex = lines.findIndex((l) => l.startsWith(`a=fmtp:${pt} `));
+  if (fmtpIndex >= 0) {
+    const params = lines[fmtpIndex]
+      .slice(`a=fmtp:${pt} `.length)
+      .split(';')
+      .map((p) => p.trim())
+      .filter((p) => p && !p.toLowerCase().startsWith('maxaveragebitrate='));
+    params.push(`maxaveragebitrate=${bitrate}`);
+    lines[fmtpIndex] = `a=fmtp:${pt} ${params.join(';')}`;
+  } else {
+    const rtpmapIndex = lines.findIndex((l) => l.startsWith(`a=rtpmap:${pt} `));
+    lines.splice(rtpmapIndex + 1, 0, `a=fmtp:${pt} maxaveragebitrate=${bitrate}`);
+  }
+  return lines.join('\r\n');
+}
+
+/** maxaveragebitrate on the Opus line of a description, or null. */
+export function opusMaxAverageBitrate(sdp) {
+  const opus = sdp?.match(/^a=rtpmap:(\d+) opus\/48000/im);
+  if (!opus) return null;
+  const fmtp = sdp.match(new RegExp(`^a=fmtp:${opus[1]} (.*)$`, 'm'));
+  const m = fmtp?.[1].match(/maxaveragebitrate=(\d+)/i);
+  return m ? Number(m[1]) : null;
+}
+
 /** The codec name of the first payload type on the audio line, e.g. "red" or "opus". */
 export function firstAudioCodec(sdp) {
   const m = sdp?.match(/^m=audio \S+ \S+ (\d+)/m);

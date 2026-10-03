@@ -85,4 +85,17 @@ class SdpTuningTest {
         assertFalse(removed.contains("b=TIAS"))
         assertEquals(offer, removed)
     }
+
+    @Test
+    fun asksForHdVoiceOnTheOpusLine() {
+        val tuned = SdpTuning.preferHdVoice(offer)
+        assertTrue(tuned.contains("a=fmtp:111 minptime=10;useinbandfec=1;maxaveragebitrate=48000"))
+        // Only the Opus line changes, and applying it twice changes nothing more.
+        assertEquals(tuned, SdpTuning.preferHdVoice(tuned))
+        assertTrue(tuned.contains("a=fmtp:63 111/111"))
+        // An Opus line without fmtp gets one.
+        val bare = offer.replace("a=fmtp:111 minptime=10;useinbandfec=1\r\n", "")
+        assertTrue(SdpTuning.preferHdVoice(bare).contains("a=rtpmap:111 opus/48000/2\r\na=fmtp:111 maxaveragebitrate=48000"))
+        assertEquals("v=0\r\n", SdpTuning.preferHdVoice("v=0\r\n"))
+    }
 }

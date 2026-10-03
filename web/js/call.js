@@ -15,7 +15,7 @@
  *   'error'         detail = { code, message }
  */
 
-import { firstAudioCodec, preferLowLatencyAudio, preferRedundantAudio } from './sdp.js';
+import { firstAudioCodec, opusMaxAverageBitrate, preferHdVoice, preferLowLatencyAudio, preferRedundantAudio } from './sdp.js';
 
 const ICE_RECOVERY_DELAY_MS = 4000;
 const OFFER_TIMEOUT_MS = 10_000;
@@ -29,6 +29,11 @@ export function randomId(prefix = '', bytes = 9) {
 
 function isHealthy(pc) {
   return pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed';
+}
+
+/** Our tweaks to every description we send: 10 ms packets and HD voice. */
+function tune(sdp) {
+  return preferHdVoice(preferLowLatencyAudio(sdp));
 }
 
 export class CallEngine extends EventTarget {
@@ -105,7 +110,7 @@ export class CallEngine extends EventTarget {
   /** What the current connection negotiated; for diagnostics and tests. */
   get negotiated() {
     const remote = this.#pc?.currentRemoteDescription?.sdp;
-    return { audioCodec: firstAudioCodec(remote) };
+    return { audioCodec: firstAudioCodec(remote), opusBitrate: opusMaxAverageBitrate(remote) };
   }
 
   hangUp() {
@@ -225,7 +230,7 @@ export class CallEngine extends EventTarget {
     if (this.#pc !== pc) return;
     await pc.setLocalDescription(answer);
     if (this.#pc !== pc) return;
-    this.#sendSignal({ kind: 'answer', session: this.#session, sdp: preferLowLatencyAudio(pc.localDescription.sdp) });
+    this.#sendSignal({ kind: 'answer', session: this.#session, sdp: tune(pc.localDescription.sdp) });
     await this.#flushCandidates(pc);
   }
 
@@ -307,7 +312,7 @@ export class CallEngine extends EventTarget {
     if (this.#pc !== pc) return;
     await pc.setLocalDescription(offer);
     if (this.#pc !== pc) return;
-    this.#sendSignal({ kind: 'offer', session, sdp: preferLowLatencyAudio(pc.localDescription.sdp) });
+    this.#sendSignal({ kind: 'offer', session, sdp: tune(pc.localDescription.sdp) });
     clearTimeout(this.#offerTimer);
     this.#offerTimer = setTimeout(() => {
       this.#enqueue(async () => {

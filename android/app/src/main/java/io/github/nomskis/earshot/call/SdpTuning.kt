@@ -66,6 +66,32 @@ object SdpTuning {
 
     private fun capLines(kbps: Int) = listOf("b=AS:$kbps", "b=TIAS:${kbps * 1000L}")
 
+    /** Opus target when the listener's earbuds stay on the music link (WebRTC's default is 32 kbps). */
+    const val HD_VOICE_BITRATE = 48_000
+
+    /**
+     * Asks the other side to encode their voice at a higher Opus bitrate
+     * (maxaveragebitrate in the Opus fmtp line we send; RFC 7587). In Hi-Fi
+     * mode the earbuds stay on the music link, so the difference is audible.
+     * WebRTC encoders use it as their target. Same as web/js/sdp.js.
+     */
+    fun preferHdVoice(sdp: String, bitrate: Int = HD_VOICE_BITRATE): String {
+        val pt = Regex("^a=rtpmap:(\\d+) opus/48000", setOf(RegexOption.MULTILINE, RegexOption.IGNORE_CASE))
+            .find(sdp)?.groupValues?.get(1) ?: return sdp
+        val lines = sdp.split("\r\n").toMutableList()
+        val prefix = "a=fmtp:$pt "
+        val fmtp = lines.indexOfFirst { it.startsWith(prefix) }
+        if (fmtp >= 0) {
+            val params = lines[fmtp].removePrefix(prefix).split(';').map { it.trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("maxaveragebitrate=", ignoreCase = true) }
+            lines[fmtp] = prefix + (params + "maxaveragebitrate=$bitrate").joinToString(";")
+        } else {
+            val rtpmap = lines.indexOfFirst { it.startsWith("a=rtpmap:$pt ") }
+            lines.add(rtpmap + 1, "$prefix" + "maxaveragebitrate=$bitrate")
+        }
+        return lines.joinToString("\r\n")
+    }
+
     /** The codec name of the first payload type on the audio line, e.g. "red" or "opus". */
     fun firstAudioCodec(sdp: String?): String? {
         if (sdp == null) return null

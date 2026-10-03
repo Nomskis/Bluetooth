@@ -182,3 +182,26 @@ test('both sides negotiate redundant audio (RED) so lost packets are repaired in
   await a.context.close();
   await b.context.close();
 });
+
+test('both sides ask for HD voice and encode at that bitrate', async ({ browser }) => {
+  const room = uniqueRoom('hdvoice');
+  const a = await joinAs(browser, room, 'A');
+  const b = await joinAs(browser, room, 'B');
+  await expectRemoteVideo(a.page);
+  await expectRemoteVideo(b.page);
+  for (const side of [a, b]) {
+    const negotiated = await side.page.evaluate(() => window.earshot.engine.negotiated);
+    expect(negotiated.opusBitrate).toBe(48000);
+    // The encoder's own target, where the browser reports it.
+    const target = await side.page.evaluate(async () => {
+      let t = null;
+      (await window.earshot.engine.getStats())?.forEach((s) => {
+        if (s.type === 'outbound-rtp' && s.kind === 'audio' && s.targetBitrate) t = s.targetBitrate;
+      });
+      return t;
+    });
+    if (target !== null) expect(target).toBeGreaterThanOrEqual(40000);
+  }
+  await a.context.close();
+  await b.context.close();
+});
