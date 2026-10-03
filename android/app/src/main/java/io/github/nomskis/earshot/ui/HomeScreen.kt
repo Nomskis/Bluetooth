@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import io.github.nomskis.earshot.R
 import io.github.nomskis.earshot.audio.AudioRoute
+import io.github.nomskis.earshot.audio.CodecInfo
 import io.github.nomskis.earshot.call.RoomCodes
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.AudioMode
@@ -78,6 +79,7 @@ fun HomeScreen(
     onDismissError: () -> Unit,
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
     delayRuns: List<DelayRun>,
+    codec: CodecInfo?,
     onJoin: (room: String, withVideo: Boolean) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenTuner: () -> Unit,
@@ -162,7 +164,7 @@ fun HomeScreen(
                 }
             }
 
-            RouteCard(route, settings.audioMode)
+            RouteCard(route, settings.audioMode, codec = codec)
 
             DelayCard(DelayRuns.latestFor(delayRuns, route.mediaOutput?.name), onOpenTuner)
 

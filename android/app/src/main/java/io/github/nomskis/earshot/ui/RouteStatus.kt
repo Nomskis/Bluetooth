@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.nomskis.earshot.audio.AudioRoute
+import io.github.nomskis.earshot.audio.CodecInfo
 import io.github.nomskis.earshot.audio.RouteQuality
 import io.github.nomskis.earshot.audio.Tone
 import io.github.nomskis.earshot.audio.describeRoute
@@ -49,8 +50,12 @@ private fun icon(route: AudioRoute, tone: Tone): ImageVector = when {
 
 /** The "where is my audio going" card on the home screen. */
 @Composable
-fun RouteCard(route: AudioRoute, mode: AudioMode, modifier: Modifier = Modifier) {
+fun RouteCard(route: AudioRoute, mode: AudioMode, modifier: Modifier = Modifier, codec: CodecInfo? = null) {
     val description = describeRoute(route, mode)
+    val codecLine = codec?.takeIf {
+        route.mediaOutput?.kind == io.github.nomskis.earshot.audio.DeviceKind.BLUETOOTH_MUSIC &&
+            (it.device == null || it.device == route.mediaOutput.name)
+    }?.summary
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -62,6 +67,9 @@ fun RouteCard(route: AudioRoute, mode: AudioMode, modifier: Modifier = Modifier)
                 Text("Audio output", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(description.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(description.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                codecLine?.let {
+                    Text("Codec: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
             }
         }
     }

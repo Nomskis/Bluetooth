@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import io.github.nomskis.earshot.appGraph
 import io.github.nomskis.earshot.audio.AudioProfile
 import io.github.nomskis.earshot.audio.AudioRoute
+import io.github.nomskis.earshot.audio.CodecInfo
 import io.github.nomskis.earshot.audio.LinkConditions
 import io.github.nomskis.earshot.audio.SonarMeter
 import io.github.nomskis.earshot.audio.WifiBand
@@ -52,6 +53,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val delayRuns: StateFlow<List<DelayRun>> =
         graph.settings.delayRuns.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    /** The last codec Android announced for any Bluetooth earbuds. */
+    val codec: StateFlow<CodecInfo?> = graph.codecWatcher.latest
+
+    /** Call after BLUETOOTH_CONNECT is granted. */
+    fun startCodecWatcher() = graph.codecWatcher.start()
+
     private val _sonar = MutableStateFlow<SonarState>(SonarState.Idle)
     val sonar: StateFlow<SonarState> = _sonar.asStateFlow()
 
@@ -76,6 +83,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         reportedMs = outcome.summary.reportedMs,
                         calibrated = outcome.summary.calibrated,
                         gameAudio = current.gameAudioLabel,
+                        codec = graph.codecWatcher.latest.value
+                            ?.takeIf { it.device == null || it.device == outcome.deviceName }?.summary,
                         atMillis = System.currentTimeMillis(),
                     ),
                 )

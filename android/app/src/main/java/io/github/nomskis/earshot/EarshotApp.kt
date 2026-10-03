@@ -3,6 +3,7 @@ package io.github.nomskis.earshot
 import android.app.Application
 import android.content.Context
 import io.github.nomskis.earshot.audio.AudioRouteMonitor
+import io.github.nomskis.earshot.audio.CodecWatcher
 import io.github.nomskis.earshot.call.CallManager
 import io.github.nomskis.earshot.settings.SettingsRepository
 import okhttp3.OkHttpClient
@@ -12,6 +13,7 @@ import java.util.concurrent.TimeUnit
 class AppGraph(context: Context) {
     val settings = SettingsRepository(context)
     val routeMonitor = AudioRouteMonitor(context)
+    val codecWatcher = CodecWatcher(context)
     val http: OkHttpClient = OkHttpClient.Builder()
         // Detects dead signaling connections (common when switching networks).
         .pingInterval(15, TimeUnit.SECONDS)
@@ -27,6 +29,7 @@ class EarshotApp : Application() {
     override fun onCreate() {
         super.onCreate()
         graph = AppGraph(this)
+        graph.codecWatcher.start()
     }
 }
 

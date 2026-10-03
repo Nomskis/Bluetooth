@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.nomskis.earshot.audio.AdviceInput
 import io.github.nomskis.earshot.audio.AudioRoute
+import io.github.nomskis.earshot.audio.CodecInfo
 import io.github.nomskis.earshot.audio.EarbudApps
 import io.github.nomskis.earshot.audio.SetupLabels
 import io.github.nomskis.earshot.audio.SonarMeter
@@ -77,6 +78,8 @@ fun TunerScreen(
     route: AudioRoute,
     runs: List<DelayRun>,
     sonar: SonarState,
+    codec: CodecInfo?,
+    onCodecPermissionGranted: () -> Unit,
     wifiBand: WifiBand?,
     inCall: Boolean,
     onMeasure: (label: String) -> Unit,
@@ -93,6 +96,11 @@ fun TunerScreen(
         if (granted) onMeasure(label)
     }
     val running = sonar is SonarState.Running
+    val bluetoothPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) onCodecPermissionGranted()
+    }
+    val needsBluetoothPermission = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+        !context.hasPermission(Manifest.permission.BLUETOOTH_CONNECT)
 
     Scaffold(
         topBar = {
@@ -117,7 +125,18 @@ fun TunerScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            RouteCard(route, settings.audioMode)
+            RouteCard(route, settings.audioMode, codec = codec)
+            if (needsBluetoothPermission) {
+                OutlinedButton(onClick = { bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT) }) {
+                    Text("Show which Bluetooth codec is used")
+                }
+            } else if (codec == null) {
+                Text(
+                    "The codec shows up here the next time your earbuds connect or you change it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             ResultCard(sonar)
 
@@ -265,7 +284,8 @@ private fun History(runs: List<DelayRun>, onClear: () -> Unit) {
                     Column(Modifier.weight(1f)) {
                         Text(run.label, style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            format.format(Date(run.atMillis)) + if (run.gameAudio) "" else " · media label",
+                            format.format(Date(run.atMillis)) + (run.codec?.let { " · $it" } ?: "") +
+                                if (run.gameAudio) "" else " · media label",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

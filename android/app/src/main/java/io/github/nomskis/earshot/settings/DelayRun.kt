@@ -17,6 +17,8 @@ data class DelayRun(
     val reportedMs: Double? = null,
     val calibrated: Boolean = true,
     val gameAudio: Boolean = true,
+    /** The Bluetooth codec Android reported at the time, when known. */
+    val codec: String? = null,
     val atMillis: Long,
 )
 

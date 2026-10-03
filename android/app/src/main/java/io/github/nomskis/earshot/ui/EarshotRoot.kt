@@ -26,6 +26,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
     val serverCheck by viewModel.serverCheck.collectAsStateWithLifecycle()
     val delayRuns by viewModel.delayRuns.collectAsStateWithLifecycle()
     val sonar by viewModel.sonar.collectAsStateWithLifecycle()
+    val codec by viewModel.codec.collectAsStateWithLifecycle()
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -56,6 +57,8 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 route = route,
                 runs = delayRuns,
                 sonar = sonar,
+                codec = codec,
+                onCodecPermissionGranted = viewModel::startCodecWatcher,
                 wifiBand = remember(route) { viewModel.wifiBand() },
                 inCall = false,
                 onMeasure = viewModel::measureDelay,
@@ -72,6 +75,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 onDismissError = viewModel::clearError,
                 onUpdateSettings = viewModel::updateSettings,
                 delayRuns = delayRuns,
+                codec = codec,
                 onJoin = viewModel::startCall,
                 onOpenSettings = { screen = Screen.SETTINGS },
                 onOpenTuner = { screen = Screen.TUNER },
