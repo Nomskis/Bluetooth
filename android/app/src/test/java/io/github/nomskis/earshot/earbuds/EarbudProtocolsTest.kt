@@ -251,4 +251,43 @@ class EarbudProtocolsTest {
         assertEquals(DriverResult.Ok(wasOn = false), EarFunSession(buds).setGameMode(true))
         assertTrue(on)
     }
+
+    // ---- Soundcore ----
+
+    @Test
+    fun soundcoreGamingModeFrame() {
+        // 08 EE 00 00 00 | 01 87 | length 11 | 01 | sum of the rest, low byte
+        assertArrayEquals(hex("08 EE 00 00 00 01 87 0B 00 01 8A"), SoundcoreFrames.encode(SoundcoreFrames.SET_GAMING_MODE, hex("01")))
+        val ack = SoundcoreFrames.encodeInbound(SoundcoreFrames.SET_GAMING_MODE, ByteArray(0))
+        val decoded = SoundcoreFrames.Decoder().feed(hex("00") + ack).single()
+        assertEquals(SoundcoreFrames.SET_GAMING_MODE, decoded.command)
+        val corrupt = ack.copyOf().also { it[it.size - 1] = (it[it.size - 1] + 1).toByte() }
+        assertTrue(SoundcoreFrames.Decoder().feed(corrupt).isEmpty())
+    }
+
+    @Test
+    fun soundcoreSessionWaitsForTheAck() {
+        val decoder = SoundcoreFrames.Decoder()
+        var on: Boolean? = null
+        val buds = FakeEarbuds { bytes ->
+            // The earbuds' parser: outbound frames start 08 EE.
+            if (bytes[0].toInt() == 0x08 && bytes[5].toInt() == 0x01 && (bytes[6].toInt() and 0xFF) == 0x87) {
+                on = bytes[9].toInt() == 1
+                listOf(SoundcoreFrames.encodeInbound(SoundcoreFrames.SET_GAMING_MODE, ByteArray(0)))
+            } else {
+                emptyList()
+            }
+        }
+        assertEquals(DriverResult.Ok(), SoundcoreSession(buds).setGamingMode(true))
+        assertEquals(true, on)
+        assertEquals(DriverResult.NoAnswer, SoundcoreSession(FakeEarbuds { emptyList() }).setGamingMode(true))
+        assertTrue(decoder.feed(ByteArray(0)).isEmpty())
+    }
+
+    @Test
+    fun soundcoreVendorServicesShareAPrefix() {
+        assertTrue(SoundcoreDriver.isVendorUuid(java.util.UUID.fromString("0cf12d31-fac3-4553-bd80-d6832e7abcde")))
+        assertFalse(SoundcoreDriver.isVendorUuid(java.util.UUID.fromString("0cf12d31-fac3-4553-bd80-d6832e800000")))
+        assertFalse(SoundcoreDriver.isVendorUuid(java.util.UUID.fromString("00001101-0000-1000-8000-00805f9b34fb")))
+    }
 }

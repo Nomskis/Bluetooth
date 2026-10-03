@@ -68,6 +68,7 @@ private val COMPANIONS = mapOf(
     "Nothing / CMF" to listOf("com.nothing.smartcenter"),
     "Xiaomi / Redmi" to listOf("com.mi.earphone"),
     "Huawei / Honor" to listOf("com.huawei.smarthome"),
+    "Soundcore" to listOf("com.oceanwing.soundcore"),
 )
 
 /**

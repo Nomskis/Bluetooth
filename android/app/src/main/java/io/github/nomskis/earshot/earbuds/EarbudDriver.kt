@@ -45,6 +45,7 @@ object EarbudDrivers {
         NothingDriver(),
         XiaomiDriver(),
         HuaweiDriver(),
+        SoundcoreDriver(),
         EarFunDriver(),
     )
 
