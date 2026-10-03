@@ -30,6 +30,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
     val turboInfo by viewModel.turbo.collectAsStateWithLifecycle()
     val earbudBoost by viewModel.earbudBoost.collectAsStateWithLifecycle()
     val turboBoost by viewModel.turboBoost.collectAsStateWithLifecycle()
+    val optimizer by viewModel.optimizer.collectAsStateWithLifecycle()
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -67,6 +68,8 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 wifiBand = remember(route) { viewModel.wifiBand() },
                 inCall = false,
                 onMeasure = viewModel::measureDelay,
+                optimizer = optimizer,
+                onFindFastest = viewModel::findFastestSetup,
                 onClearRuns = viewModel::clearDelayRuns,
                 onUpdateSettings = viewModel::updateSettings,
                 earbuds = {

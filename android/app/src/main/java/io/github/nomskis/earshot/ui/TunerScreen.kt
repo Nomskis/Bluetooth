@@ -83,6 +83,8 @@ fun TunerScreen(
     wifiBand: WifiBand?,
     inCall: Boolean,
     onMeasure: (label: String) -> Unit,
+    optimizer: MainViewModel.OptimizerState,
+    onFindFastest: () -> Unit,
     onClearRuns: (device: String) -> Unit,
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
     earbuds: @Composable () -> Unit,
@@ -94,8 +96,12 @@ fun TunerScreen(
     val device = route.mediaOutput?.name
     var label by rememberSaveable { mutableStateOf(SetupLabels.NORMAL) }
     val installedApps = remember { EarbudApps.installed(context) }
+    var findFastestAfterPermission by remember { mutableStateOf(false) }
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) onMeasure(label)
+        if (granted) {
+            if (findFastestAfterPermission) onFindFastest() else onMeasure(label)
+        }
+        findFastestAfterPermission = false
     }
     val running = sonar is SonarState.Running
     val bluetoothPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -171,6 +177,27 @@ fun TunerScreen(
                         enabled = !running && !inCall,
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(if (running) "Measuring…" else "Measure") }
+                    OutlinedButton(
+                        onClick = {
+                            if (context.hasPermission(Manifest.permission.RECORD_AUDIO)) {
+                                onFindFastest()
+                            } else {
+                                findFastestAfterPermission = true
+                                micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        },
+                        enabled = !running && !inCall && optimizer.busy == null,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Find my fastest setup (about a minute)") }
+                    Text(
+                        "Tries your setup as it is, your earbuds' game mode where Earshot can switch it, and every codec " +
+                            "with Turbo. Keep the earbud against the mic until it's done.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    (optimizer.busy ?: optimizer.message)?.let {
+                        Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    }
                     if (inCall) {
                         Text("End the call to measure; the chirps would play into it.", style = MaterialTheme.typography.bodySmall)
                     }
