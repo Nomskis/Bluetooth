@@ -28,6 +28,14 @@ object CallStats {
         return delay to emitted
     }
 
+    /** Cumulative (packetsReceived, packetsLost) for her audio. */
+    fun audioPackets(report: Map<String, Entry>): Pair<Double, Double>? {
+        val inbound = report.values.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "audio" } ?: return null
+        val received = number(inbound.members["packetsReceived"]) ?: return null
+        val lost = number(inbound.members["packetsLost"]) ?: return null
+        return received to lost
+    }
+
     private fun number(value: Any?): Double? = (value as? Number)?.toDouble()
 
     internal fun selectedPair(report: Map<String, Entry>): Entry? {

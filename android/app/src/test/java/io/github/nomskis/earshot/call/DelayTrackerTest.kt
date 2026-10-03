@@ -49,4 +49,26 @@ class DelayTrackerTest {
         assertNull(CallStats.audioJitterBuffer(emptyMap()))
         assertNull(CallStats.roundTripSeconds(emptyMap()))
     }
+
+    @Test
+    fun reportsRecentPacketLoss() {
+        val tracker = DelayTracker()
+        val report = { received: Long, lost: Long ->
+            mapOf(
+                "I" to CallStats.Entry(
+                    "inbound-rtp",
+                    mapOf(
+                        "kind" to "audio",
+                        "packetsReceived" to BigInteger.valueOf(received),
+                        "packetsLost" to lost.toInt(), // a signed 32-bit counter in the stats
+                        "jitterBufferDelay" to 0.0,
+                        "jitterBufferEmittedCount" to BigInteger.ONE,
+                    ),
+                ),
+            )
+        }
+        assertNull(tracker.update(report(1_000, 10), null, false).lossPercent) // no interval yet
+        assertEquals(2.0, tracker.update(report(1_196, 14), null, false).lossPercent!!, 1e-9)
+        assertEquals(0.0, tracker.update(report(1_396, 14), null, false).lossPercent!!, 1e-9)
+    }
 }

@@ -44,3 +44,11 @@ test('HD voice sets maxaveragebitrate on the Opus line only', () => {
   assert.equal(opusMaxAverageBitrate(tuned), 48000);
   assert.equal(opusMaxAverageBitrate(sdp), null);
 });
+
+test('delay tracker reports recent packet loss', () => {
+  const tracker = new DelayTracker();
+  const report = (received, lost) => [{ id: 'I', type: 'inbound-rtp', kind: 'audio', packetsReceived: received, packetsLost: lost }];
+  assert.equal(tracker.update(report(1000, 10), null).lossPercent, null);
+  assert.equal(tracker.update(report(1196, 14), null).lossPercent, 2);
+  assert.equal(tracker.update(report(1396, 14), null).lossPercent, 0);
+});

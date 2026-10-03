@@ -28,6 +28,9 @@ export class DelayTracker {
   #lastDelay = null;
   #lastEmitted = null;
   #jitterMs = null;
+  #lastReceived = null;
+  #lastLost = null;
+  #lossPercent = null;
 
   /** stats: an iterable of stats objects (RTCStatsReport values). outputMs: the device's output latency, if known. */
   update(stats, outputMs) {
@@ -46,8 +49,24 @@ export class DelayTracker {
       this.#lastDelay = delay;
       this.#lastEmitted = emitted;
     }
+    const received = inbound?.packetsReceived;
+    const lost = inbound?.packetsLost;
+    if (typeof received === 'number' && typeof lost === 'number') {
+      if (this.#lastReceived !== null && received >= this.#lastReceived && lost >= this.#lastLost) {
+        const expected = received - this.#lastReceived + (lost - this.#lastLost);
+        if (expected > 0) this.#lossPercent = ((lost - this.#lastLost) / expected) * 100;
+      }
+      this.#lastReceived = received;
+      this.#lastLost = lost;
+    }
     const networkMs = typeof rtt === 'number' ? Math.round((rtt * 1000) / 2) : null;
-    const parts = { senderMs: SENDER_ESTIMATE_MS, networkMs, jitterBufferMs: this.#jitterMs, outputMs: outputMs ?? null };
+    const parts = {
+      senderMs: SENDER_ESTIMATE_MS,
+      networkMs,
+      jitterBufferMs: this.#jitterMs,
+      outputMs: outputMs ?? null,
+      lossPercent: this.#lossPercent,
+    };
     const known = networkMs !== null && this.#jitterMs !== null && parts.outputMs !== null;
     return { ...parts, totalMs: known ? SENDER_ESTIMATE_MS + networkMs + this.#jitterMs + parts.outputMs : null };
   }

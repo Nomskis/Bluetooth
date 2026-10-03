@@ -248,7 +248,7 @@ async function updateDelay() {
   }
   ui.delay.hidden = false;
   ui.delay.textContent = delayOpen
-    ? `Their phone ≈ ${d.senderMs} ms · network ${d.networkMs} ms · buffer ${d.jitterBufferMs} ms · your device ${d.outputMs} ms`
+    ? `Their phone ≈ ${d.senderMs} ms · network ${d.networkMs} ms${d.lossPercent ? ` (${d.lossPercent.toFixed(1)}% lost)` : ''} · buffer ${d.jitterBufferMs} ms · your device ${d.outputMs} ms`
     : `≈ ${d.totalMs} ms from their mouth to your ears`;
 }
 

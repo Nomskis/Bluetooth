@@ -274,7 +274,8 @@ private fun DelayChip(delay: DelayBreakdown) {
             val small = MaterialTheme.typography.bodySmall
             val dim = Color.White.copy(alpha = 0.8f)
             Text("Their phone ≈ ${delay.senderMs} ms (estimate)", color = dim, style = small)
-            Text("Network ${delay.networkMs} ms", color = dim, style = small)
+            val loss = delay.lossPercent?.let { if (it < 0.05) ", no packets lost" else ", %.1f%% packets lost (repaired where possible)".format(it) } ?: ""
+            Text("Network ${delay.networkMs} ms$loss", color = dim, style = small)
             Text("Smoothing buffer ${delay.jitterBufferMs} ms", color = dim, style = small)
             Text(
                 "Your phone and earbuds ${delay.playoutMs} ms" + if (delay.playoutMeasured) " (measured)" else " (Android's estimate)",

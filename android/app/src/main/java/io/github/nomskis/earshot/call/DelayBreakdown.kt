@@ -18,6 +18,8 @@ data class DelayBreakdown(
     val playoutMs: Int?,
     /** True when [playoutMs] came from a delay-tuner measurement rather than Android's own estimate. */
     val playoutMeasured: Boolean,
+    /** Share of her audio packets lost over the last interval, 0..100 (before repair by RED and concealment). */
+    val lossPercent: Double? = null,
 ) {
     /** Null until the parts that vary are known. */
     val totalMs: Int? get() = if (networkMs == null || jitterBufferMs == null || playoutMs == null) null else senderMs + networkMs + jitterBufferMs + playoutMs
@@ -40,6 +42,9 @@ class DelayTracker {
     private var lastDelaySeconds: Double? = null
     private var lastEmitted: Double? = null
     private var jitterMs: Int? = null
+    private var lastReceived: Double? = null
+    private var lastLost: Double? = null
+    private var lossPercent: Double? = null
 
     /** [playoutMs] is the app-to-ear figure in use, [measured] whether it came from the delay tuner. */
     fun update(report: Map<String, CallStats.Entry>, playoutMs: Double?, measured: Boolean): DelayBreakdown {
@@ -56,12 +61,23 @@ class DelayTracker {
             lastDelaySeconds = delay
             lastEmitted = emitted
         }
+        CallStats.audioPackets(report)?.let { (received, lost) ->
+            val prevReceived = lastReceived
+            val prevLost = lastLost
+            if (prevReceived != null && prevLost != null && received >= prevReceived && lost >= prevLost) {
+                val expected = (received - prevReceived) + (lost - prevLost)
+                if (expected > 0) lossPercent = (lost - prevLost) / expected * 100
+            }
+            lastReceived = received
+            lastLost = lost
+        }
         return DelayBreakdown(
             senderMs = DelayBreakdown.SENDER_ESTIMATE_MS,
             networkMs = rtt?.let { (it * 1000 / 2).roundToInt() },
             jitterBufferMs = jitterMs,
             playoutMs = playoutMs?.roundToInt(),
             playoutMeasured = measured,
+            lossPercent = lossPercent,
         )
     }
 }
