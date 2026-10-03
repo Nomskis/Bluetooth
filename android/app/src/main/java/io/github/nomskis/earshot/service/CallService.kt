@@ -20,9 +20,10 @@ import io.github.nomskis.earshot.MainActivity
 import io.github.nomskis.earshot.R
 import io.github.nomskis.earshot.appGraph
 import io.github.nomskis.earshot.call.CallPhase
-import io.github.nomskis.earshot.call.CallState
 import io.github.nomskis.earshot.settings.AudioMode
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /**
@@ -48,17 +49,25 @@ class CallService : LifecycleService() {
                     stopSelf()
                     return@collectLatest
                 }
-                session.state.collect { state ->
-                    getSystemService(NotificationManager::class.java)
-                        .notify(NOTIFICATION_ID, buildNotification(state))
-                }
+                // Only what the notification shows: the call state also changes several
+                // times a second (talking cue, delay readout), and re-posting on each
+                // would get the app rate-limited.
+                session.state
+                    .map { NotificationInfo(it.phase, it.remotePeer?.name, it.room, it.audioMode, it.micMuted) }
+                    .distinctUntilChanged()
+                    .collect { info ->
+                        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(info))
+                    }
             }
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        if (intent?.action == ACTION_HANG_UP) appGraph.callManager.endCall()
+        when (intent?.action) {
+            ACTION_HANG_UP -> appGraph.callManager.endCall()
+            ACTION_TOGGLE_MUTE -> appGraph.callManager.session.value?.let { it.setMicMuted(!it.state.value.micMuted) }
+        }
         return START_NOT_STICKY
     }
 
@@ -96,7 +105,15 @@ class CallService : LifecycleService() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    private fun buildNotification(state: CallState?): Notification {
+    private data class NotificationInfo(
+        val phase: CallPhase,
+        val peerName: String?,
+        val room: String,
+        val audioMode: AudioMode,
+        val micMuted: Boolean,
+    )
+
+    private fun buildNotification(state: NotificationInfo?): Notification {
         val open = PendingIntent.getActivity(
             this,
             0,
@@ -110,7 +127,7 @@ class CallService : LifecycleService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val title = when (state?.phase) {
-            CallPhase.CONNECTED -> state.remotePeer?.name?.takeIf { it.isNotBlank() }
+            CallPhase.CONNECTED -> state.peerName?.takeIf { it.isNotBlank() }
                 ?.let { getString(R.string.notification_in_call_with, it) }
                 ?: getString(R.string.notification_in_call)
             CallPhase.WAITING -> getString(R.string.notification_waiting)
@@ -130,6 +147,17 @@ class CallService : LifecycleService() {
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .apply {
+                if (state != null) {
+                    val mute = PendingIntent.getService(
+                        this@CallService,
+                        2,
+                        Intent(this@CallService, CallService::class.java).setAction(ACTION_TOGGLE_MUTE),
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                    )
+                    addAction(0, getString(if (state.micMuted) R.string.unmute else R.string.mute), mute)
+                }
+            }
             .addAction(0, getString(R.string.hang_up), hangUp)
             .build()
     }
@@ -138,6 +166,7 @@ class CallService : LifecycleService() {
         private const val CHANNEL_ID = "calls"
         private const val NOTIFICATION_ID = 1
         private const val ACTION_HANG_UP = "io.github.nomskis.earshot.HANG_UP"
+        private const val ACTION_TOGGLE_MUTE = "io.github.nomskis.earshot.TOGGLE_MUTE"
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, CallService::class.java))

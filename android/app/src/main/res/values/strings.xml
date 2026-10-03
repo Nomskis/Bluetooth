@@ -3,6 +3,8 @@
     <string name="app_name">Earshot</string>
     <string name="tagline">Video calls that keep your earbuds in music quality.</string>
     <string name="hang_up">Hang up</string>
+    <string name="mute">Mute</string>
+    <string name="unmute">Unmute</string>
     <string name="notification_channel_calls">Ongoing calls</string>
     <string name="notification_connecting">Connecting…</string>
     <string name="notification_waiting">Waiting for the other person</string>
