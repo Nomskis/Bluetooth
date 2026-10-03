@@ -38,7 +38,7 @@ class EarbudBoost(private val control: EarbudControl) {
                 if (result.wasOn != true) restore = target
                 Status(target.name, if (result.wasOn == true) "Earbud game mode already on" else "Earbud game mode on", true)
             }
-            else -> Status(target.name, result.describe(), false)
+            else -> Status(target.name, result.describe(control.context, driver.family), false)
         }
     }
 

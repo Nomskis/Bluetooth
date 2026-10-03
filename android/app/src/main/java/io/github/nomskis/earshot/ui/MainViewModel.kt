@@ -364,7 +364,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 result == null -> "Couldn't find the earbuds' switch."
                 result is DriverResult.Ok && on -> "Game mode is on. Measure now with the label \"Game mode on\"."
                 result is DriverResult.Ok -> "Game mode is off."
-                else -> result.describe()
+                else -> result.describe(getApplication(), _earbuds.value.family)
             }
             _earbuds.value = _earbuds.value.copy(busy = null, message = message)
         }

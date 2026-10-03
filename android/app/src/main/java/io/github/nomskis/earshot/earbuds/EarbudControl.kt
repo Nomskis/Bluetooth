@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import io.github.nomskis.earshot.audio.EarbudApps
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
@@ -17,6 +18,7 @@ import kotlin.coroutines.resume
 /** Finds the connected earbuds and the driver that can switch their game mode. */
 class EarbudControl(context: Context) {
     private val appContext = context.applicationContext
+    val context: Context get() = appContext
 
     data class Target(val device: BluetoothDevice, val name: String, val driver: EarbudDriver?)
 
@@ -58,6 +60,26 @@ class EarbudControl(context: Context) {
             }
         }
     }
+}
+
+/** The brand apps that hold each family's control channel when they're running. */
+private val COMPANIONS = mapOf(
+    "OPPO / OnePlus / realme" to listOf("com.realme.link", "com.heytap.headset"),
+    "Nothing / CMF" to listOf("com.nothing.smartcenter"),
+    "Xiaomi / Redmi" to listOf("com.mi.earphone"),
+    "Huawei / Honor" to listOf("com.huawei.smarthome"),
+)
+
+/**
+ * [describe], naming the installed brand app when the control channel was
+ * busy, since that app is almost always the one holding it.
+ */
+fun DriverResult.describe(context: Context, family: String?): String {
+    if (this != DriverResult.ChannelBusy) return describe()
+    val packages = COMPANIONS[family].orEmpty()
+    val holder = EarbudApps.installed(context).firstOrNull { it.packageName in packages }
+        ?: return describe()
+    return "${holder.name} is probably connected to the earbuds. Force-stop it (Settings › Apps › ${holder.name} › Force stop) and try again."
 }
 
 fun DriverResult.describe(): String = when (this) {
