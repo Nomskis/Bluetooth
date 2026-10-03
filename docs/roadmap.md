@@ -10,8 +10,11 @@ Roughly in order. Each item stands on its own; pick any.
   without earbud game mode.
 - **Confirm the earbud drivers on real earbuds**, starting with the ones
   marked experimental (Huawei/Honor, EarFun), and add brands as their
-  protocols get documented (Soundcore, Sony, JBL, Jabra have no public
-  game-mode commands yet).
+  protocols get documented. Next candidates: QCY (game mode over Bluetooth
+  LE GATT, with a different protocol per chip vendor; documented by the
+  unlicensed QuickyAndroid project, so only its facts could be used), Edifier
+  (one model documented, payloads XOR-masked). Sony, JBL and Jabra have no
+  public game-mode commands.
 - **Collect radio-test results** per phone model to learn which chips suffer
   from 2.4 GHz coexistence, and default the mobile-data switch accordingly.
 - **Web lip sync.** The browser side has the talking cue and delay readout;
