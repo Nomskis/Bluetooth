@@ -115,9 +115,12 @@ npm start          # http://0.0.0.0:8080
 
 ### 2. Install the Android app
 
-Every push builds a debug APK in GitHub Actions: open the latest **CI** run,
-download **earshot-debug-apk**, and install it (allow "install unknown apps"
-for your browser or file manager). Or build it yourself:
+On the phone, download
+[**earshot-debug.apk**](https://github.com/Nomskis/Bluetooth/releases/download/nightly/earshot-debug.apk)
+from the rolling [nightly release](https://github.com/Nomskis/Bluetooth/releases/tag/nightly)
+and open it (allow "install unknown apps" for your browser). Each build
+installs over the last. Every push also leaves the APK on its GitHub Actions
+run (**earshot-debug-apk**). Or build it yourself:
 
 ```sh
 cd android
