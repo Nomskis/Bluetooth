@@ -59,7 +59,7 @@ class CallService : LifecycleService() {
                     // times a second (talking cue, delay readout), and re-posting on each
                     // would get the app rate-limited.
                     session.state
-                        .map { NotificationInfo(it.phase, it.remotePeer?.name, it.room, it.audioMode, it.micMuted) }
+                        .map { NotificationInfo(it.phase, it.remotePeer?.name, it.room, it.audioMode, it.micMuted, it.outputHeld) }
                         .distinctUntilChanged()
                         .collect { info ->
                             getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(info))
@@ -121,6 +121,7 @@ class CallService : LifecycleService() {
         val room: String,
         val audioMode: AudioMode,
         val micMuted: Boolean,
+        val outputHeld: Boolean,
     )
 
     private fun buildNotification(state: NotificationInfo?): Notification {
@@ -144,9 +145,14 @@ class CallService : LifecycleService() {
             CallPhase.RECONNECTING -> getString(R.string.notification_reconnecting)
             else -> getString(R.string.notification_connecting)
         }
-        val text = buildString {
-            append(state?.room ?: "")
-            if (state?.audioMode == AudioMode.HIFI) append(" · ").append(getString(R.string.notification_hifi))
+        val text = if (state?.outputHeld == true) {
+            // The banner in the app may not be visible (pocket, picture-in-picture).
+            getString(R.string.notification_output_held)
+        } else {
+            buildString {
+                append(state?.room ?: "")
+                if (state?.audioMode == AudioMode.HIFI) append(" · ").append(getString(R.string.notification_hifi))
+            }
         }
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
