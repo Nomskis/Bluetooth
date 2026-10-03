@@ -12,4 +12,8 @@
     <string name="notification_in_call">In a call</string>
     <string name="notification_in_call_with">In a call with %1$s</string>
     <string name="notification_hifi">Hi-Fi audio</string>
+    <string name="notification_channel_chat">Chat messages during calls</string>
+    <string name="chat_you">You</string>
+    <string name="chat_reply">Reply</string>
+    <string name="chat_someone">The other person</string>
 </resources>

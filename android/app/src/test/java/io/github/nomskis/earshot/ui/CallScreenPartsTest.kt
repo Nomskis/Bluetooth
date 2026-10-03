@@ -8,14 +8,18 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.audio.DeviceKind
 import io.github.nomskis.earshot.audio.OutputDevice
 import io.github.nomskis.earshot.call.CallPhase
 import io.github.nomskis.earshot.call.CallState
+import io.github.nomskis.earshot.call.Chat
+import io.github.nomskis.earshot.call.ChatMessage
 import io.github.nomskis.earshot.call.DelayBreakdown
 import io.github.nomskis.earshot.call.LipSync
 import io.github.nomskis.earshot.settings.AudioMode
+import io.github.nomskis.earshot.signaling.ClientInfo
 import io.github.nomskis.earshot.signaling.PeerInfo
 import io.github.nomskis.earshot.ui.theme.EarshotTheme
 import org.junit.Assert.assertEquals
@@ -87,5 +91,50 @@ class CallScreenPartsTest {
         compose.onNodeWithContentDescription("Hang up").performClick()
         assertEquals(1, earbudMic)
         assertEquals(1, hungUp)
+        // Sam's client doesn't list chat, so there's no chat button.
+        compose.onNodeWithContentDescription("Chat").assertDoesNotExist()
+    }
+
+    @Test
+    fun chatButtonShowsUnreadWhenTheOtherSideHasChat() {
+        var opened = 0
+        val withChat = state.copy(remotePeer = PeerInfo("p1", "Sam", ClientInfo("web", "0.1.0", listOf(Chat.CAPABILITY)), seq = 1))
+        compose.setContent {
+            EarshotTheme {
+                Controls(
+                    state = withChat,
+                    onMic = {},
+                    onCamera = {},
+                    onSwitchCamera = {},
+                    onVolume = {},
+                    onVolumeDone = {},
+                    onReplay = {},
+                    onEarbudMic = {},
+                    onHangUp = {},
+                    modifier = Modifier,
+                    onChat = { opened++ },
+                    unreadChat = 2,
+                )
+            }
+        }
+        compose.onNodeWithText("2").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Chat, 2 unread").performClick()
+        assertEquals(1, opened)
+    }
+
+    @Test
+    fun chatPanelShowsTheConversationAndSendsQuickReplies() {
+        val sent = mutableListOf<String>()
+        val messages = listOf(
+            ChatMessage("a", "Can't hear you", mine = false, atMillis = 1, status = ChatMessage.Status.RECEIVED),
+            ChatMessage("b", "Moving away from the speakers", mine = true, atMillis = 2, status = ChatMessage.Status.DELIVERED),
+        )
+        compose.setContent { EarshotTheme { ChatPanel(messages, onSend = { sent += it }, onClose = {}) } }
+        compose.onNodeWithText("Moving away from the speakers").assertIsDisplayed()
+        compose.onNodeWithText("Delivered").assertIsDisplayed()
+        compose.onNodeWithText("One sec").performClick()
+        compose.onNodeWithText("Message").performTextInput("  On my way  ")
+        compose.onNodeWithContentDescription("Send").performClick()
+        assertEquals(listOf("One sec", "  On my way  "), sent)
     }
 }

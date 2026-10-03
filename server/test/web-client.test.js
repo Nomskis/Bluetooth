@@ -1,6 +1,8 @@
 // Unit tests for the browser client's pure logic (web/js), run with the server's tests.
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import fs from 'node:fs';
+import { ChatLog, MAX_CHAT_LENGTH, parseChat } from '../../web/js/chat.js';
 import { DelayTracker, SENDER_ESTIMATE_MS } from '../../web/js/delay.js';
 import { opusMaxAverageBitrate, preferHdVoice } from '../../web/js/sdp.js';
 import { VoiceActivityDetector, rms } from '../../web/js/voice.js';
@@ -51,4 +53,84 @@ test('delay tracker reports recent packet loss', () => {
   assert.equal(tracker.update(report(1000, 10), null).lossPercent, null);
   assert.equal(tracker.update(report(1196, 14), null).lossPercent, 2);
   assert.equal(tracker.update(report(1396, 14), null).lossPercent, 0);
+});
+
+/** Stands in for an RTCDataChannel; `wire` collects what was sent. */
+class FakeChannel extends EventTarget {
+  readyState = 'connecting';
+  wire = [];
+  send(text) {
+    this.wire.push(JSON.parse(text));
+  }
+  open() {
+    this.readyState = 'open';
+    this.dispatchEvent(new Event('open'));
+  }
+  deliver(frame) {
+    this.dispatchEvent(Object.assign(new Event('message'), { data: JSON.stringify(frame) }));
+  }
+}
+
+function chatLog() {
+  let n = 0;
+  return new ChatLog({ newId: () => `m-${++n}`, now: () => 1000 });
+}
+
+test('chat: queued until the channel opens, then delivered on acknowledgement', () => {
+  const chat = chatLog();
+  const channel = new FakeChannel();
+  chat.attach(channel);
+  assert.equal(chat.send('   '), null);
+  chat.send('  One sec ');
+  assert.deepEqual(channel.wire, []);
+  channel.open();
+  assert.deepEqual(channel.wire, [{ kind: 'chat', id: 'm-1', text: 'One sec', sentAt: 1000 }]);
+  assert.equal(chat.messages[0].status, 'sending');
+  channel.deliver({ kind: 'chat-ack', id: 'm-1' });
+  assert.equal(chat.messages[0].status, 'delivered');
+});
+
+test('chat: unacknowledged messages go again on the next connection, and repeats are dropped', () => {
+  const chat = chatLog();
+  const first = new FakeChannel();
+  chat.attach(first);
+  first.open();
+  chat.send('Can you hear me?');
+  chat.detach();
+  const second = new FakeChannel();
+  chat.attach(second);
+  second.open();
+  assert.equal(second.wire.length, 1);
+  assert.equal(second.wire[0].id, 'm-1');
+
+  const incoming = [];
+  chat.addEventListener('message', (e) => incoming.push(e.detail.text));
+  second.deliver({ kind: 'chat', id: 'x-1', text: 'Yes!', sentAt: 5 });
+  second.deliver({ kind: 'chat', id: 'x-1', text: 'Yes!', sentAt: 5 });
+  assert.deepEqual(incoming, ['Yes!']);
+  // Both copies are acknowledged: the first acknowledgement may have been lost.
+  assert.deepEqual(second.wire.filter((f) => f.kind === 'chat-ack').map((f) => f.id), ['x-1', 'x-1']);
+  // Frames from a channel that was replaced are ignored.
+  first.deliver({ kind: 'chat', id: 'x-2', text: 'old', sentAt: 6 });
+  assert.equal(chat.messages.filter((m) => !m.mine).length, 1);
+});
+
+test('chat: a different person in the room means undelivered messages failed', () => {
+  const chat = chatLog();
+  chat.send('hello?');
+  chat.peerChanged();
+  assert.equal(chat.messages[0].status, 'failed');
+});
+
+test('chat: parser accepts the shared fixtures and rejects junk', () => {
+  const dir = new URL('../../protocol/fixtures/peer/', import.meta.url);
+  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.json'))) {
+    const raw = fs.readFileSync(new URL(file, dir), 'utf8');
+    assert.equal(parseChat(raw)?.kind, JSON.parse(raw).kind, file);
+  }
+  assert.equal(parseChat('nope'), null);
+  assert.equal(parseChat(JSON.stringify({ kind: 'chat', id: 'a', text: '  ' })), null);
+  assert.equal(parseChat(JSON.stringify({ kind: 'chat', text: 'no id' })), null);
+  assert.equal(parseChat(JSON.stringify({ kind: 'typing', id: 'a' })), null);
+  assert.equal(parseChat(JSON.stringify({ kind: 'chat', id: 'a', text: 'x'.repeat(5000) })).text.length, MAX_CHAT_LENGTH);
 });

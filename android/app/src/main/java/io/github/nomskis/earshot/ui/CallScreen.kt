@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Cameraswitch
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
@@ -42,8 +44,10 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -64,11 +68,13 @@ import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.call.CallPhase
 import io.github.nomskis.earshot.call.CallSession
 import io.github.nomskis.earshot.call.CallState
+import io.github.nomskis.earshot.call.ChatMessage
 import io.github.nomskis.earshot.call.DelayBreakdown
 import io.github.nomskis.earshot.call.LipSync
 import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.ui.theme.Accent
 import io.github.nomskis.earshot.ui.theme.Danger
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 @Composable
@@ -90,6 +96,26 @@ fun CallScreen(
     }
     // Back keeps the call running; the notification brings you back.
     BackHandler(onBack = onLeaveScreen)
+
+    // Chat: what's unread, and their latest message as a bubble while it's closed.
+    var chatOpen by rememberSaveable(session) { mutableStateOf(false) }
+    BackHandler(enabled = chatOpen) { chatOpen = false }
+    val incoming = state.chat.count { !it.mine }
+    var seenIncoming by rememberSaveable(session) { mutableIntStateOf(0) }
+    LaunchedEffect(chatOpen, incoming) { if (chatOpen) seenIncoming = incoming }
+    var bubble by remember(session) { mutableStateOf<ChatMessage?>(null) }
+    var bubbleShownId by rememberSaveable(session) { mutableStateOf<String?>(null) }
+    LaunchedEffect(state.lastIncomingChat?.id, chatOpen) {
+        val message = state.lastIncomingChat
+        if (chatOpen || message == null || message.id == bubbleShownId) {
+            bubble = null
+            return@LaunchedEffect
+        }
+        bubbleShownId = message.id
+        bubble = message
+        delay(BUBBLE_MS)
+        bubble = null
+    }
 
     val showRemoteVideo = state.hasRemoteVideo && !state.remoteMedia.cameraOff
     // The head-start cue: lights up as her voice enters the phone, before the
@@ -127,7 +153,7 @@ fun CallScreen(
 
         TopBar(state, route, listOfNotNull(earbudBoost?.text, turboNote), Modifier.align(Alignment.TopCenter))
 
-        if (state.hasCamera && !state.cameraOff) {
+        if (state.hasCamera && !state.cameraOff && !chatOpen) {
             VideoRenderer(
                 sink = session.localPreview,
                 eglContext = session.eglContext,
@@ -142,20 +168,45 @@ fun CallScreen(
             )
         }
 
-        Controls(
-            state = state,
-            onMic = { session.setMicMuted(!state.micMuted) },
-            onCamera = { session.setCameraOff(!state.cameraOff) },
-            onSwitchCamera = session::switchCamera,
-            onVolume = session::setVoiceVolume,
-            onVolumeDone = onVoiceVolumeSaved,
-            onReplay = session::toggleReplay,
-            onEarbudMic = { session.setEarbudMic(!state.earbudMic) },
-            onHangUp = session::hangUp,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
+        bubble?.let { message ->
+            ChatBubble(
+                name = state.remotePeer?.name?.takeIf { it.isNotBlank() } ?: "They",
+                message = message,
+                onOpen = { chatOpen = true },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .navigationBarsPadding()
+                    .padding(start = 16.dp, end = 136.dp, bottom = 180.dp),
+            )
+        }
+
+        if (chatOpen && state.chatAvailable) {
+            ChatPanel(
+                messages = state.chat,
+                onSend = session::sendChat,
+                onClose = { chatOpen = false },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        } else {
+            Controls(
+                state = state,
+                onMic = { session.setMicMuted(!state.micMuted) },
+                onCamera = { session.setCameraOff(!state.cameraOff) },
+                onSwitchCamera = session::switchCamera,
+                onVolume = session::setVoiceVolume,
+                onVolumeDone = onVoiceVolumeSaved,
+                onReplay = session::toggleReplay,
+                onEarbudMic = { session.setEarbudMic(!state.earbudMic) },
+                onHangUp = session::hangUp,
+                onChat = { chatOpen = true },
+                unreadChat = (incoming - seenIncoming).coerceAtLeast(0),
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
     }
 }
+
+private const val BUBBLE_MS = 6_000L
 
 @Composable
 private fun RemotePlaceholder(state: CallState, compact: Boolean) {
@@ -310,6 +361,8 @@ internal fun Controls(
     onEarbudMic: () -> Unit,
     onHangUp: () -> Unit,
     modifier: Modifier,
+    onChat: () -> Unit = {},
+    unreadChat: Int = 0,
 ) {
     var showVolume by rememberSaveable { mutableStateOf(false) }
     var volume by remember(state.voiceVolume) { mutableFloatStateOf(state.voiceVolume) }
@@ -366,6 +419,25 @@ internal fun Controls(
                     small = true,
                     onClick = onEarbudMic,
                 )
+            }
+            if (state.chatAvailable) {
+                BadgedBox(
+                    badge = {
+                        if (unreadChat > 0) {
+                            androidx.compose.material3.Badge(containerColor = Accent, contentColor = Color.Black) {
+                                Text(if (unreadChat > 9) "9+" else "$unreadChat")
+                            }
+                        }
+                    },
+                ) {
+                    ControlButton(
+                        Icons.AutoMirrored.Filled.Chat,
+                        if (unreadChat > 0) "Chat, $unreadChat unread" else "Chat",
+                        active = false,
+                        small = true,
+                        onClick = onChat,
+                    )
+                }
             }
             if (state.canReplay) {
                 ControlButton(

@@ -48,6 +48,7 @@ import org.webrtc.RtpReceiver
 import org.webrtc.RtpTransceiver
 import org.webrtc.SessionDescription
 import org.webrtc.VideoTrack
+import java.nio.ByteBuffer
 import java.util.concurrent.Executors
 
 /**
@@ -125,6 +126,9 @@ class CallSession(
     private val delayTracker = DelayTracker()
     private var playoutMs: Double? = null
     private var playoutMeasured = false
+    /** Lives across reconnects, so what's unacknowledged goes again on the next connection. */
+    private val chat = ChatLog()
+    private var lastPeerId: String? = null
 
     /** One RTCPeerConnection and everything tied to it. */
     private class Link(val pc: PeerConnection, val session: String, val tracks: SendTracks) {
@@ -132,6 +136,7 @@ class CallSession(
         var tracksAdded = false
         var remoteAudio: AudioTrack? = null
         var remoteVideoTrack: VideoTrack? = null
+        var chatChannel: DataChannel? = null
 
         val isHealthy: Boolean
             get() = pc.iceConnectionState().let {
@@ -162,6 +167,9 @@ class CallSession(
         data class SetEarbudMic(val on: Boolean) : Event
         data class SetLipSync(val plan: LipSync.Plan?, val playoutMs: Double?, val measured: Boolean) : Event
         class Stats(val link: Link, val report: RTCStatsReport) : Event
+        class ChatChannelState(val link: Link, val open: Boolean) : Event
+        class ChatIncoming(val link: Link, val text: String) : Event
+        data class SendChat(val text: String) : Event
         data object HangUp : Event
     }
 
@@ -200,6 +208,7 @@ class CallSession(
      * [plan] how far to hold video back for it.
      */
     fun setPlayout(plan: LipSync.Plan?, playoutMs: Double?, measured: Boolean) = post(Event.SetLipSync(plan, playoutMs, measured))
+    fun sendChat(text: String) = post(Event.SendChat(text))
     fun hangUp() = post(Event.HangUp)
 
     private fun post(event: Event) {
@@ -236,7 +245,7 @@ class CallSession(
             client = ClientInfo(
                 platform = "android",
                 version = BuildConfig.VERSION_NAME,
-                capabilities = listOf("hifi-audio"),
+                capabilities = listOf("hifi-audio", Chat.CAPABILITY),
             ),
         )
         signaling = SignalingClient(http, wsUrl, join, scope)
@@ -327,6 +336,20 @@ class CallSession(
                 _state.update { it.copy(lipSync = event.plan) }
             }
             is Event.Stats -> if (event.link === link) onStats(event.link, event.report)
+            is Event.ChatChannelState -> if (event.link === link) {
+                val channel = event.link.chatChannel
+                if (event.open && channel != null) chat.attach { text -> channel.sendText(text) } else chat.detach()
+                publishChat()
+            }
+            is Event.ChatIncoming -> if (event.link === link) {
+                val incoming = chat.receive(event.text)
+                publishChat()
+                if (incoming != null) _state.update { it.copy(lastIncomingChat = incoming) }
+            }
+            is Event.SendChat -> {
+                chat.send(event.text)
+                publishChat()
+            }
             Event.HangUp -> finish(CallPhase.ENDED)
         }
     }
@@ -673,6 +696,42 @@ class CallSession(
         }
     }
 
+    // --- chat -------------------------------------------------------------------------------
+
+    private fun publishChat() {
+        _state.update { it.copy(chat = chat.messages) }
+    }
+
+    /** Created on both sides before negotiating, so the offer carries it and nobody waits for the other. */
+    private fun openChatChannel(l: Link) {
+        val init = DataChannel.Init().apply {
+            negotiated = true
+            id = Chat.CHANNEL_ID
+            ordered = true
+        }
+        val channel = l.pc.createDataChannel(Chat.CHANNEL_LABEL, init) ?: return
+        l.chatChannel = channel
+        channel.registerObserver(object : DataChannel.Observer {
+            override fun onBufferedAmountChange(previousAmount: Long) = Unit
+
+            override fun onStateChange() {
+                val open = runCatching { channel.state() == DataChannel.State.OPEN }.getOrDefault(false)
+                post(Event.ChatChannelState(l, open))
+            }
+
+            override fun onMessage(buffer: DataChannel.Buffer) {
+                if (buffer.binary) return
+                // The buffer is only valid during this call.
+                val bytes = ByteArray(buffer.data.remaining()).also { buffer.data.get(it) }
+                post(Event.ChatIncoming(l, String(bytes, Charsets.UTF_8)))
+            }
+        })
+    }
+
+    private fun DataChannel.sendText(text: String): Boolean = runCatching {
+        send(DataChannel.Buffer(ByteBuffer.wrap(text.toByteArray(Charsets.UTF_8)), false))
+    }.getOrDefault(false)
+
     // --- peer connection lifecycle ------------------------------------------------------
 
     private fun createLink(session: String): Link {
@@ -682,7 +741,10 @@ class CallSession(
         val tracks = engine.createSendTracks()
         tracks.audio.setEnabled(!_state.value.micMuted)
         tracks.video?.setEnabled(!_state.value.cameraOff)
-        return Link(pc, session, tracks).also { observer.link = it }
+        return Link(pc, session, tracks).also {
+            observer.link = it
+            openChatChannel(it)
+        }
     }
 
     private fun addLocalTracks(l: Link) {
@@ -700,6 +762,11 @@ class CallSession(
         link = null
         l.remoteVideoTrack?.removeSink(lipSyncSink)
         l.remoteAudio?.removeSink(voiceTap)
+        chat.detach()
+        l.chatChannel?.let { channel ->
+            channel.unregisterObserver()
+            channel.dispose()
+        }
         // dispose() also disposes the tracks its senders own (ours, once added).
         l.pc.dispose()
         if (!l.tracksAdded) {
@@ -753,6 +820,11 @@ class CallSession(
     }
 
     private fun setRemote(peer: PeerInfo?) {
+        if (peer != null && lastPeerId != null && peer.peerId != lastPeerId) {
+            chat.peerChanged()
+            publishChat()
+        }
+        if (peer != null) lastPeerId = peer.peerId
         remote = peer
         _state.update {
             it.copy(remotePeer = peer, remoteMedia = if (peer == null) RemoteMedia() else it.remoteMedia)

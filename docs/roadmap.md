@@ -23,7 +23,6 @@ Roughly in order. Each item stands on its own; pick any.
 - **Headset mode to Hi-Fi mid-call.** Hi-Fi calls can now borrow the earbud
   mic and come back; a call started in headset mode still can't move to
   Hi-Fi without rebuilding the audio device module.
-- **Text chat over a data channel**, handy when one side is muted at the gym.
 - **Connection quality indicator** from WebRTC stats (round-trip time, packet
   loss, bitrate), plus a debug screen with the selected codec and candidate
   type. The stats poller behind the mobile-data switch is the start of it.

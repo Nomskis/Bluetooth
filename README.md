@@ -65,6 +65,10 @@ this list works with every pair of classic Bluetooth earbuds:
 - **Calls survive your pocket.** A per-phone-brand guide through the battery
   switches HyperOS, ColorOS, EMUI, Funtouch and One UI use to stop background
   apps.
+- **Text chat for loud moments.** Muted, or the gym is too loud? Type, or tap
+  a quick reply ("Can't hear you", "One sec"), also straight from the
+  notification with the phone in your pocket. Messages go phone to phone,
+  encrypted, and are re-sent if the connection drops.
 
 And two optional extras that go further:
 

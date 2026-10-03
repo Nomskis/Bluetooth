@@ -23,7 +23,9 @@ format has to update the examples and keep both sides passing.
 - `peerId`: 8 to 64 URL-safe characters, chosen by the client. Keep it stable
   for as long as you want to be able to resume (Android: per install; web: per
   tab).
-- `client`: `{ "platform": "android" | "web" | ..., "version": "0.1.0", "capabilities": ["hifi-audio"] }`.
+- `client`: `{ "platform": "android" | "web" | ..., "version": "0.1.0", "capabilities": ["hifi-audio", "chat"] }`.
+  `chat` means the client has text chat (below); clients show the chat only
+  when the other side lists it.
 
 ## Server → client
 
@@ -94,7 +96,29 @@ implement the same algorithm:
   10 s, the offerer starts a new session.
 - **Media.** The offerer always offers to receive audio and video, even if it
   sends no camera itself, so the other side can still send video.
+- **Chat.** Both sides create the chat data channel on every new
+  RTCPeerConnection, before the offer or answer, so the offer carries an
+  `m=application` section and nobody waits for the other's channel.
 - **Leaving.** On `peer-left`, close the connection and wait for someone new.
+
+## Text chat (data channel)
+
+Chat messages go over a WebRTC data channel, not the server, so they're
+end-to-end encrypted (DTLS) like the media. The channel is pre-negotiated:
+label `earshot-chat`, `negotiated: true`, `id: 0`, ordered and reliable. Each
+frame is one JSON text message:
+
+| `kind` | Fields | Meaning |
+| --- | --- | --- |
+| `chat` | `id`, `text`, `sentAt?` | A message. `id` is 1 to 64 characters, unique per sender; `text` is trimmed and at most 1000 characters; `sentAt` is the sender's clock in ms since 1970. |
+| `chat-ack` | `id` | Received. Sent for every `chat` frame, repeats included. |
+
+A client sends each message again, with the same `id`, when a new
+connection's channel opens and the message hasn't been acknowledged yet. The
+receiver shows each `id` once. Messages still unacknowledged when someone with
+a different `peerId` takes the seat are marked as not sent. Examples live in
+[`protocol/fixtures/peer`](../protocol/fixtures/peer); ignore kinds you don't
+know.
 
 ## Versioning
 

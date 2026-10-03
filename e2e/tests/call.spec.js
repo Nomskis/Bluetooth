@@ -254,3 +254,37 @@ test('on Android, the invite page offers the app with the room and server', asyn
   await expect(desktopPage.locator('#open-app')).toBeHidden();
   await desktop.close();
 });
+
+test('text chat goes straight between the browsers and survives a reload', async ({ browser }) => {
+  const room = uniqueRoom('chat');
+  const a = await joinAs(browser, room, 'Alice');
+  const b = await joinAs(browser, room, 'Bob');
+  await expectRemoteVideo(a.page);
+  await expectRemoteVideo(b.page);
+
+  await expect(a.page.locator('#toggle-chat')).toBeVisible();
+  await a.page.click('#toggle-chat');
+  await a.page.fill('#chat-input', 'Can you hear me?');
+  await a.page.press('#chat-input', 'Enter');
+  await expect(a.page.locator('#chat-messages li.mine')).toContainText('Delivered');
+
+  // Bob sees a bubble and an unread count without opening the chat.
+  await expect(b.page.locator('#chat-bubble')).toContainText('Alice: Can you hear me?');
+  await expect(b.page.locator('#chat-unread')).toHaveText('1');
+  await b.page.click('#chat-bubble');
+  await expect(b.page.locator('#chat-unread')).toBeHidden();
+  await b.page.click('#chat-quick button:has-text("One sec")');
+  await expect(a.page.locator('#chat-messages li.theirs')).toHaveText('One sec');
+
+  // Sent while Bob reloads: it waits, then arrives on the new connection.
+  await b.page.reload();
+  await a.page.fill('#chat-input', 'Still there?');
+  await a.page.press('#chat-input', 'Enter');
+  await b.page.fill('#name-input', 'Bob');
+  await b.page.click('#join-button');
+  await expect(b.page.locator('#chat-bubble')).toContainText('Still there?', { timeout: 20_000 });
+  await expect(a.page.locator('#chat-messages li.mine').last()).toContainText('Delivered');
+
+  await a.context.close();
+  await b.context.close();
+});

@@ -10,6 +10,7 @@ import io.github.nomskis.earshot.earbuds.EarbudControl
 import io.github.nomskis.earshot.settings.SettingsRepository
 import io.github.nomskis.earshot.turbo.TurboBoost
 import io.github.nomskis.earshot.turbo.TurboClient
+import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -25,6 +26,8 @@ class AppGraph(context: Context) {
         .connectTimeout(10, TimeUnit.SECONDS)
         .build()
     val earbuds = EarbudControl(context)
+    /** The call screen is in front of the user (not backgrounded, not shrunk to picture-in-picture). */
+    val callScreenVisible = MutableStateFlow(false)
     val callManager = CallManager(
         context,
         settings,

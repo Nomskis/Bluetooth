@@ -13,8 +13,12 @@
  *   'peer'          detail = { peerId, name, client, seq } | null
  *   'remote-media'  detail = { micMuted, cameraOff, audioMode }
  *   'error'         detail = { code, message }
+ *
+ * Text chat lives in `engine.chat` (a ChatLog, see chat.js); every peer
+ * connection carries its data channel.
  */
 
+import { CHAT_CAPABILITY, CHAT_CHANNEL, ChatLog } from './chat.js';
 import { firstAudioCodec, opusMaxAverageBitrate, preferHdVoice, preferLowLatencyAudio, preferRedundantAudio } from './sdp.js';
 
 const ICE_RECOVERY_DELAY_MS = 4000;
@@ -54,6 +58,8 @@ export class CallEngine extends EventTarget {
   #offerTimer = null;
   #requestOfferTimer = null;
   #lastOfferReceivedAt = 0;
+  #lastPeerId = null;
+  chat = new ChatLog({ newId: () => randomId('m') });
 
   /**
    * @param {import('./signaling.js').SignalingClient} signaling
@@ -72,6 +78,11 @@ export class CallEngine extends EventTarget {
 
   get remotePeer() {
     return this.#remote;
+  }
+
+  /** Older clients don't have chat; their join message doesn't list it. */
+  get remoteHasChat() {
+    return !!this.#remote?.client?.capabilities?.includes?.(CHAT_CAPABILITY);
   }
 
   get localMedia() {
@@ -351,6 +362,8 @@ export class CallEngine extends EventTarget {
       this.dispatchEvent(new CustomEvent('remote-stream', { detail: stream }));
     });
     pc.addEventListener('iceconnectionstatechange', () => this.#onIceState(pc));
+    // Created on both sides before negotiating, so the offer carries it and nobody waits for the other.
+    this.chat.attach(pc.createDataChannel(CHAT_CHANNEL.label, { negotiated: true, id: CHAT_CHANNEL.id, ordered: true }));
     return pc;
   }
 
@@ -391,6 +404,7 @@ export class CallEngine extends EventTarget {
     clearTimeout(this.#offerTimer);
     clearTimeout(this.#requestOfferTimer);
     if (this.#pc) {
+      this.chat.detach();
       this.#pc.close();
       this.#pc = null;
     }
@@ -420,6 +434,8 @@ export class CallEngine extends EventTarget {
   }
 
   #setRemote(peer) {
+    if (peer && this.#lastPeerId && peer.peerId !== this.#lastPeerId) this.chat.peerChanged();
+    if (peer) this.#lastPeerId = peer.peerId;
     this.#remote = peer;
     if (!peer) this.#remoteMedia = { micMuted: false, cameraOff: false, audioMode: null };
     this.dispatchEvent(new CustomEvent('peer', { detail: peer }));

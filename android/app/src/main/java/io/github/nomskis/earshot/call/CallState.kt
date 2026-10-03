@@ -60,8 +60,16 @@ data class CallState(
     val earbudMic: Boolean = false,
     /** The earbuds can carry a call, so the earbud mic can be switched on. */
     val earbudMicAvailable: Boolean = false,
+    /** Text chat with the other person, oldest first. */
+    val chat: List<ChatMessage> = emptyList(),
+    /** Their latest message, for the bubble and the notification. */
+    val lastIncomingChat: ChatMessage? = null,
     val error: String? = null,
 ) {
     val isActive: Boolean
         get() = phase != CallPhase.ENDED && phase != CallPhase.FAILED
+
+    /** Older apps and browsers don't have chat; their join message doesn't list it. */
+    val chatAvailable: Boolean
+        get() = remotePeer?.client?.capabilities?.contains(Chat.CAPABILITY) == true
 }

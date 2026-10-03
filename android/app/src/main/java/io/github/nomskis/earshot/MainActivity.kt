@@ -26,9 +26,11 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
     private val inPictureInPicture = mutableStateOf(false)
+    private var started = false
 
     private val pipListener = Consumer<PictureInPictureModeChangedInfo> { info ->
         inPictureInPicture.value = info.isInPictureInPictureMode
+        publishVisibility()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,6 +61,23 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        started = true
+        publishVisibility()
+    }
+
+    override fun onStop() {
+        started = false
+        publishVisibility()
+        super.onStop()
+    }
+
+    /** Chat messages become notifications while you can't see the call screen. */
+    private fun publishVisibility() {
+        appGraph.callScreenVisible.value = started && !inPictureInPicture.value
     }
 
     override fun onDestroy() {

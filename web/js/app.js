@@ -1,4 +1,5 @@
 import { CallEngine, randomId } from './call.js';
+import { CHAT_CAPABILITY, QUICK_REPLIES } from './chat.js';
 import { DelayTracker } from './delay.js';
 import { generateRoomCode, normalizeRoom } from './rooms.js';
 import { SignalingClient } from './signaling.js';
@@ -32,6 +33,15 @@ const ui = {
   flip: $('flip-camera'),
   hangUp: $('hang-up'),
   toast: $('toast'),
+  chatButton: $('toggle-chat'),
+  chatUnread: $('chat-unread'),
+  chatPanel: $('chat-panel'),
+  chatClose: $('chat-close'),
+  chatMessages: $('chat-messages'),
+  chatQuick: $('chat-quick'),
+  chatForm: $('chat-form'),
+  chatInput: $('chat-input'),
+  chatBubble: $('chat-bubble'),
 };
 
 const STATUS_TEXT = {
@@ -202,7 +212,7 @@ function startCall(room, name, stream) {
     room,
     peerId: tabPeerId(),
     name,
-    client: { platform: 'web', version: VERSION, capabilities: [] },
+    client: { platform: 'web', version: VERSION, capabilities: [CHAT_CAPABILITY] },
   });
   engine = new CallEngine(signaling, stream);
 
@@ -210,7 +220,11 @@ function startCall(room, name, stream) {
   engine.addEventListener('peer', (e) => {
     ui.peerName.textContent = e.detail ? e.detail.name || 'Guest' : 'Waiting…';
     renderBadges(null);
+    renderChatButton();
   });
+  engine.chat.addEventListener('change', renderChat);
+  engine.chat.addEventListener('message', (e) => onChatMessage(e.detail));
+  renderChat();
   engine.addEventListener('remote-media', (e) => renderBadges(e.detail));
   engine.addEventListener('remote-stream', (e) => {
     attachRemote(e.detail);
@@ -302,6 +316,82 @@ function attachRemote(stream) {
     () => (ui.unmute.hidden = false),
   );
 }
+
+// --- Chat ----------------------------------------------------------------------
+
+let chatOpen = false;
+let unread = 0;
+let bubbleTimer;
+
+function renderChatButton() {
+  ui.chatButton.hidden = !engine?.remoteHasChat;
+  ui.chatButton.setAttribute('aria-expanded', String(chatOpen));
+  ui.chatUnread.hidden = unread === 0;
+  ui.chatUnread.textContent = unread > 9 ? '9+' : String(unread);
+}
+
+const STATUS_LABEL = { sending: 'Sending…', delivered: 'Delivered', failed: 'Not sent' };
+
+function renderChat() {
+  const messages = engine?.chat.messages ?? [];
+  ui.chatMessages.replaceChildren(
+    ...messages.map((m) => {
+      const li = document.createElement('li');
+      li.className = m.mine ? `mine ${m.status}` : 'theirs';
+      li.textContent = m.text;
+      if (m.mine) {
+        const status = document.createElement('small');
+        status.textContent = STATUS_LABEL[m.status] ?? '';
+        li.append(status);
+      }
+      return li;
+    }),
+  );
+  ui.chatMessages.scrollTop = ui.chatMessages.scrollHeight;
+}
+
+function onChatMessage(message) {
+  if (chatOpen) return;
+  unread++;
+  renderChatButton();
+  const name = engine.remotePeer?.name || 'They';
+  ui.chatBubble.textContent = `${name}: ${message.text}`;
+  ui.chatBubble.hidden = false;
+  clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => (ui.chatBubble.hidden = true), 6000);
+}
+
+function setChatOpen(open) {
+  chatOpen = open;
+  ui.chatPanel.hidden = !open;
+  if (open) {
+    unread = 0;
+    ui.chatBubble.hidden = true;
+    renderChat();
+    ui.chatInput.focus();
+  }
+  renderChatButton();
+}
+
+ui.chatQuick.replaceChildren(
+  ...QUICK_REPLIES.map((text) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = text;
+    button.addEventListener('click', () => engine?.chat.send(text));
+    return button;
+  }),
+);
+ui.chatButton.addEventListener('click', () => setChatOpen(!chatOpen));
+ui.chatClose.addEventListener('click', () => setChatOpen(false));
+ui.chatBubble.addEventListener('click', () => setChatOpen(true));
+ui.chatForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (engine?.chat.send(ui.chatInput.value)) ui.chatInput.value = '';
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && chatOpen) setChatOpen(false);
+});
 
 ui.unmute.addEventListener('click', () => {
   voice.resume();

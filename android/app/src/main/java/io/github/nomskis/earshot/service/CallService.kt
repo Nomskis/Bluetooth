@@ -21,9 +21,10 @@ import io.github.nomskis.earshot.R
 import io.github.nomskis.earshot.appGraph
 import io.github.nomskis.earshot.call.CallPhase
 import io.github.nomskis.earshot.settings.AudioMode
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -33,6 +34,7 @@ import kotlinx.coroutines.launch
 class CallService : LifecycleService() {
 
     private var wifiLock: WifiManager.WifiLock? = null
+    private lateinit var chatNotifier: ChatNotifier
 
     override fun onCreate() {
         super.onCreate()
@@ -40,24 +42,29 @@ class CallService : LifecycleService() {
         val types = foregroundTypes()
         ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(null), types)
         acquireWifiLock()
+        chatNotifier = ChatNotifier(this, Intent(this, CallService::class.java).setAction(ACTION_REPLY))
 
         val callManager = appGraph.callManager
         lifecycleScope.launch {
             callManager.session.collectLatest { session ->
                 if (session == null) {
+                    chatNotifier.callEnded()
                     ServiceCompat.stopForeground(this@CallService, ServiceCompat.STOP_FOREGROUND_REMOVE)
                     stopSelf()
                     return@collectLatest
                 }
-                // Only what the notification shows: the call state also changes several
-                // times a second (talking cue, delay readout), and re-posting on each
-                // would get the app rate-limited.
-                session.state
-                    .map { NotificationInfo(it.phase, it.remotePeer?.name, it.room, it.audioMode, it.micMuted) }
-                    .distinctUntilChanged()
-                    .collect { info ->
-                        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(info))
-                    }
+                coroutineScope {
+                    launch { chatNotifier.follow(session, appGraph.callScreenVisible) }
+                    // Only what the notification shows: the call state also changes several
+                    // times a second (talking cue, delay readout), and re-posting on each
+                    // would get the app rate-limited.
+                    session.state
+                        .map { NotificationInfo(it.phase, it.remotePeer?.name, it.room, it.audioMode, it.micMuted) }
+                        .distinctUntilChanged()
+                        .collect { info ->
+                            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(info))
+                        }
+                }
             }
         }
     }
@@ -67,6 +74,9 @@ class CallService : LifecycleService() {
         when (intent?.action) {
             ACTION_HANG_UP -> appGraph.callManager.endCall()
             ACTION_TOGGLE_MUTE -> appGraph.callManager.session.value?.let { it.setMicMuted(!it.state.value.micMuted) }
+            ACTION_REPLY -> ChatNotifier.replyText(intent)?.let { text ->
+                appGraph.callManager.session.value?.sendChat(text) ?: chatNotifier.clear()
+            }
         }
         return START_NOT_STICKY
     }
@@ -167,6 +177,7 @@ class CallService : LifecycleService() {
         private const val NOTIFICATION_ID = 1
         private const val ACTION_HANG_UP = "io.github.nomskis.earshot.HANG_UP"
         private const val ACTION_TOGGLE_MUTE = "io.github.nomskis.earshot.TOGGLE_MUTE"
+        private const val ACTION_REPLY = "io.github.nomskis.earshot.CHAT_REPLY"
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, CallService::class.java))

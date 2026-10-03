@@ -329,3 +329,138 @@ input:not([type='checkbox']) {
 .open-app[hidden] {
   display: none;
 }
+
+/* --- Chat ---------------------------------------------------------------- */
+
+.control {
+  position: relative;
+}
+
+.unread {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.6rem;
+  min-width: 1.2rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.7rem;
+  line-height: 1.2rem;
+}
+
+.chat-bubble {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  bottom: calc(6.5rem + env(safe-area-inset-bottom));
+  max-width: 28rem;
+  margin: 0 auto;
+  text-align: left;
+  background: rgba(23, 26, 33, 0.92);
+  border-left: 4px solid var(--accent);
+  overflow-wrap: anywhere;
+  z-index: 5;
+}
+
+.chat-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 60%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.8rem 1rem calc(0.8rem + env(safe-area-inset-bottom));
+  background: rgba(14, 16, 20, 0.94);
+  border-radius: var(--radius) var(--radius) 0 0;
+  z-index: 6;
+}
+
+@media (min-width: 760px) {
+  .chat-panel {
+    left: auto;
+    right: 1rem;
+    bottom: calc(6.5rem + env(safe-area-inset-bottom));
+    width: 360px;
+    border-radius: var(--radius);
+  }
+}
+
+.chat-panel header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.chat-panel header button {
+  margin-left: auto;
+  padding: 0.3rem 0.6rem;
+}
+
+.chat-note {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.chat-messages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 2rem;
+}
+
+.chat-messages li {
+  max-width: 80%;
+  padding: 0.45rem 0.7rem;
+  border-radius: 12px;
+  background: var(--surface-2);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.chat-messages li.mine {
+  align-self: flex-end;
+  background: rgba(60, 207, 145, 0.22);
+}
+
+.chat-messages li small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.7rem;
+  margin-top: 0.15rem;
+}
+
+.chat-messages li.failed small {
+  color: #ff8a8d;
+}
+
+.chat-quick {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chat-quick button {
+  flex: none;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.chat-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.chat-form .send {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
