@@ -15,6 +15,8 @@
  *   'error'         detail = { code, message }
  */
 
+import { preferLowLatencyAudio } from './sdp.js';
+
 const ICE_RECOVERY_DELAY_MS = 4000;
 const OFFER_TIMEOUT_MS = 10_000;
 const REQUEST_OFFER_DELAY_MS = 1500;
@@ -93,6 +95,11 @@ export class CallEngine extends EventTarget {
     this.#localStream.addTrack(track);
     const transceiver = this.#pc?.getTransceivers().find((t) => t.receiver.track?.kind === 'video');
     if (transceiver) await transceiver.sender.replaceTrack(track);
+  }
+
+  /** WebRTC stats for the current connection, or null when there is none. */
+  async getStats() {
+    return this.#pc ? this.#pc.getStats() : null;
   }
 
   hangUp() {
@@ -211,7 +218,7 @@ export class CallEngine extends EventTarget {
     if (this.#pc !== pc) return;
     await pc.setLocalDescription(answer);
     if (this.#pc !== pc) return;
-    this.#sendSignal({ kind: 'answer', session: this.#session, sdp: pc.localDescription.sdp });
+    this.#sendSignal({ kind: 'answer', session: this.#session, sdp: preferLowLatencyAudio(pc.localDescription.sdp) });
     await this.#flushCandidates(pc);
   }
 
@@ -292,7 +299,7 @@ export class CallEngine extends EventTarget {
     if (this.#pc !== pc) return;
     await pc.setLocalDescription(offer);
     if (this.#pc !== pc) return;
-    this.#sendSignal({ kind: 'offer', session, sdp: pc.localDescription.sdp });
+    this.#sendSignal({ kind: 'offer', session, sdp: preferLowLatencyAudio(pc.localDescription.sdp) });
     clearTimeout(this.#offerTimer);
     this.#offerTimer = setTimeout(() => {
       this.#enqueue(async () => {

@@ -136,3 +136,35 @@ test('someone without a camera still sees the other side', async ({ browser }) =
   await withCamera.context.close();
   await context.close();
 });
+
+test('both sides send 10 ms audio packets for lower delay', async ({ browser }) => {
+  const room = uniqueRoom('ptime');
+  const a = await joinAs(browser, room, 'A');
+  const b = await joinAs(browser, room, 'B');
+  await expectRemoteVideo(a.page);
+  await expectRemoteVideo(b.page);
+
+  const packetsPerSecond = (page) =>
+    page.evaluate(async () => {
+      const sent = async () => {
+        let n = 0;
+        (await window.earshot.engine.getStats())?.forEach((s) => {
+          if (s.type === 'outbound-rtp' && s.kind === 'audio') n = s.packetsSent;
+        });
+        return n;
+      };
+      const before = await sent();
+      await new Promise((r) => setTimeout(r, 2000));
+      return ((await sent()) - before) / 2;
+    });
+
+  // 20 ms packets would be 50 per second.
+  for (const side of [a, b]) {
+    const rate = await packetsPerSecond(side.page);
+    expect(rate).toBeGreaterThan(85);
+    expect(rate).toBeLessThan(115);
+  }
+
+  await a.context.close();
+  await b.context.close();
+});
