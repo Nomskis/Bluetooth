@@ -11,11 +11,11 @@ not taken from articles.
 
 ## 1. Where the delay comes from
 
-Her voice → your ears, classic Bluetooth earbuds, typical values:
+Their voice → your ears, classic Bluetooth earbuds, typical values:
 
 | Stage | Typical | Notes |
 | --- | --- | --- |
-| Her mic + encoding | 25–40 ms | Opus frame (20 ms default) + lookahead + capture buffer |
+| Their mic + encoding | 25–40 ms | Opus frame (20 ms default) + lookahead + capture buffer |
 | Network, one way | 10–50 ms | Direct peer-to-peer; more through a relay |
 | Jitter buffer | 20–80 ms | WebRTC's NetEq grows it when packets arrive unevenly or get lost |
 | Android audio path | 30–100 ms | Mixer, A2DP encoder, buffers ([Oboe wiki](https://github.com/google/oboe/wiki/TechNote_BluetoothAudio)) |
@@ -159,24 +159,24 @@ therefore estimates when sound actually plays, as long as the earbuds report
 honestly. A short acoustic test (a chirp through the earbud, heard by the phone
 mic, located by correlation, as OboeTester does) gives the true value.
 
-### 2.6 The app can hear her voice *before* you do
+### 2.6 The app can hear their voice *before* you do
 
 WebRTC's `AudioTrack.addSink(AudioTrackSink)` delivers the decoded remote audio
 as it's handed to Android for playback, which is 100–250 ms before it leaves
-the earbuds. A voice detector on that feed knows she's talking before you hear
-her, with no help from her side, so it works with any client.
+the earbuds. A voice detector on that feed knows they're talking before you hear
+them, with no help from their side, so it works with any client.
 
 **Uses:**
 
-- **Head-start cue.** The screen lights up as she starts talking, so you don't
-  talk over her.
+- **Head-start cue.** The screen lights up as they start talking, so you don't
+  talk over them.
 - **Smart duck.** Briefly request `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` so
-  Android dips YouTube Music just as her voice arrives, then restores it.
+  Android dips YouTube Music just as their voice arrives, then restores it.
   Android 8+ ducks focus holders automatically unless they play speech or opted
   to pause ([docs](https://developer.android.com/media/optimize/audio-focus)).
   Watch the active playback list to detect apps that pause instead, and back
   off.
-- **Replay.** Keep the last ~10 s of her voice for "what did you say?".
+- **Replay.** Keep the last ~10 s of their voice for "what did you say?".
 - **Captions.** Feed the audio to on-device speech recognition when the gym is
   too loud.
 
@@ -244,7 +244,7 @@ to its router's UDP discard port.
 
 ### 2.10 Lip sync
 
-See §1. **Built:** her video is held back by (app-to-ear delay − 75 ms −
+See §1. **Built:** their video is held back by (app-to-ear delay − 75 ms −
 display time), from the sonar measurement that best matches the current
 setup, or else from a silent probe of Android's playback timestamps (which
 over A2DP include the earbuds' reported delay, §2.5). Hardware-decoded frames
@@ -254,7 +254,7 @@ are copied to I420 while held, so the decoder never waits.
 
 | Idea | Why not now |
 | --- | --- |
-| Voice-clarity processing on her voice (compressor, presence EQ via `DynamicsProcessing` on WebRTC's track) | **[AOSP]** `PlaybackThread::checkEffectCompatibility_l` refuses software effects on a session with a fast track ("non HW effect on playback thread in fast mode"), so it would cost the fast path and its low-latency Bluetooth trigger. The same rule means OEM global effects (Dolby, Mi Sound) skip fast tracks, and their processing delay with them |
+| Voice-clarity processing on their voice (compressor, presence EQ via `DynamicsProcessing` on WebRTC's track) | **[AOSP]** `PlaybackThread::checkEffectCompatibility_l` refuses software effects on a session with a fast track ("non HW effect on playback thread in fast mode"), so it would cost the fast path and its low-latency Bluetooth trigger. The same rule means OEM global effects (Dolby, Mi Sound) skip fast tracks, and their processing delay with them |
 | Replace WebRTC with a custom audio engine | Saves ~10–30 ms at most, against ~100+ ms from the earbuds; very large effort |
 | DRED | Not available in WebRTC or Chrome |
 | Predicting speech to hide delay | Research-grade (tens of ms, artefacts) |
@@ -264,7 +264,7 @@ are copied to I420 while held, so the decoder never waits.
 
 ## 4. Expected result
 
-Her voice → your ears, classic earbuds:
+Their voice → your ears, classic earbuds:
 
 | Setup | Estimate |
 | --- | --- |
@@ -276,8 +276,8 @@ Her voice → your ears, classic earbuds:
 | **LE Audio earbuds, game mode** | **~100–160 ms, with the earbud mic** |
 
 On top of that, the head-start cue and smart duck make the delay that's left
-easier to live with: you see she's talking before you hear her, and the music
-gets out of her way.
+easier to live with: you see they're talking before you hear them, and the music
+gets out of their way.
 
 These are estimates from the sources above. The in-app sonar measurement is
 what counts on a given phone and pair of earbuds.
