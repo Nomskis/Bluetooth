@@ -170,6 +170,12 @@ export class CallEngine extends EventTarget {
 
   async #onJoined(msg) {
     this.#iceServers = msg.iceServers ?? [];
+    // A rejoin brings fresh TURN credentials; a long call's next ICE restart should use them.
+    try {
+      this.#pc?.setConfiguration({ ...this.#pc.getConfiguration(), iceServers: this.#iceServers });
+    } catch (err) {
+      console.warn('[earshot] could not update ICE servers', err);
+    }
     this.#mySeq = msg.seq;
     const peer = msg.peers?.[0] ?? null;
     if (!peer) {

@@ -231,6 +231,11 @@ class RtcEngine(
         if (!pc.setConfiguration(rtcConfiguration(iceServers, prefer))) Log.w(TAG, "Could not change the network preference")
     }
 
+    /** Fresh STUN/TURN servers (TURN credentials expire) for the connection's next ICE restart. */
+    fun updateIceServers(pc: PeerConnection, iceServers: List<IceServerConfig>, preferCellular: Boolean) {
+        if (!pc.setConfiguration(rtcConfiguration(iceServers, preferCellular))) Log.w(TAG, "Could not update the ICE servers")
+    }
+
     /** Caps the video we send ([kbps] null = no cap). Takes effect without renegotiating. */
     fun capVideoSend(pc: PeerConnection, kbps: Int?) {
         for (sender in pc.senders) {

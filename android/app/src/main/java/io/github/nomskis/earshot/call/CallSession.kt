@@ -548,6 +548,8 @@ class CallSession(
     }
 
     private suspend fun onJoined(message: ServerMessage.Joined) {
+        // A rejoin brings fresh TURN credentials; a long call's next ICE restart should use them.
+        if (message.iceServers != iceServers) link?.let { engine.updateIceServers(it.pc, message.iceServers, radioPlan.preferCellular) }
         iceServers = message.iceServers
         mySeq = message.seq
         val peer = message.peers.firstOrNull()
