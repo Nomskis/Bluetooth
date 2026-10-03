@@ -12,13 +12,14 @@ Roughly in order. Each item stands on its own; pick any.
   marked experimental (Huawei/Honor, EarFun), and add brands as their
   protocols get documented (Soundcore, Sony, JBL, Jabra have no public
   game-mode commands yet).
-- **Measure radio sharing.** A tuner test that runs the sonar meter during a
-  call-sized download on 2.4 GHz vs 5 GHz, to show each phone's coexistence
-  cost.
-- **Web client parity.** The head-start cue and lip sync for the browser side.
-- **Switch audio mode during a call.** Today Hi-Fi vs headset mic is chosen
-  before joining. Switching mid-call means rebuilding the audio device module
-  and renegotiating.
+- **Collect radio-test results** per phone model to learn which chips suffer
+  from 2.4 GHz coexistence, and default the mobile-data switch accordingly.
+- **Web lip sync.** The browser side has the talking cue and delay readout;
+  holding video back there needs the output latency, which browsers report
+  inconsistently.
+- **Headset mode to Hi-Fi mid-call.** Hi-Fi calls can now borrow the earbud
+  mic and come back; a call started in headset mode still can't move to
+  Hi-Fi without rebuilding the audio device module.
 - **Text chat over a data channel**, handy when one side is muted at the gym.
 - **Connection quality indicator** from WebRTC stats (round-trip time, packet
   loss, bitrate), plus a debug screen with the selected codec and candidate

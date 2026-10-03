@@ -97,7 +97,9 @@ are in [research/latency.md](research/latency.md); in short:
 | Free the radio | On 2.4 GHz Wi-Fi with Bluetooth audio: video capped at 800 kbps both ways; optionally media moved to mobile data | everything |
 | Lip sync | Her video held back by the Bluetooth delay WebRTC doesn't know about | everything |
 | Earbud game mode | Each brand's own command, on for the call and back after | OPPO/OnePlus/realme, Nothing/CMF, Xiaomi/Redmi, Huawei/Honor, EarFun |
-| Turbo | Android's privileged Bluetooth controls, through Shizuku | Android 13+ with Wireless debugging |
+| Turbo | Android's privileged Bluetooth controls, through Shizuku: for each call, low-latency mode, the codec measured fastest, the shortest buffer; undone after | Android 13+ with Wireless debugging |
+| Fast failover | Mobile data on standby, ICE tuned to swap a stalled path in ~1 s | everything |
+| Live readout | Mouth-to-ear delay from stats plus the measured app-to-ear figure | everything |
 
 ## Sharing the radio with Bluetooth
 
@@ -120,6 +122,23 @@ When the phone is on 2.4 GHz Wi-Fi and audio is on Bluetooth
   preference: if mobile data fails, the call stays on Wi-Fi. WebRTC's stats
   show which network the media really uses, and the video cap lifts once
   it's on mobile data.
+
+Two tuner tools tie this together. **Find my fastest setup** measures the
+setup as it is, then with the earbuds' game mode, then every codec (with
+Turbo), and turns on for calls whatever beats the meter's spread. The
+**radio test** measures the earbuds with Wi-Fi quiet and again while the
+phone transmits call-sized traffic to its own router, which shows what
+coexistence costs on that phone.
+
+## Surviving gym Wi-Fi
+
+WebRTC's defaults check standby paths every 25 seconds and call a path dead
+after 5 seconds without an answer. Earshot switches when the path in use
+goes 1 second without packets, checks standby paths every 2 seconds, and
+keeps mobile data up next to Wi-Fi during calls (on by default). ICE prefers
+Wi-Fi as the cheaper network, moves to mobile data when Wi-Fi stalls, and
+comes back when it recovers; until then mobile data only carries connection
+checks.
 
 ## Lip sync
 
@@ -169,6 +188,15 @@ holds a low-latency Wi-Fi lock. That's enough on stock Android. Xiaomi
 add their own battery managers that can stop it anyway, so the home screen
 shows the switches for the phone in hand, with a button to each maker's own
 screen ([`system/BackgroundHealth.kt`](../android/app/src/main/java/io/github/nomskis/earshot/system/BackgroundHealth.kt)).
+
+## Borrowing the earbuds' mic mid-call
+
+A Hi-Fi call can switch to the earbuds' microphone for a while (a loud
+moment, walking away from the phone) and back. On: communication mode with
+the Bluetooth headset as the communication device, and the running recording
+moved to the headset's input with `setPreferredInputDevice`, which WebRTC
+applies live, so nothing is renegotiated. The earbuds drop to the call link
+until you switch back to the phone mic and full-quality music.
 
 ## Headset mic mode
 

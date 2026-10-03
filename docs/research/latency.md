@@ -216,6 +216,18 @@ choices on reconnect (the reason a codec-fixing tool for it exists).
 **Built:** a per-brand guide on the home screen with direct links into each
 maker's battery and autostart screens.
 
+### 2.8b LHDC's own low-latency mode
+
+LHDC 5.0 earbuds advertise a low-latency capability (feature bit `0x40` in
+the codec information element, from the LHDC v5 A2DP integration code),
+and the related LLAC / LHDC LL variant claims ~30 ms. But Android's own
+Bluetooth stack (`packages/modules/Bluetooth/system/stack/a2dp`, checked on
+`main`) contains no LHDC encoder: phones that offer LHDC, including Android
+17's newly native support, get it from the vendor's codec implementation, so
+there's no standard codec-specific value an app (even with Shizuku) can set to
+request the LL mode. On realme, OPPO and OnePlus earbuds the brand's own game
+mode command, which Earshot's driver sends, is the way in.
+
 ### 2.9 Wi-Fi and Bluetooth share one radio on 2.4 GHz
 
 Phone combo chips run Bluetooth and 2.4 GHz Wi-Fi on a shared antenna with
@@ -226,8 +238,9 @@ buffer, or drop out. 5/6 GHz and mobile data avoid it.
 **Built:** with Bluetooth audio on 2.4 GHz Wi-Fi, video is capped at 800 kbps
 both ways (`maxBitrateBps` on our sender, `b=AS`/`b=TIAS` for theirs), and
 optionally media moves to mobile data (§2.7), with the cap lifted once stats
-show it's there. The effect varies by chip and can be measured with the sonar
-meter during a call-sized download.
+show it's there. The effect varies by chip, so the tuner's radio test
+measures it: the sonar meter quiet, then while the phone transmits ~2.5 Mbit/s
+to its router's UDP discard port.
 
 ### 2.10 Lip sync
 

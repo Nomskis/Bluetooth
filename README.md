@@ -41,18 +41,26 @@ this list works with every pair of classic Bluetooth earbuds:
   the Bluetooth link into its low-latency mode by itself.
 - **Measure it, by sound.** The delay tuner plays chirps through an earbud held
   to the phone's mic and measures the real app-to-ear delay (calibrated against
-  the phone's own speaker), then helps you find the fastest setup.
+  the phone's own speaker). One tap tries your earbuds' game mode and every
+  codec and keeps whatever is fastest for calls.
+- **See the delay live.** During a call the screen shows roughly how long
+  their voice takes from their mouth to your ear, and where the time goes.
 - **Hear her before you hear her.** Earshot sees her voice arrive 100–250 ms
   before the earbuds play it: the call screen lights up as she starts talking,
   your music dips while she talks, and you can replay the last 8 seconds.
 - **Keeps the radio free for your earbuds.** On 2.4 GHz Wi-Fi, which shares
   the phone's radio with Bluetooth, video is kept lighter in both directions;
-  optionally the call moves to mobile data, which doesn't share it at all.
+  optionally the call moves to mobile data, which doesn't share it at all. A
+  radio test in the tuner shows what Wi-Fi traffic costs your earbuds.
+- **Survives gym Wi-Fi.** Mobile data waits on standby, and a stalled Wi-Fi
+  path is swapped for it in about a second instead of WebRTC's usual 5–25.
 - **Lips in time with her voice.** Her video is held back by exactly the
   Bluetooth delay that WebRTC doesn't know about, using your measurement when
   there is one.
 - **HD voice.** The earbuds stay on the music link, so her voice is sent at
   near-transparent quality (48 kbps Opus instead of 32).
+- **Earbud mic when you need it.** One tap moves a Hi-Fi call to the earbuds'
+  mic (call quality) for a noisy moment, and back, without reconnecting.
 - **Calls survive your pocket.** A per-phone-brand guide through the battery
   switches HyperOS, ColorOS, EMUI, Funtouch and One UI use to stop background
   apps.
@@ -64,8 +72,9 @@ And two optional extras that go further:
   switch it on for the call and back afterwards on OPPO, OnePlus and realme,
   Nothing and CMF, Xiaomi and Redmi, and (new) Huawei, Honor and EarFun earbuds.
 - **Turbo (no root, via Shizuku).** Unlocks Android's system-only Bluetooth
-  controls: read the earbuds' own delay report, shrink the phone-side buffer,
-  and sweep every codec the earbuds offer to keep the fastest.
+  controls. For each call it turns on Bluetooth low-latency mode, uses the
+  codec measured fastest for your earbuds, and shrinks the phone-side buffer,
+  then puts your music codec back afterwards.
 
 The research behind all of this, with sources, is in
 [docs/research/latency.md](docs/research/latency.md).
@@ -143,8 +152,8 @@ network switches, browser and Android clients.
 | Tested | How |
 | --- | --- |
 | Server | 28 unit and integration tests |
-| Browser calls | 8 end-to-end tests: two real Chromium browsers calling each other through the server (video, audio, reloads, dropped connections, room full, camera-less join, 10 ms packets, redundant audio, HD voice) |
-| Android app | 104 unit tests: protocol against the shared examples, signaling reconnects against a scripted server, audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio and lip-sync planning, SDP tweaks. Android lint, debug and release builds |
+| Browser calls | 9 end-to-end tests: two real Chromium browsers calling each other through the server (video, audio, reloads, dropped connections, room full, camera-less join, 10 ms packets, redundant audio, HD voice, talking cue), plus unit tests for the browser's voice detector and delay readout |
+| Android app | 117 unit tests: protocol against the shared examples, signaling reconnects against a scripted server, audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio and lip-sync planning, SDP tweaks. Android lint, debug and release builds |
 | Android on a real phone | **Not yet.** The audio routing and the earbud drivers have to be confirmed on real hardware; the in-app audio check and the delay tuner are there for exactly that. |
 
 ## Trade-offs to know about
