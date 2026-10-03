@@ -105,10 +105,14 @@ class EarFunSession(private val link: ControlLink) {
         val wasOn = readState()
         if (wasOn == enabled) return DriverResult.Ok(wasOn)
         val ack = request(SET_GAME_MODE, byteArrayOf(if (enabled) 1 else 0)) ?: return DriverResult.NoAnswer
-        val status = ack.status ?: 0
-        if (status != 0) return DriverResult.Rejected(status)
         val after = readState()
-        return if (after == null || after == enabled) DriverResult.Ok(wasOn) else DriverResult.Rejected(OppoSession.NOT_APPLIED)
+        val status = ack.status ?: 0
+        return when {
+            after == enabled -> DriverResult.Ok(wasOn)
+            after != null -> if (status != 0) DriverResult.Rejected(status) else DriverResult.Rejected(OppoSession.NOT_APPLIED)
+            status == 0 -> DriverResult.Ok(wasOn)
+            else -> DriverResult.Rejected(status)
+        }
     }
 
     private companion object {

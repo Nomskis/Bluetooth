@@ -158,10 +158,15 @@ class XiaomiSession(private val link: ControlLink, private val random: (ByteArra
 
         val config = byteArrayOf(0, XiaomiFrames.CONFIG_LOW_LATENCY.toByte(), if (enabled) 1 else 0)
         val ack = request(XiaomiFrames.Opcodes.SET_CONFIG, byteArrayOf(config.size.toByte()) + config) ?: return DriverResult.NoAnswer
-        val status = ack.status ?: 0
-        if (status != 0) return DriverResult.Rejected(status)
+        // The read-back is the evidence; the ack's status byte isn't documented well enough to trust alone.
         val after = readState()
-        return if (after == null || after == enabled) DriverResult.Ok(wasOn) else DriverResult.Rejected(OppoSession.NOT_APPLIED)
+        val status = ack.status ?: 0
+        return when {
+            after == enabled -> DriverResult.Ok(wasOn)
+            after != null -> if (status != 0) DriverResult.Rejected(status) else DriverResult.Rejected(OppoSession.NOT_APPLIED)
+            status == 0 -> DriverResult.Ok(wasOn)
+            else -> DriverResult.Rejected(status)
+        }
     }
 
     private companion object {
