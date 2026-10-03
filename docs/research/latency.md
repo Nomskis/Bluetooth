@@ -254,6 +254,7 @@ are copied to I420 while held, so the decoder never waits.
 
 | Idea | Why not now |
 | --- | --- |
+| Voice-clarity processing on her voice (compressor, presence EQ via `DynamicsProcessing` on WebRTC's track) | **[AOSP]** `PlaybackThread::checkEffectCompatibility_l` refuses software effects on a session with a fast track ("non HW effect on playback thread in fast mode"), so it would cost the fast path and its low-latency Bluetooth trigger. The same rule means OEM global effects (Dolby, Mi Sound) skip fast tracks, and their processing delay with them |
 | Replace WebRTC with a custom audio engine | Saves ~10–30 ms at most, against ~100+ ms from the earbuds; very large effort |
 | DRED | Not available in WebRTC or Chrome |
 | Predicting speech to hide delay | Research-grade (tens of ms, artefacts) |
