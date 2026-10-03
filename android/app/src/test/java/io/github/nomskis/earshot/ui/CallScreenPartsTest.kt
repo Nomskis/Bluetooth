@@ -68,6 +68,14 @@ class CallScreenPartsTest {
     }
 
     @Test
+    fun topBarSaysWhenEchoCancellationCameOnBecauseTheCallIsOutLoud() {
+        compose.setContent {
+            EarshotTheme { TopBar(state.copy(echoGuard = true), route, emptyList(), Modifier) }
+        }
+        compose.onNodeWithText("Playing out loud now, so echo cancellation is on.").assertIsDisplayed()
+    }
+
+    @Test
     fun controlsOfferTheEarbudMicAndHangUp() {
         var earbudMic = 0
         var hungUp = 0

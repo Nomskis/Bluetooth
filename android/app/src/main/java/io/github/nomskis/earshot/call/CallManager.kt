@@ -16,6 +16,7 @@ import io.github.nomskis.earshot.service.CallService
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.AudioMode
 import io.github.nomskis.earshot.settings.DelayRuns
+import io.github.nomskis.earshot.settings.EchoCancellation
 import io.github.nomskis.earshot.settings.SettingsRepository
 import io.github.nomskis.earshot.signaling.ServerUrls
 import io.github.nomskis.earshot.turbo.TurboBoost
@@ -125,6 +126,7 @@ class CallManager(
             } else {
                 null
             }
+            val routeJob = launch { followRoute(session, profile, current) }
             // Earbuds back from the case mid-call: many reset game mode, and HyperOS resets the codec.
             val reapplyJob = if (boost || turbo != null) {
                 launch {
@@ -143,6 +145,7 @@ class CallManager(
 
             val end = session.state.first { !it.isActive }
             lipSyncJob?.cancel()
+            routeJob.cancel()
             reapplyJob?.cancelAndJoin()
             if (end.error != null) _lastError.value = end.error
             unwatchNetwork()
@@ -195,6 +198,22 @@ class CallManager(
         }
     }
 
+    /**
+     * Keeps the call matched to where its audio plays as earbuds come and go:
+     * echo cancellation (Hi-Fi with the automatic setting) and radio sharing.
+     */
+    private suspend fun followRoute(session: CallSession, profile: AudioProfile, current: AppSettings) {
+        val echoFollowsRoute = profile.mode == AudioMode.HIFI && current.echoCancellation == EchoCancellation.AUTO
+        routeMonitor.route.collectLatest { route ->
+            session.updateRadioPlan(radioPlan(current, route))
+            if (!echoFollowsRoute) return@collectLatest
+            val personal = route.outputIsPersonal
+            // On at once (an echo is heard right away); off only once the earbuds have settled.
+            if (personal) delay(ECHO_OFF_SETTLE_MS)
+            session.setEchoCancellation(!personal)
+        }
+    }
+
     fun endCall() {
         _session.value?.hangUp()
     }
@@ -239,6 +258,7 @@ class CallManager(
         const val PROBE_SETTLE_MS = 1_500L
         /** After earbuds reconnect, let A2DP and the companion channel come up first. */
         const val RECONNECT_SETTLE_MS = 3_000L
+        const val ECHO_OFF_SETTLE_MS = 2_000L
     }
 
     private fun unwatchNetwork() {

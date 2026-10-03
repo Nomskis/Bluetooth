@@ -134,7 +134,7 @@ class CallSession(
     private var markingBroken = false
 
     /** One RTCPeerConnection and everything tied to it. */
-    private class Link(val pc: PeerConnection, val session: String, val tracks: SendTracks) {
+    private class Link(val pc: PeerConnection, val session: String, var tracks: SendTracks) {
         val pendingCandidates = mutableListOf<IceCandidate>()
         var tracksAdded = false
         var remoteAudio: AudioTrack? = null
@@ -175,6 +175,7 @@ class CallSession(
         class ChatChannelState(val link: Link, val open: Boolean) : Event
         class ChatIncoming(val link: Link, val text: String) : Event
         data class SendChat(val text: String) : Event
+        data class SetEchoCancellation(val on: Boolean) : Event
         data object HangUp : Event
     }
 
@@ -214,6 +215,8 @@ class CallSession(
      */
     fun setPlayout(plan: LipSync.Plan?, playoutMs: Double?, measured: Boolean) = post(Event.SetLipSync(plan, playoutMs, measured))
     fun sendChat(text: String) = post(Event.SendChat(text))
+    /** For when the call moves between earbuds and a loudspeaker; no-op if unchanged. */
+    fun setEchoCancellation(on: Boolean) = post(Event.SetEchoCancellation(on))
     fun hangUp() = post(Event.HangUp)
 
     private fun post(event: Event) {
@@ -355,6 +358,7 @@ class CallSession(
                 chat.send(event.text)
                 publishChat()
             }
+            is Event.SetEchoCancellation -> setEchoCancellationNow(event.on)
             Event.HangUp -> finish(CallPhase.ENDED)
         }
     }
@@ -377,6 +381,36 @@ class CallSession(
         }
         _state.update { it.copy(earbudMic = on) }
         sendMediaState()
+    }
+
+    /**
+     * Earbuds out mid-call (battery, back in the case) put the call on the
+     * loudspeaker, which the phone's mic hears: the other side would get an
+     * echo of themselves. Moves the microphone to a source with the echo
+     * canceller on (or back off once earbuds are in again).
+     */
+    private fun setEchoCancellationNow(on: Boolean) {
+        val oldSource = engine.switchEchoCancellation(on) ?: return
+        link?.let(::moveToNewAudioTrack)
+        oldSource.dispose()
+        Log.i(TAG, "Echo cancellation ${if (on) "on" else "off"} for the new output")
+        _state.update { it.copy(echoGuard = on && !profile.softwareEchoCancellation) }
+    }
+
+    private fun moveToNewAudioTrack(l: Link) {
+        val track = engine.createAudioTrack().also { it.setEnabled(!_state.value.micMuted) }
+        val old = l.tracks.audio
+        if (l.tracksAdded) {
+            val sender = l.pc.senders.firstOrNull { runCatching { it.track()?.kind() }.getOrNull() == MediaStreamTrack.AUDIO_TRACK_KIND }
+            // The sender takes ownership of the new track (disposed with the connection).
+            if (sender == null || !sender.setTrack(track, true)) {
+                Log.w(TAG, "Could not move the microphone to the new audio source")
+                track.dispose()
+                return
+            }
+        }
+        l.tracks = SendTracks(track, l.tracks.video)
+        old.dispose()
     }
 
     // --- sharing the radio with Bluetooth ----------------------------------------------

@@ -71,10 +71,16 @@ other person coming out of the speaker. With earbuds in, the phone's mic, a
 meter away on a bench, can't hear what's playing inside your ears, so there's
 nothing to cancel, and an echo canceller would only make your voice worse.
 
-Earshot's **Automatic** echo cancellation follows the output at call start:
-off for earbuds, headphones and hearing aids, on for the loudspeaker (WebRTC's
-software canceller). You can force it either way in Settings. Noise suppression
-and automatic gain stay on by default; a gym is loud.
+Earshot's **Automatic** echo cancellation follows the output: off for
+earbuds, headphones and hearing aids, on for the loudspeaker (WebRTC's
+software canceller). It keeps following it during the call: if the earbuds
+drop out (flat battery, back in the case) and the call moves to the
+loudspeaker, the canceller comes on at once, so the other person doesn't hear
+themselves; it goes off again a couple of seconds after the earbuds are back.
+WebRTC takes the setting from the microphone's audio source, so the switch
+moves the call onto a fresh source, without renegotiating or stopping the
+recording. You can force it either way in Settings. Noise suppression and
+automatic gain stay on by default; a gym is loud.
 
 ## Latency
 

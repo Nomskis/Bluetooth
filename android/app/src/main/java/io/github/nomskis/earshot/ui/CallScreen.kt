@@ -298,6 +298,13 @@ internal fun TopBar(state: CallState, route: AudioRoute, boostNotes: List<String
         (boostNotes + listOfNotNull(state.radioNote, lipSync)).forEach { note ->
             Text(note, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall)
         }
+        if (state.echoGuard) {
+            Text(
+                "Playing out loud now, so echo cancellation is on.",
+                color = Color.White.copy(alpha = 0.8f),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         if (state.smartDuckUnsupported) {
             Text(
                 "Your music app pauses instead of dipping, so the music dip is off for this call.",

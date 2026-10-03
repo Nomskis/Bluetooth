@@ -72,7 +72,7 @@ class RtcEngine(
     private val appContext = context.applicationContext
     private val audioDeviceModule: JavaAudioDeviceModule
     private val factory: PeerConnectionFactory
-    private val audioSource: AudioSource
+    private var audioSource: AudioSource
     private val videoSource: VideoSource?
     private val surfaceTextureHelper: SurfaceTextureHelper?
     private val capturer: CameraVideoCapturer?
@@ -80,6 +80,9 @@ class RtcEngine(
 
     val hasVideo: Boolean
     var isFrontCamera: Boolean
+        private set
+    /** WebRTC's software echo canceller for the microphone. */
+    var echoCancellation: Boolean = profile.softwareEchoCancellation
         private set
     private var capturing = false
 
@@ -189,9 +192,27 @@ class RtcEngine(
     }
 
     fun createSendTracks(): SendTracks = SendTracks(
-        audio = factory.createAudioTrack(Ids.random(6, "a"), audioSource),
+        audio = createAudioTrack(),
         video = videoSource?.let { factory.createVideoTrack(Ids.random(6, "v"), it) },
     )
+
+    fun createAudioTrack(): AudioTrack = factory.createAudioTrack(Ids.random(6, "a"), audioSource)
+
+    /**
+     * Turns the software echo canceller on or off. The setting travels with the
+     * audio source (WebRTC applies a source's options when its track is set on
+     * a sender), so this makes a new source; move the call's audio track onto
+     * it with [createAudioTrack]. The recording itself keeps running. Returns
+     * the replaced source, to dispose once its track is gone, or null when
+     * nothing changed.
+     */
+    fun switchEchoCancellation(on: Boolean): AudioSource? {
+        if (on == echoCancellation) return null
+        echoCancellation = on
+        val old = audioSource
+        audioSource = factory.createAudioSource(audioConstraints(profile.copy(softwareEchoCancellation = on)))
+        return old
+    }
 
     fun createPeerConnection(
         iceServers: List<IceServerConfig>,
