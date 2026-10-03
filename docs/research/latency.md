@@ -268,16 +268,17 @@ Their voice → your ears, classic earbuds:
 
 | Setup | Estimate |
 | --- | --- |
-| Earshot today | ~250–400 ms |
+| A plain WebRTC call over A2DP | ~250–400 ms |
 | Network tuning (10 ms packets, RED, fast jitter buffer, low-latency playback) | −30 to −60 ms |
-| Earbud game mode (manual, or automatic where supported) | −50 to −150 ms |
-| Game audio on capable phones and earbuds, or Shizuku Turbo | further cut, device-dependent |
+| Earbud game mode (automatic for OPPO/OnePlus/realme, Nothing/CMF, Xiaomi/Redmi; manual elsewhere) | −50 to −150 ms |
+| Turbo: fastest codec for the call, shortest buffer, low-latency mode | further cut, device-dependent |
+| Radio sharing on 2.4 GHz Wi-Fi (lighter video, or mobile data) | avoids extra buffering and dropouts where coexistence hurts |
 | **Classic earbuds, everything on** | **~140–230 ms** |
 | **LE Audio earbuds, game mode** | **~100–160 ms, with the earbud mic** |
 
-On top of that, the head-start cue and smart duck make the delay that's left
-easier to live with: you see they're talking before you hear them, and the music
-gets out of their way.
+On top of that, the parts that don't change the delay change how it feels:
+you see they're talking before you hear them, the music gets out of their way,
+their lips match the voice, and the live readout shows where the time goes.
 
 These are estimates from the sources above. The in-app sonar measurement is
 what counts on a given phone and pair of earbuds.
