@@ -200,7 +200,7 @@ private fun RemotePlaceholder(state: CallState, compact: Boolean) {
 }
 
 @Composable
-private fun TopBar(state: CallState, route: AudioRoute, boostNotes: List<String>, modifier: Modifier) {
+internal fun TopBar(state: CallState, route: AudioRoute, boostNotes: List<String>, modifier: Modifier) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -299,7 +299,7 @@ private fun Badge(text: String, highlight: Boolean = false) {
 }
 
 @Composable
-private fun Controls(
+internal fun Controls(
     state: CallState,
     onMic: () -> Unit,
     onCamera: () -> Unit,
