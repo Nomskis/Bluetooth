@@ -42,6 +42,12 @@ data class CallState(
     val frontCamera: Boolean = true,
     val signalingOnline: Boolean = false,
     val voiceVolume: Float = 1f,
+    /** The other person is talking (detected before their voice reaches your ears). */
+    val remoteSpeaking: Boolean = false,
+    val replaying: Boolean = false,
+    val canReplay: Boolean = false,
+    /** Smart dip turned itself off because the music app pauses instead of ducking. */
+    val smartDuckUnsupported: Boolean = false,
     val error: String? = null,
 ) {
     val isActive: Boolean

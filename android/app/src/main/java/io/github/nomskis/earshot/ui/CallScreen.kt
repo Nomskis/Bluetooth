@@ -1,7 +1,10 @@
 package io.github.nomskis.earshot.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +26,7 @@ import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
@@ -58,6 +62,7 @@ import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.call.CallPhase
 import io.github.nomskis.earshot.call.CallSession
 import io.github.nomskis.earshot.call.CallState
+import io.github.nomskis.earshot.ui.theme.Accent
 import io.github.nomskis.earshot.ui.theme.Danger
 import kotlin.math.roundToInt
 
@@ -80,6 +85,13 @@ fun CallScreen(
     BackHandler(onBack = onLeaveScreen)
 
     val showRemoteVideo = state.hasRemoteVideo && !state.remoteMedia.cameraOff
+    // The head-start cue: lights up as her voice enters the phone, before the
+    // Bluetooth delay lets you hear it, so you know not to talk over her.
+    val glow by animateFloatAsState(
+        targetValue = if (state.remoteSpeaking) 1f else 0f,
+        animationSpec = tween(durationMillis = if (state.remoteSpeaking) 60 else 400),
+        label = "speaking glow",
+    )
 
     Box(
         Modifier
@@ -94,6 +106,14 @@ fun CallScreen(
             )
         } else {
             RemotePlaceholder(state, compact = inPictureInPicture)
+        }
+
+        if (glow > 0f) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .border(width = if (inPictureInPicture) 3.dp else 6.dp, color = Accent.copy(alpha = glow)),
+            )
         }
 
         if (inPictureInPicture) return@Box
@@ -122,6 +142,7 @@ fun CallScreen(
             onSwitchCamera = session::switchCamera,
             onVolume = session::setVoiceVolume,
             onVolumeDone = onVoiceVolumeSaved,
+            onReplay = session::toggleReplay,
             onHangUp = session::hangUp,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
@@ -188,6 +209,10 @@ private fun TopBar(state: CallState, route: AudioRoute, modifier: Modifier) {
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f, fill = false),
             )
+            if (state.remoteSpeaking) {
+                Spacer(Modifier.width(8.dp))
+                Badge("Talking", highlight = true)
+            }
             if (state.remoteMedia.micMuted) {
                 Spacer(Modifier.width(8.dp))
                 Badge("Muted")
@@ -198,17 +223,24 @@ private fun TopBar(state: CallState, route: AudioRoute, modifier: Modifier) {
             }
         }
         RouteChip(route, state.audioMode)
+        if (state.smartDuckUnsupported) {
+            Text(
+                "Your music app pauses instead of dipping, so the music dip is off for this call.",
+                color = Color.White.copy(alpha = 0.8f),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }
 
 @Composable
-private fun Badge(text: String) {
+private fun Badge(text: String, highlight: Boolean = false) {
     Text(
         text,
-        color = Color.White,
+        color = if (highlight) Color.Black else Color.White,
         style = MaterialTheme.typography.labelSmall,
         modifier = Modifier
-            .background(Color.White.copy(alpha = 0.18f), RoundedCornerShape(50))
+            .background(if (highlight) Accent else Color.White.copy(alpha = 0.18f), RoundedCornerShape(50))
             .padding(horizontal = 8.dp, vertical = 3.dp),
     )
 }
@@ -221,6 +253,7 @@ private fun Controls(
     onSwitchCamera: () -> Unit,
     onVolume: (Float) -> Unit,
     onVolumeDone: (Float) -> Unit,
+    onReplay: () -> Unit,
     onHangUp: () -> Unit,
     modifier: Modifier,
 ) {
@@ -276,6 +309,14 @@ private fun Controls(
                 ControlButton(Icons.Filled.Cameraswitch, "Switch camera", active = false, onClick = onSwitchCamera)
             }
             ControlButton(Icons.AutoMirrored.Filled.VolumeUp, "Voice volume", active = showVolume, onClick = { showVolume = !showVolume })
+            if (state.canReplay) {
+                ControlButton(
+                    Icons.Filled.Replay,
+                    if (state.replaying) "Stop replay" else "Replay the last 8 seconds",
+                    active = state.replaying,
+                    onClick = onReplay,
+                )
+            }
             FilledIconButton(
                 onClick = onHangUp,
                 colors = IconButtonDefaults.filledIconButtonColors(containerColor = Danger, contentColor = Color.White),

@@ -31,6 +31,8 @@ class SettingsRepository(private val context: Context) {
         val keepScreenOn = booleanPreferencesKey("keep_screen_on")
         val gameAudioLabel = booleanPreferencesKey("game_audio_label")
         val lowLatencyPlayback = booleanPreferencesKey("low_latency_playback")
+        val headStartCue = booleanPreferencesKey("head_start_cue")
+        val smartDuck = booleanPreferencesKey("smart_duck")
         val voiceVolume = floatPreferencesKey("voice_volume")
         val lastRoom = stringPreferencesKey("last_room")
         val peerId = stringPreferencesKey("peer_id")
@@ -71,6 +73,8 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.keepScreenOn] = next.keepScreenOn
             prefs[Keys.gameAudioLabel] = next.gameAudioLabel
             prefs[Keys.lowLatencyPlayback] = next.lowLatencyPlayback
+            prefs[Keys.headStartCue] = next.headStartCue
+            prefs[Keys.smartDuck] = next.smartDuck
             prefs[Keys.voiceVolume] = next.voiceVolume
             prefs[Keys.lastRoom] = next.lastRoom
         }
@@ -104,6 +108,8 @@ class SettingsRepository(private val context: Context) {
             keepScreenOn = this[Keys.keepScreenOn] ?: defaults.keepScreenOn,
             gameAudioLabel = this[Keys.gameAudioLabel] ?: defaults.gameAudioLabel,
             lowLatencyPlayback = this[Keys.lowLatencyPlayback] ?: defaults.lowLatencyPlayback,
+            headStartCue = this[Keys.headStartCue] ?: defaults.headStartCue,
+            smartDuck = this[Keys.smartDuck] ?: defaults.smartDuck,
             voiceVolume = this[Keys.voiceVolume] ?: defaults.voiceVolume,
             lastRoom = this[Keys.lastRoom] ?: defaults.lastRoom,
         )

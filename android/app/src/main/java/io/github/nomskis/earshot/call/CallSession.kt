@@ -5,6 +5,10 @@ import android.util.Log
 import io.github.nomskis.earshot.BuildConfig
 import io.github.nomskis.earshot.audio.AudioProfile
 import io.github.nomskis.earshot.audio.CallAudioController
+import io.github.nomskis.earshot.audio.RemoteVoiceTap
+import io.github.nomskis.earshot.audio.ReplayPlayer
+import io.github.nomskis.earshot.audio.SmartDuck
+import io.github.nomskis.earshot.settings.AudioMode
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.signaling.CandidatePayload
 import io.github.nomskis.earshot.signaling.ClientInfo
@@ -96,6 +100,11 @@ class CallSession(
     private lateinit var signaling: SignalingClient
     private val audioController = CallAudioController(appContext)
 
+    /** Hears her audio as it enters Android, before the Bluetooth delay. Lives across reconnects. */
+    private val voiceTap = RemoteVoiceTap { speaking -> post(Event.RemoteSpeaking(speaking)) }
+    private var smartDuck: SmartDuck? = null
+    private val replayPlayer = ReplayPlayer(profile.playbackAttributes)
+
     // Negotiation state. Only touched on the call thread.
     private var iceServers: List<IceServerConfig> = emptyList()
     private var mySeq = 0
@@ -135,6 +144,10 @@ class CallSession(
         data class CameraSwitched(val front: Boolean) : Event
         data class SetVoiceVolume(val volume: Float) : Event
         data object NetworkChanged : Event
+        data class RemoteSpeaking(val speaking: Boolean) : Event
+        data object ToggleReplay : Event
+        data object ReplayFinished : Event
+        data object SmartDuckUnsupported : Event
         data object HangUp : Event
     }
 
@@ -165,6 +178,7 @@ class CallSession(
     fun switchCamera() = post(Event.SwitchCamera)
     fun setVoiceVolume(volume: Float) = post(Event.SetVoiceVolume(volume))
     fun onNetworkChanged() = post(Event.NetworkChanged)
+    fun toggleReplay() = post(Event.ToggleReplay)
     fun hangUp() = post(Event.HangUp)
 
     private fun post(event: Event) {
@@ -185,6 +199,10 @@ class CallSession(
         )
         _state.update { it.copy(hasCamera = engine.hasVideo, frontCamera = engine.isFrontCamera) }
         audioController.begin(profile)
+        // Ducking only makes sense when the call plays next to music, i.e. in Hi-Fi mode.
+        if (settings.smartDuck && profile.mode == AudioMode.HIFI) {
+            smartDuck = SmartDuck(appContext) { post(Event.SmartDuckUnsupported) }
+        }
         engine.startCamera()
 
         val join = ClientMessage.Join(
@@ -206,6 +224,8 @@ class CallSession(
     private fun finish(phase: CallPhase, error: String? = null) {
         if (finished) return
         finished = true
+        replayPlayer.stop()
+        smartDuck?.release()
         closeLink()
         if (::signaling.isInitialized) signaling.close()
         audioController.end()
@@ -259,8 +279,36 @@ class CallSession(
                 _state.update { it.copy(voiceVolume = event.volume) }
             }
             Event.NetworkChanged -> if (!_state.value.signalingOnline) signaling.reconnectNow()
+            is Event.RemoteSpeaking -> {
+                smartDuck?.onRemoteSpeaking(event.speaking)
+                if (settings.headStartCue) _state.update { it.copy(remoteSpeaking = event.speaking, canReplay = true) }
+                else _state.update { it.copy(canReplay = true) }
+            }
+            Event.ToggleReplay -> replayOrStop()
+            Event.ReplayFinished -> {
+                link?.remoteAudio?.setVolume(_state.value.voiceVolume.toDouble())
+                _state.update { it.copy(replaying = false) }
+            }
+            Event.SmartDuckUnsupported -> {
+                smartDuck = null
+                _state.update { it.copy(smartDuckUnsupported = true) }
+            }
             Event.HangUp -> finish(CallPhase.ENDED)
         }
+    }
+
+    /** Plays the last few seconds of her voice again, with the live call turned down meanwhile. */
+    private fun replayOrStop() {
+        if (replayPlayer.isPlaying) {
+            replayPlayer.stop()
+            post(Event.ReplayFinished)
+            return
+        }
+        val (pcm, rate) = voiceTap.lastSeconds(REPLAY_SECONDS)
+        if (pcm.isEmpty()) return
+        link?.remoteAudio?.setVolume(0.25 * _state.value.voiceVolume)
+        _state.update { it.copy(replaying = true) }
+        replayPlayer.play(pcm, rate) { post(Event.ReplayFinished) }
     }
 
     private suspend fun onServerMessage(message: ServerMessage) {
@@ -507,6 +555,7 @@ class CallSession(
             is AudioTrack -> {
                 l.remoteAudio = track
                 track.setVolume(_state.value.voiceVolume.toDouble())
+                track.addSink(voiceTap)
             }
         }
     }
@@ -536,13 +585,15 @@ class CallSession(
         val l = link ?: return
         link = null
         l.remoteVideoTrack?.removeSink(remoteVideo)
+        l.remoteAudio?.removeSink(voiceTap)
         // dispose() also disposes the tracks its senders own (ours, once added).
         l.pc.dispose()
         if (!l.tracksAdded) {
             l.tracks.audio.dispose()
             l.tracks.video?.dispose()
         }
-        _state.update { it.copy(hasRemoteVideo = false) }
+        _state.update { it.copy(hasRemoteVideo = false, remoteSpeaking = false) }
+        smartDuck?.onRemoteSpeaking(false)
     }
 
     private inner class LinkObserver : PeerConnection.Observer {
@@ -603,5 +654,6 @@ class CallSession(
         const val ICE_RECOVERY_DELAY_MS = 4_000L
         const val OFFER_TIMEOUT_MS = 10_000L
         const val REQUEST_OFFER_DELAY_MS = 1_500L
+        const val REPLAY_SECONDS = 8.0
     }
 }

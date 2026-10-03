@@ -168,6 +168,10 @@ fun SettingsScreen(
                 onUpdate { it.copy(gameAudioLabel = v) }
             }
             Toggle("Low-latency playback", settings.lowLatencyPlayback) { v -> onUpdate { it.copy(lowLatencyPlayback = v) } }
+            Toggle("Show when they start talking (head-start cue)", settings.headStartCue) { v ->
+                onUpdate { it.copy(headStartCue = v) }
+            }
+            Toggle("Dip my music while they talk", settings.smartDuck) { v -> onUpdate { it.copy(smartDuck = v) } }
             OutlinedButton(onClick = onOpenTuner) { Text("Open delay tuner") }
             Toggle("Noise suppression", settings.noiseSuppression) { v -> onUpdate { it.copy(noiseSuppression = v) } }
             Toggle("Automatic mic volume", settings.autoGainControl) { v -> onUpdate { it.copy(autoGainControl = v) } }

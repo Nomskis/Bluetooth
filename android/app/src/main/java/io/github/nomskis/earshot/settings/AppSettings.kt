@@ -74,6 +74,10 @@ data class AppSettings(
     val gameAudioLabel: Boolean = true,
     /** Play through Android's low-latency (fast) path with a small, self-adjusting buffer. */
     val lowLatencyPlayback: Boolean = true,
+    /** Light up the call screen as the other person starts talking, before you hear it. */
+    val headStartCue: Boolean = true,
+    /** Dip your music while the other person talks (Android ducks it for us). */
+    val smartDuck: Boolean = true,
     /** Extra gain for the other person's voice, 1.0 = unchanged. */
     val voiceVolume: Float = 1f,
     val lastRoom: String = "",
