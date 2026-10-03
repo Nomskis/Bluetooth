@@ -94,6 +94,8 @@ data class AppSettings(
      * shared radio for the earbuds entirely. Uses your data plan.
      */
     val mobileDataOn24GHz: Boolean = false,
+    /** Hold her video back to match the Bluetooth audio delay, so lips match words. */
+    val lipSync: Boolean = true,
     /** Extra gain for the other person's voice, 1.0 = unchanged. */
     val voiceVolume: Float = 1f,
     val lastRoom: String = "",

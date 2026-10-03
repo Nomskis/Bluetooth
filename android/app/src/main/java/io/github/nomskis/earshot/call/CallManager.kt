@@ -7,17 +7,25 @@ import android.net.NetworkCapabilities
 import io.github.nomskis.earshot.audio.AudioProfile
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.audio.AudioRouteMonitor
+import io.github.nomskis.earshot.audio.CodecInfo
+import io.github.nomskis.earshot.audio.LatencyProbe
 import io.github.nomskis.earshot.audio.DeviceKind
 import io.github.nomskis.earshot.audio.LinkConditions
 import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.AudioMode
+import io.github.nomskis.earshot.settings.DelayRuns
 import io.github.nomskis.earshot.service.CallService
 import io.github.nomskis.earshot.settings.SettingsRepository
 import io.github.nomskis.earshot.signaling.ServerUrls
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +48,8 @@ class CallManager(
     private val http: OkHttpClient,
     /** Earbud game mode for the length of a call, where a driver exists. */
     val earbudBoost: EarbudBoost,
+    /** The Bluetooth codec in use, when known; picks the matching delay measurement. */
+    private val codec: () -> CodecInfo? = { null },
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -90,8 +100,14 @@ class CallManager(
             // Game mode only matters when the call plays over the music link next to your music.
             val boost = current.autoGameMode && profile.mode == AudioMode.HIFI
             val boostJob = if (boost) launch { earbudBoost.begin() } else null
+            val lipSyncJob = if (current.lipSync && profile.mode == AudioMode.HIFI) {
+                launch { keepLipSync(session, profile, current, boostJob) }
+            } else {
+                null
+            }
 
             val end = session.state.first { !it.isActive }
+            lipSyncJob?.cancel()
             if (end.error != null) _lastError.value = end.error
             unwatchNetwork()
             cellular.release()
@@ -101,6 +117,36 @@ class CallManager(
                 boostJob.join()
                 earbudBoost.end()
             }
+        }
+    }
+
+    /**
+     * Keeps [LipSync] matched to wherever the audio is playing, re-planning
+     * when the output changes (earbuds connected or taken out).
+     */
+    private suspend fun keepLipSync(session: CallSession, profile: AudioProfile, current: AppSettings, boostJob: Job?) {
+        // Game mode changes the delay; plan once it has settled.
+        boostJob?.join()
+        routeMonitor.route.map { it.mediaOutput }.distinctUntilChanged().collectLatest { output ->
+            if (output?.kind != DeviceKind.BLUETOOTH_MUSIC) {
+                session.setLipSync(null)
+                return@collectLatest
+            }
+            val runs = settings.delayRuns.first()
+            val measured = DelayRuns.bestMatch(
+                runs,
+                device = output.name,
+                gameModeOn = earbudBoost.status.value?.active == true,
+                codec = codec()?.takeIf { it.device == null || it.device == output.name }?.summary,
+                gameAudio = current.gameAudioLabel,
+            )?.delayMs
+            val estimated = if (measured == null) {
+                delay(PROBE_SETTLE_MS) // let the call's own playback start first
+                LatencyProbe.estimateMs(profile.playbackAttributes)
+            } else {
+                null
+            }
+            session.setLipSync(LipSync.plan(onBluetooth = true, measuredMs = measured, estimatedMs = estimated))
         }
     }
 
@@ -142,6 +188,10 @@ class CallManager(
         val onBluetooth = route.bluetoothMusicAvailable || route.mediaOutput?.kind in bluetooth ||
             route.communicationDevice?.kind in bluetooth
         return RadioPlan.decide(LinkConditions.wifiBand(appContext), onBluetooth, settings)
+    }
+
+    private companion object {
+        const val PROBE_SETTLE_MS = 1_500L
     }
 
     private fun unwatchNetwork() {

@@ -24,7 +24,7 @@ class AppGraph(context: Context) {
         .connectTimeout(10, TimeUnit.SECONDS)
         .build()
     val earbuds = EarbudControl(context)
-    val callManager = CallManager(context, settings, routeMonitor, http, EarbudBoost(earbuds))
+    val callManager = CallManager(context, settings, routeMonitor, http, EarbudBoost(earbuds)) { codecWatcher.latest.value }
 }
 
 class EarshotApp : Application() {

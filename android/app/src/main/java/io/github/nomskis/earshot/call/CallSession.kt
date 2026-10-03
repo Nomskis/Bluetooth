@@ -96,6 +96,8 @@ class CallSession(
 
     /** Renderers attach here. These outlive individual peer connections. */
     val remoteVideo = ProxyVideoSink()
+    /** Sits between her video track and [remoteVideo], holding frames back for lip sync. */
+    private val lipSyncSink = DelayedVideoSink(remoteVideo)
     val localPreview = ProxyVideoSink()
     val eglContext: EglBase.Context get() = eglBase.eglBaseContext
 
@@ -154,6 +156,7 @@ class CallSession(
         data object ReplayFinished : Event
         data object SmartDuckUnsupported : Event
         data class UpdateRadio(val plan: RadioPlan) : Event
+        data class SetLipSync(val plan: LipSync.Plan?) : Event
         class Stats(val link: Link, val report: RTCStatsReport) : Event
         data object HangUp : Event
     }
@@ -187,6 +190,7 @@ class CallSession(
     fun onNetworkChanged() = post(Event.NetworkChanged)
     fun toggleReplay() = post(Event.ToggleReplay)
     fun updateRadioPlan(plan: RadioPlan) = post(Event.UpdateRadio(plan))
+    fun setLipSync(plan: LipSync.Plan?) = post(Event.SetLipSync(plan))
     fun hangUp() = post(Event.HangUp)
 
     private fun post(event: Event) {
@@ -237,6 +241,7 @@ class CallSession(
         replayPlayer.stop()
         smartDuck?.release()
         closeLink()
+        lipSyncSink.release()
         if (::signaling.isInitialized) signaling.close()
         audioController.end()
         if (::engine.isInitialized) engine.release()
@@ -304,6 +309,10 @@ class CallSession(
                 _state.update { it.copy(smartDuckUnsupported = true) }
             }
             is Event.UpdateRadio -> onRadioPlan(event.plan)
+            is Event.SetLipSync -> {
+                lipSyncSink.delayMs = event.plan?.videoDelayMs ?: 0
+                _state.update { it.copy(lipSync = event.plan) }
+            }
             is Event.Stats -> if (event.link === link) onStats(event.link, event.report)
             Event.HangUp -> finish(CallPhase.ENDED)
         }
@@ -613,7 +622,7 @@ class CallSession(
         when (val track = transceiver.receiver.track()) {
             is VideoTrack -> {
                 l.remoteVideoTrack = track
-                track.addSink(remoteVideo)
+                track.addSink(lipSyncSink)
                 _state.update { it.copy(hasRemoteVideo = true) }
             }
             is AudioTrack -> {
@@ -649,7 +658,7 @@ class CallSession(
         requestOfferJob?.cancel()
         val l = link ?: return
         link = null
-        l.remoteVideoTrack?.removeSink(remoteVideo)
+        l.remoteVideoTrack?.removeSink(lipSyncSink)
         l.remoteAudio?.removeSink(voiceTap)
         // dispose() also disposes the tracks its senders own (ours, once added).
         l.pc.dispose()

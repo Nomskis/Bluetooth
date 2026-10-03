@@ -27,7 +27,7 @@ data class AdviceInput(
 /** Labels the tuner offers, so tips can tell what has been tried. */
 object SetupLabels {
     const val NORMAL = "Normal"
-    const val GAME_MODE = "Game mode on"
+    const val GAME_MODE = DelayRuns.GAME_MODE_LABEL
     const val CODEC_SBC = "Codec: SBC"
     const val CODEC_AAC = "Codec: AAC"
     const val CODEC_HIGH = "Codec: LDAC/LHDC/aptX"

@@ -36,6 +36,7 @@ class SettingsRepository(private val context: Context) {
         val autoGameMode = booleanPreferencesKey("auto_game_mode")
         val bluetoothFriendlyVideo = booleanPreferencesKey("bluetooth_friendly_video")
         val mobileDataOn24GHz = booleanPreferencesKey("mobile_data_on_24ghz")
+        val lipSync = booleanPreferencesKey("lip_sync")
         val voiceVolume = floatPreferencesKey("voice_volume")
         val lastRoom = stringPreferencesKey("last_room")
         val peerId = stringPreferencesKey("peer_id")
@@ -81,6 +82,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.autoGameMode] = next.autoGameMode
             prefs[Keys.bluetoothFriendlyVideo] = next.bluetoothFriendlyVideo
             prefs[Keys.mobileDataOn24GHz] = next.mobileDataOn24GHz
+            prefs[Keys.lipSync] = next.lipSync
             prefs[Keys.voiceVolume] = next.voiceVolume
             prefs[Keys.lastRoom] = next.lastRoom
         }
@@ -119,6 +121,7 @@ class SettingsRepository(private val context: Context) {
             autoGameMode = this[Keys.autoGameMode] ?: defaults.autoGameMode,
             bluetoothFriendlyVideo = this[Keys.bluetoothFriendlyVideo] ?: defaults.bluetoothFriendlyVideo,
             mobileDataOn24GHz = this[Keys.mobileDataOn24GHz] ?: defaults.mobileDataOn24GHz,
+            lipSync = this[Keys.lipSync] ?: defaults.lipSync,
             voiceVolume = this[Keys.voiceVolume] ?: defaults.voiceVolume,
             lastRoom = this[Keys.lastRoom] ?: defaults.lastRoom,
         )

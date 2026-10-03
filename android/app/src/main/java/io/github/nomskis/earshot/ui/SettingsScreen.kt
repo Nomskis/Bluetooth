@@ -195,6 +195,11 @@ fun SettingsScreen(
                 describe = { "${it.height}p, ${it.fps} fps" },
                 onSelect = { value -> onUpdate { it.copy(videoQuality = value) } },
             )
+            Toggle("Keep their lips in time with Bluetooth audio", settings.lipSync) { v -> onUpdate { it.copy(lipSync = v) } }
+            Hint(
+                "Earbuds on the music link play sound later than calls expect, so video runs ahead of the voice. " +
+                    "This holds video back by the difference; measure your earbuds in the delay tuner for the best match.",
+            )
             Toggle("Start with the back camera", settings.startWithBackCamera) { v ->
                 onUpdate { it.copy(startWithBackCamera = v) }
             }

@@ -62,6 +62,7 @@ import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.call.CallPhase
 import io.github.nomskis.earshot.call.CallSession
 import io.github.nomskis.earshot.call.CallState
+import io.github.nomskis.earshot.call.LipSync
 import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.ui.theme.Accent
 import io.github.nomskis.earshot.ui.theme.Danger
@@ -226,7 +227,11 @@ private fun TopBar(state: CallState, route: AudioRoute, earbudBoost: EarbudBoost
         }
         RouteChip(route, state.audioMode)
         // What Earshot is doing for the earbuds behind the scenes.
-        listOfNotNull(earbudBoost?.text, state.radioNote).forEach { note ->
+        val lipSync = state.lipSync?.takeIf { state.hasRemoteVideo }?.let {
+            "Video held back ${it.videoDelayMs} ms to match the earbuds" +
+                if (it.source == LipSync.Source.MEASURED) " (measured)" else ""
+        }
+        listOfNotNull(earbudBoost?.text, state.radioNote, lipSync).forEach { note ->
             Text(note, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall)
         }
         if (state.smartDuckUnsupported) {

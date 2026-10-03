@@ -36,6 +36,28 @@ object DelayRuns {
     fun latestFor(runs: List<DelayRun>, device: String?): DelayRun? =
         device?.let { name -> runs.lastOrNull { it.device == name } }
 
+    /**
+     * The measurement that best describes the earbuds as they are set up now:
+     * same device, then game mode on or off as now, then the same codec and
+     * game-audio label; the most recent wins a tie.
+     */
+    fun bestMatch(runs: List<DelayRun>, device: String?, gameModeOn: Boolean, codec: String?, gameAudio: Boolean): DelayRun? {
+        if (device == null) return null
+        fun codecKey(text: String?) = text?.removePrefix("Codec: ")?.substringBefore(' ')?.uppercase()
+        val now = codecKey(codec)
+        return runs.withIndex()
+            .filter { it.value.device == device }
+            .maxWithOrNull(
+                compareBy<IndexedValue<DelayRun>> { (it.value.label == GAME_MODE_LABEL) == gameModeOn }
+                    .thenBy { now != null && codecKey(it.value.codec) == now }
+                    .thenBy { it.value.gameAudio == gameAudio }
+                    .thenBy { it.index },
+            )?.value
+    }
+
+    /** Same text as the tuner's "Game mode on" label. */
+    const val GAME_MODE_LABEL = "Game mode on"
+
     /** The fastest setup measured for a device, if there are at least two to compare. */
     fun fastestFor(runs: List<DelayRun>, device: String?): DelayRun? {
         val forDevice = runs.filter { it.device == device }
