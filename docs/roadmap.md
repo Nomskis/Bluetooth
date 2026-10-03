@@ -23,11 +23,18 @@ Roughly in order. Each item stands on its own; pick any.
 - **Headset mode to Hi-Fi mid-call.** Hi-Fi calls can now borrow the earbud
   mic and come back; a call started in headset mode still can't move to
   Hi-Fi without rebuilding the audio device module.
-- **Connection quality indicator** from WebRTC stats (round-trip time, packet
-  loss, bitrate), plus a debug screen with the selected codec and candidate
-  type. The stats poller behind the mobile-data switch is the start of it.
-- **Release builds on GitHub Releases** with a proper signing key, so updates
-  install over each other without uninstalling.
+- **Connection quality at a glance.** The delay readout already breaks down
+  network time, packet loss and whether the call is direct or relayed; a
+  simple good/poor indicator and the negotiated codec and bitrate would round
+  it off.
+- **Signed release builds.** A rolling nightly pre-release already carries
+  the debug APK (shared debug key, so builds install over each other); a
+  proper release key and versioned releases are next.
+- **Ringing.** Calls start by sharing an invite link. The browser side could
+  get a real ring through Web Push (the server signs with a stable VAPID key
+  derived from a generated secret, and the caller's app keeps the callee's
+  subscription, so the server stores nothing); ringing the Android app would
+  need a push service.
 - **App links** so `https://<server>/r/<room>` opens the Android app when it's
   installed (`earshot://join/<room>` already works).
 
