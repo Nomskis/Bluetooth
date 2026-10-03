@@ -67,8 +67,10 @@ object TunerAdvice {
             tips += Tip(
                 Tip.Kind.GAME_MODE,
                 "Turn on your earbuds' game mode",
-                "Most earbuds have a low-latency or game mode in their app. In tests it typically halves " +
-                    "the delay (around 200 ms down to 100 ms). Turn it on, then measure again labelled \"Game mode on\".",
+                "Most earbuds have a low-latency or game mode. In tests it typically halves the delay (around 200 ms " +
+                    "down to 100 ms). For OPPO, OnePlus, realme, Nothing, CMF, Xiaomi, Redmi and some others, Earshot can " +
+                    "switch it itself: try \"Find my fastest setup\" above. Otherwise turn it on in the earbuds' app and " +
+                    "measure again labelled \"Game mode on\".",
             )
         }
 
@@ -87,8 +89,9 @@ object TunerAdvice {
             tips += Tip(
                 Tip.Kind.CODEC,
                 "Try a different Bluetooth codec",
-                "In Developer options, \"Bluetooth audio codec\" lets you pick the codec. High-resolution ones " +
-                    "(LDAC, LHDC, aptX HD) often add delay; AAC or SBC can be faster. Measure each and keep the fastest.",
+                "High-resolution codecs (LDAC, LHDC, aptX HD) often add delay; AAC or SBC can be faster. With Turbo " +
+                    "below, Earshot measures every codec and uses the fastest for calls only, keeping your music codec. " +
+                    "Without it, pick one in Developer options under \"Bluetooth audio codec\" and measure each.",
             )
         }
 
