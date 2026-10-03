@@ -288,3 +288,20 @@ test('text chat goes straight between the browsers and survives a reload', async
   await a.context.close();
   await b.context.close();
 });
+
+test('the site can be installed to the home screen and remembers the last room', async ({ browser }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const manifest = await (await page.request.get('/manifest.webmanifest')).json();
+  expect(manifest.display).toBe('standalone');
+  for (const icon of manifest.icons) expect((await page.request.get(icon.src)).ok()).toBe(true);
+  expect((await page.request.get('/apple-touch-icon.png')).ok()).toBe(true);
+
+  const room = uniqueRoom('home');
+  await page.goto(`/r/${room}`);
+  await page.click('#join-button');
+  await expect(page.locator('#call')).toBeVisible();
+  await page.goto('/');
+  await expect(page.locator('#room-input')).toHaveValue(room);
+  await context.close();
+});

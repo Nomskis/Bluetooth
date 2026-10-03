@@ -98,7 +98,8 @@ function showLobbyError(text) {
 // --- Lobby -------------------------------------------------------------------
 
 const roomFromPath = location.pathname.match(/^\/r\/([^/]+)\/?$/);
-ui.roomInput.value = roomFromPath ? decodeURIComponent(roomFromPath[1]) : '';
+// An invite link names the room; otherwise offer the last one (handy from the home screen).
+ui.roomInput.value = roomFromPath ? decodeURIComponent(roomFromPath[1]) : (storage('localStorage')?.getItem('earshot.lastRoom') ?? '');
 ui.nameInput.value = storage('localStorage')?.getItem('earshot.name') ?? '';
 
 // On Android, offer the app: it keeps Bluetooth earbuds on the music link,
@@ -132,6 +133,7 @@ ui.form.addEventListener('submit', async (event) => {
   voice.prime();
   const name = ui.nameInput.value.trim();
   storage('localStorage')?.setItem('earshot.name', name);
+  storage('localStorage')?.setItem('earshot.lastRoom', room);
   showLobbyError('');
   ui.joinButton.disabled = true;
   try {
