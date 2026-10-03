@@ -1,0 +1,13 @@
+{
+  "type": "signal",
+  "to": "z9y8x7w6v5u4t3s2",
+  "data": {
+    "kind": "candidate",
+    "session": "s-4f9c2a",
+    "candidate": {
+      "candidate": "candidate:842163049 1 udp 1677729535 203.0.113.7 50123 typ srflx raddr 0.0.0.0 rport 0 generation 0",
+      "sdpMid": "0",
+      "sdpMLineIndex": 0
+    }
+  }
+}

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Earshot</string>
+    <string name="tagline">Video calls that keep your earbuds in music quality.</string>
+    <string name="hang_up">Hang up</string>
+    <string name="notification_channel_calls">Ongoing calls</string>
+    <string name="notification_connecting">Connecting…</string>
+    <string name="notification_waiting">Waiting for the other person</string>
+    <string name="notification_reconnecting">Reconnecting…</string>
+    <string name="notification_in_call">In a call</string>
+    <string name="notification_in_call_with">In a call with %1$s</string>
+    <string name="notification_hifi">Hi-Fi audio</string>
+</resources>

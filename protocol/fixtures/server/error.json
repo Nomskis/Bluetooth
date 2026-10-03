@@ -1,0 +1,5 @@
+{
+  "type": "error",
+  "code": "room-full",
+  "message": "This room is full."
+}

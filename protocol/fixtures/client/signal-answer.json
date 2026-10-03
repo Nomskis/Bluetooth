@@ -1,0 +1,9 @@
+{
+  "type": "signal",
+  "to": "z9y8x7w6v5u4t3s2",
+  "data": {
+    "kind": "answer",
+    "session": "s-4f9c2a",
+    "sdp": "v=0\r\no=- 7200435541820036715 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"
+  }
+}

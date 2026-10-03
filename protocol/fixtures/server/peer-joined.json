@@ -1,0 +1,9 @@
+{
+  "type": "peer-joined",
+  "peer": {
+    "peerId": "z9y8x7w6v5u4t3s2",
+    "name": "Salma",
+    "client": { "platform": "web", "version": "0.1.0", "capabilities": [] },
+    "seq": 3
+  }
+}

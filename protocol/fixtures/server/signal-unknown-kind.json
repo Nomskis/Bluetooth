@@ -1,0 +1,8 @@
+{
+  "type": "signal",
+  "from": "z9y8x7w6v5u4t3s2",
+  "data": {
+    "kind": "something-from-the-future",
+    "whatever": 1
+  }
+}

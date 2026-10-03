@@ -1,0 +1,96 @@
+# Running the server
+
+The server is a single Node.js process (Node 20 or newer) with one dependency.
+It needs very little: a few MB of RAM per call, almost no CPU, and its traffic
+is tiny because the media goes directly between the phones.
+
+It needs to be reachable over **HTTPS** from both sides. Browsers only allow
+the camera and microphone on secure pages, and the Android release build only
+connects over TLS.
+
+## Try it on your Wi-Fi
+
+```sh
+cd server
+npm install
+npm start
+```
+
+- Android **debug** builds can connect to `http://<your-laptop-ip>:8080`
+  (type `192.168.1.20:8080` in Settings).
+- A browser on the laptop itself can use `http://localhost:8080`.
+- A browser on another device needs HTTPS, so for a full test use one of the
+  options below, or a tunnel like `cloudflared tunnel --url http://localhost:8080`.
+
+## Docker on a VPS, with automatic HTTPS
+
+On any small Linux server with Docker and a domain pointing at it:
+
+```sh
+git clone https://github.com/Nomskis/Bluetooth.git earshot && cd earshot
+cp .env.example .env        # set EARSHOT_DOMAIN=calls.example.com
+docker compose --profile https up -d
+```
+
+[Caddy](https://caddyserver.com) gets a Let's Encrypt certificate and proxies
+`https://calls.example.com` (WebSockets included) to the server. Put
+`https://calls.example.com` into the app's Settings.
+
+## Hosting platforms
+
+Anything that runs a Dockerfile or a Node app and terminates TLS for you works,
+for example Render, Fly.io or Railway:
+
+- **Build:** the [`Dockerfile`](../Dockerfile) at the repository root, or
+  `cd server && npm ci` with start command `node server/src/index.js` from the
+  repository root.
+- **Port:** the platform's `PORT` variable is respected.
+- **Health check:** `GET /healthz`.
+- WebSockets must be allowed (they are by default on the platforms above).
+- Free tiers that sleep when idle add a delay to the first connection.
+
+## TURN (when calls won't connect)
+
+Most calls connect directly. Some networks (certain mobile carriers, strict
+corporate or gym Wi-Fi) block that, and then a TURN relay is needed to carry
+the media. Symptoms: both sides see each other "connecting…" forever.
+
+The bundled compose file can run [coturn](https://github.com/coturn/coturn):
+
+```sh
+# in .env
+TURN_SECRET=$(openssl rand -hex 32)
+TURN_URLS=turn:calls.example.com:3478?transport=udp,turn:calls.example.com:3478?transport=tcp
+
+docker compose --profile https --profile turn up -d
+```
+
+Open UDP/TCP 3478 and UDP 49160–49200 in your firewall. The server hands each
+peer time-limited TURN credentials derived from `TURN_SECRET` (coturn's
+`use-auth-secret` scheme), so the secret itself never leaves the server.
+
+A hosted TURN service works too: set `TURN_URLS`, `TURN_USERNAME` and
+`TURN_CREDENTIAL` to the values it gives you.
+
+## Configuration
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `PORT` | `8080` | HTTP port |
+| `HOST` | `0.0.0.0` | Interface to listen on |
+| `WEB_ROOT` | `../web` relative to `server/src` | Where the browser client's files are |
+| `MAX_PEERS_PER_ROOM` | `2` | Room size. The clients are one-to-one for now. |
+| `RECONNECT_GRACE_MS` | `20000` | How long a dropped peer keeps its slot |
+| `HEARTBEAT_MS` | `25000` | WebSocket ping interval for detecting dead connections |
+| `STUN_URLS` | Google's public STUN servers | Comma-separated |
+| `TURN_URLS` | none | Comma-separated TURN URLs |
+| `TURN_SECRET` | none | Shared secret for time-limited TURN credentials |
+| `TURN_USERNAME`, `TURN_CREDENTIAL` | none | Fixed TURN credentials, if not using a secret |
+| `TURN_TTL_SECONDS` | `43200` | Lifetime of issued TURN credentials |
+
+## Privacy
+
+The server sees room codes, display names and the connection metadata needed
+to introduce the peers. It never sees or stores audio or video, and it keeps
+nothing on disk. Anyone who knows a room code can join it while it has a free
+slot, so use the generated codes rather than something guessable.

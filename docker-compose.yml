@@ -1,0 +1,57 @@
+# Run the Earshot server, optionally with a TURN relay and automatic HTTPS.
+#
+#   docker compose up -d                          # server only, on port 8080
+#   docker compose --profile https up -d          # + Caddy with a Let's Encrypt certificate
+#   docker compose --profile turn up -d           # + coturn relay for strict networks
+#
+# Settings come from a .env file next to this one; see docs/deploy.md.
+services:
+  earshot:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      STUN_URLS: ${STUN_URLS:-stun:stun.l.google.com:19302}
+      TURN_URLS: ${TURN_URLS:-}
+      TURN_SECRET: ${TURN_SECRET:-}
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    command: caddy reverse-proxy --from ${EARSHOT_DOMAIN:?set EARSHOT_DOMAIN in .env} --to earshot:8080
+    volumes:
+      - caddy-data:/data
+    depends_on:
+      - earshot
+
+  coturn:
+    image: coturn/coturn:4.6
+    profiles: ["turn"]
+    restart: unless-stopped
+    # TURN needs a wide range of UDP ports; host networking is the simplest way.
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --listening-port=3478
+      - --fingerprint
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET:?set TURN_SECRET in .env}
+      - --realm=${EARSHOT_DOMAIN:-earshot}
+      - --min-port=49160
+      - --max-port=49200
+      - --no-cli
+      - --no-multicast-peers
+      # Never relay into private networks.
+      - --denied-peer-ip=10.0.0.0-10.255.255.255
+      - --denied-peer-ip=172.16.0.0-172.31.255.255
+      - --denied-peer-ip=192.168.0.0-192.168.255.255
+      - --denied-peer-ip=127.0.0.0-127.255.255.255
+
+volumes:
+  caddy-data:

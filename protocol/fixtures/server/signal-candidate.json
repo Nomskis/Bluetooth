@@ -1,0 +1,14 @@
+{
+  "type": "signal",
+  "from": "z9y8x7w6v5u4t3s2",
+  "data": {
+    "kind": "candidate",
+    "session": "s-4f9c2a",
+    "candidate": {
+      "candidate": "candidate:1 1 udp 2122260223 192.168.1.20 54400 typ host generation 0",
+      "sdpMid": "1",
+      "sdpMLineIndex": 1,
+      "usernameFragment": "abcd"
+    }
+  }
+}

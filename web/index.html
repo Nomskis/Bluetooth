@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0e1014" />
+    <meta name="description" content="Open-source video calls that keep Bluetooth earbuds in full music quality." />
+    <title>Earshot</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/js/app.js"></script>
+  </head>
+  <body>
+    <main id="lobby" class="lobby">
+      <header class="brand">
+        <img src="/icon.svg" alt="" width="48" height="48" />
+        <div>
+          <h1>Earshot</h1>
+          <p class="tagline">Video calls that keep your earbuds in music quality.</p>
+        </div>
+      </header>
+
+      <form id="join-form" class="card" novalidate>
+        <label for="room-input">Room</label>
+        <div class="row">
+          <input
+            id="room-input"
+            name="room"
+            autocomplete="off"
+            autocapitalize="none"
+            spellcheck="false"
+            placeholder="calm-otter-4821"
+            required
+          />
+          <button type="button" id="generate-room" class="secondary" title="Make a new room code">New</button>
+        </div>
+
+        <label for="name-input">Your name</label>
+        <input id="name-input" name="name" autocomplete="nickname" maxlength="64" placeholder="Optional" />
+
+        <label class="check">
+          <input type="checkbox" id="video-input" checked />
+          Camera on
+        </label>
+
+        <p id="lobby-error" class="error" role="alert" hidden></p>
+        <button type="submit" id="join-button" class="primary">Join call</button>
+      </form>
+
+      <p class="footnote">
+        Free and open source. Calls go directly between devices when possible and are always encrypted
+        (WebRTC DTLS-SRTP). The server only introduces the two sides.
+      </p>
+    </main>
+
+    <section id="call" class="call" hidden>
+      <video id="remote-video" class="remote-video" autoplay playsinline></video>
+
+      <div id="call-overlay" class="call-overlay">
+        <p id="call-status">Connecting…</p>
+        <button type="button" id="copy-link" class="secondary">Copy invite link</button>
+      </div>
+
+      <header class="call-top">
+        <div>
+          <strong id="peer-name">Waiting…</strong>
+          <span id="peer-badges" class="badges"></span>
+        </div>
+        <span id="room-label" class="room-label"></span>
+      </header>
+
+      <video id="local-video" class="local-video mirrored" autoplay playsinline muted></video>
+
+      <button type="button" id="unmute-audio" class="unmute" hidden>Tap to hear the call</button>
+
+      <nav class="controls" aria-label="Call controls">
+        <button type="button" id="toggle-mic" class="control" aria-pressed="false" title="Mute microphone">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"/></svg>
+          <span>Mute</span>
+        </button>
+        <button type="button" id="toggle-camera" class="control" aria-pressed="false" title="Turn camera off">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4Z"/></svg>
+          <span>Camera</span>
+        </button>
+        <button type="button" id="flip-camera" class="control" title="Switch camera" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 5h-3.17L15 3H9L7.17 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm-8 13a5 5 0 0 1-4.9-4H5l3-3 3 3H9.1a3 3 0 0 0 5.66 1.17l1.46 1.46A5 5 0 0 1 12 18Zm4-5-3-3h1.9a3 3 0 0 0-5.66-1.17L7.78 7.37A5 5 0 0 1 16.9 10H19l-3 3Z"/></svg>
+          <span>Flip</span>
+        </button>
+        <button type="button" id="hang-up" class="control danger" title="Leave call">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85a1 1 0 0 1-1.41-.02L.29 13.08a1 1 0 0 1 0-1.41C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67a1 1 0 0 1 0 1.41l-2.48 2.47a1 1 0 0 1-1.41.02 11.27 11.27 0 0 0-2.66-1.85 1 1 0 0 1-.56-.9v-3.1A15.9 15.9 0 0 0 12 9Z"/></svg>
+          <span>Leave</span>
+        </button>
+      </nav>
+    </section>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+  </body>
+</html>
