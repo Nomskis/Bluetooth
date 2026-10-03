@@ -93,9 +93,9 @@ are in [research/latency.md](research/latency.md); in short:
 | Shorter network path | 10 ms Opus packets (`a=ptime:10`), redundant audio (RED) preferred, a jitter buffer that shrinks quickly (`audioJitterBufferFastAccelerate`) | everything |
 | Fast playback path | `PERFORMANCE_MODE_LOW_LATENCY` with a self-adjusting buffer (`setUseLowLatency`), game-audio label | everything; low-latency Bluetooth where the phone supports it |
 | Measure it | The sonar meter in the delay tuner: chirps through an earbud held to the mic, matched filter, calibrated against the phone speaker | everything |
-| See her talk first | A voice detector on her decoded audio, 100–250 ms ahead of your ears: the call screen glows, music dips (`AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`), 8-second replay | everything |
+| See them talk first | A voice detector on their decoded audio, 100–250 ms ahead of your ears: the call screen glows, music dips (`AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`), 8-second replay | everything |
 | Free the radio | On 2.4 GHz Wi-Fi with Bluetooth audio: video capped at 800 kbps both ways; optionally media moved to mobile data | everything |
-| Lip sync | Her video held back by the Bluetooth delay WebRTC doesn't know about | everything |
+| Lip sync | Their video held back by the Bluetooth delay WebRTC doesn't know about | everything |
 | Earbud game mode | Each brand's own command, on for the call and back after | OPPO/OnePlus/realme, Nothing/CMF, Xiaomi/Redmi, Huawei/Honor, EarFun |
 | Turbo | Android's privileged Bluetooth controls, through Shizuku: for each call, low-latency mode, the codec measured fastest, the shortest buffer; undone after | Android 13+ with Wireless debugging |
 | Fast failover | Mobile data on standby, ICE tuned to swap a stalled path in ~1 s | everything |
@@ -146,10 +146,10 @@ WebRTC lines video up with audio assuming the audio takes a fixed time to
 play once it leaves the jitter buffer. In the Android library that is 75 ms
 (the Java audio module is built with a 150 ms "high latency" estimate and
 reports half of it). Over A2DP the real figure is typically 150–300 ms, so
-her lips move before you hear the words, often by more than the ~125 ms at
+their lips move before you hear the words, often by more than the ~125 ms at
 which people notice (ITU-R BT.1359).
 
-Earshot holds her video back by the difference
+Earshot holds their video back by the difference
 ([`call/LipSync.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/LipSync.kt),
 [`call/DelayedVideoSink.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/DelayedVideoSink.kt)).
 The figure comes from your delay-tuner measurement that best matches the setup

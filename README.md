@@ -36,7 +36,7 @@ this list works with every pair of classic Bluetooth earbuds:
 - **Leaner network path.** 10 ms audio packets instead of 20, redundant audio
   (RED) so a lost packet is repaired without the jitter buffer growing, and a
   jitter buffer that shrinks right back after a hiccup.
-- **Android's low-latency path.** Her voice is played on Android's fast audio
+- **Android's low-latency path.** Their voice is played on Android's fast audio
   path and labelled as game audio, which on phones that support it switches
   the Bluetooth link into its low-latency mode by itself.
 - **Measure it, by sound.** The delay tuner plays chirps through an earbud held
@@ -45,19 +45,20 @@ this list works with every pair of classic Bluetooth earbuds:
   codec and keeps whatever is fastest for calls.
 - **See the delay live.** During a call the screen shows roughly how long
   their voice takes from their mouth to your ear, and where the time goes.
-- **Hear her before you hear her.** Earshot sees her voice arrive 100–250 ms
-  before the earbuds play it: the call screen lights up as she starts talking,
-  your music dips while she talks, and you can replay the last 8 seconds.
+- **See them talk before you hear them.** Earshot sees their voice arrive
+  100–250 ms before the earbuds play it: the call screen lights up as they
+  start talking, your music dips while they talk, and you can replay the last
+  8 seconds.
 - **Keeps the radio free for your earbuds.** On 2.4 GHz Wi-Fi, which shares
   the phone's radio with Bluetooth, video is kept lighter in both directions;
   optionally the call moves to mobile data, which doesn't share it at all. A
   radio test in the tuner shows what Wi-Fi traffic costs your earbuds.
 - **Survives gym Wi-Fi.** Mobile data waits on standby, and a stalled Wi-Fi
   path is swapped for it in about a second instead of WebRTC's usual 5–25.
-- **Lips in time with her voice.** Her video is held back by exactly the
+- **Lips in time with the voice.** Their video is held back by exactly the
   Bluetooth delay that WebRTC doesn't know about, using your measurement when
   there is one.
-- **HD voice.** The earbuds stay on the music link, so her voice is sent at
+- **HD voice.** The earbuds stay on the music link, so voices are sent at
   near-transparent quality (48 kbps Opus instead of 32).
 - **Earbud mic when you need it.** One tap moves a Hi-Fi call to the earbuds'
   mic (call quality) for a noisy moment, and back, without reconnecting.
