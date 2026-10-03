@@ -56,6 +56,7 @@ fun SettingsScreen(
     serverCheck: ServerCheck,
     onUpdate: ((AppSettings) -> AppSettings) -> Unit,
     onCheckServer: (String) -> Unit,
+    onOpenTuner: () -> Unit,
     onBack: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
@@ -163,6 +164,11 @@ fun SettingsScreen(
                 },
                 onSelect = { value -> onUpdate { it.copy(echoCancellation = value) } },
             )
+            Toggle("Game audio label (lower Bluetooth delay where supported)", settings.gameAudioLabel) { v ->
+                onUpdate { it.copy(gameAudioLabel = v) }
+            }
+            Toggle("Low-latency playback", settings.lowLatencyPlayback) { v -> onUpdate { it.copy(lowLatencyPlayback = v) } }
+            OutlinedButton(onClick = onOpenTuner) { Text("Open delay tuner") }
             Toggle("Noise suppression", settings.noiseSuppression) { v -> onUpdate { it.copy(noiseSuppression = v) } }
             Toggle("Automatic mic volume", settings.autoGainControl) { v -> onUpdate { it.copy(autoGainControl = v) } }
             Hint("Changes apply to your next call.")

@@ -4,9 +4,14 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.nomskis.earshot.appGraph
+import io.github.nomskis.earshot.audio.AudioProfile
 import io.github.nomskis.earshot.audio.AudioRoute
+import io.github.nomskis.earshot.audio.LinkConditions
+import io.github.nomskis.earshot.audio.SonarMeter
+import io.github.nomskis.earshot.audio.WifiBand
 import io.github.nomskis.earshot.call.CallSession
 import io.github.nomskis.earshot.settings.AppSettings
+import io.github.nomskis.earshot.settings.DelayRun
 import io.github.nomskis.earshot.signaling.ServerUrls
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,6 +48,45 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _serverCheck = MutableStateFlow<ServerCheck>(ServerCheck.Idle)
     val serverCheck: StateFlow<ServerCheck> = _serverCheck.asStateFlow()
+
+    val delayRuns: StateFlow<List<DelayRun>> =
+        graph.settings.delayRuns.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private val _sonar = MutableStateFlow<SonarState>(SonarState.Idle)
+    val sonar: StateFlow<SonarState> = _sonar.asStateFlow()
+
+    fun wifiBand(): WifiBand? = LinkConditions.wifiBand(getApplication())
+
+    /** Measures the earbuds by sound, through the same audio path a call would use. */
+    fun measureDelay(label: String) {
+        if (_sonar.value is SonarState.Running || session.value != null) return
+        _sonar.value = SonarState.Running(SonarMeter.Stage.CALIBRATING)
+        viewModelScope.launch {
+            val current = graph.settings.current()
+            val profile = AudioProfile.forCall(current, graph.routeMonitor.snapshot())
+            val outcome = SonarMeter(getApplication()).measure(profile.playbackAttributes) { stage ->
+                _sonar.value = SonarState.Running(stage)
+            }
+            if (outcome is SonarMeter.Outcome.Success) {
+                graph.settings.addDelayRun(
+                    DelayRun(
+                        device = outcome.deviceName,
+                        label = label,
+                        delayMs = outcome.summary.delayMs,
+                        reportedMs = outcome.summary.reportedMs,
+                        calibrated = outcome.summary.calibrated,
+                        gameAudio = current.gameAudioLabel,
+                        atMillis = System.currentTimeMillis(),
+                    ),
+                )
+            }
+            _sonar.value = SonarState.Done(outcome)
+        }
+    }
+
+    fun clearDelayRuns(device: String) {
+        viewModelScope.launch { graph.settings.clearDelayRuns(device) }
+    }
 
     fun updateSettings(transform: (AppSettings) -> AppSettings) {
         viewModelScope.launch { graph.settings.update(transform) }

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -62,6 +63,8 @@ import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.call.RoomCodes
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.AudioMode
+import io.github.nomskis.earshot.settings.DelayRun
+import io.github.nomskis.earshot.settings.DelayRuns
 import io.github.nomskis.earshot.signaling.ServerUrls
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,8 +77,10 @@ fun HomeScreen(
     onConsumePendingRoom: () -> Unit,
     onDismissError: () -> Unit,
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
+    delayRuns: List<DelayRun>,
     onJoin: (room: String, withVideo: Boolean) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenTuner: () -> Unit,
 ) {
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
@@ -159,6 +164,8 @@ fun HomeScreen(
 
             RouteCard(route, settings.audioMode)
 
+            DelayCard(DelayRuns.latestFor(delayRuns, route.mediaOutput?.name), onOpenTuner)
+
             AudioModePicker(settings.audioMode) { mode -> onUpdateSettings { it.copy(audioMode = mode) } }
 
             OutlinedTextField(
@@ -215,6 +222,33 @@ fun HomeScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/** Shows the earbuds' measured delay and opens the tuner. */
+@Composable
+private fun DelayCard(latest: DelayRun?, onOpenTuner: () -> Unit) {
+    Card(
+        onClick = onOpenTuner,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Earbud delay", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    latest?.let { "${it.delayMs.toInt()} ms · ${it.label}" } ?: "Not measured yet",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "Measure it by sound and find the fastest setup.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(Icons.Filled.Speed, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         }
     }
 }

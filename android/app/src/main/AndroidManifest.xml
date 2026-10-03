@@ -18,6 +18,21 @@
     <uses-feature android:name="android.hardware.camera.front" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="true" />
 
+    <!-- Companion apps the delay tuner can open (earbud game / low-latency modes live there). -->
+    <queries>
+        <package android:name="com.realme.link" />
+        <package android:name="com.heytap.headset" />
+        <package android:name="com.samsung.android.app.watchmanager" />
+        <package android:name="com.sony.songpal.mdr" />
+        <package android:name="com.nothing.smartcenter" />
+        <package android:name="com.oceanwing.soundcore" />
+        <package android:name="com.mi.earphone" />
+        <package android:name="com.huawei.smarthome" />
+        <package android:name="com.jabra.moments" />
+        <package android:name="com.bose.bosemusic" />
+        <package android:name="com.google.android.apps.wearables.maestro.companion" />
+    </queries>
+
     <application
         android:name=".EarshotApp"
         android:allowBackup="true"

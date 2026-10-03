@@ -34,11 +34,27 @@ class SettingsRepository(private val context: Context) {
         val voiceVolume = floatPreferencesKey("voice_volume")
         val lastRoom = stringPreferencesKey("last_room")
         val peerId = stringPreferencesKey("peer_id")
+        val delayRuns = stringPreferencesKey("delay_runs")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { it.toSettings() }
 
     suspend fun current(): AppSettings = settings.first()
+
+    /** Every stored delay measurement, oldest first. */
+    val delayRuns: Flow<List<DelayRun>> = context.dataStore.data.map { DelayRuns.decode(it[Keys.delayRuns]) }
+
+    suspend fun addDelayRun(run: DelayRun) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.delayRuns] = DelayRuns.encode(DelayRuns.decode(prefs[Keys.delayRuns]) + run)
+        }
+    }
+
+    suspend fun clearDelayRuns(device: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.delayRuns] = DelayRuns.encode(DelayRuns.decode(prefs[Keys.delayRuns]).filter { it.device != device })
+        }
+    }
 
     suspend fun update(transform: (AppSettings) -> AppSettings) {
         context.dataStore.edit { prefs ->
