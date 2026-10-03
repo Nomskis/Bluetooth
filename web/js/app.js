@@ -22,6 +22,7 @@ const ui = {
   localVideo: $('local-video'),
   overlay: $('call-overlay'),
   status: $('call-status'),
+  hint: $('call-hint'),
   copyLink: $('copy-link'),
   peerName: $('peer-name'),
   peerBadges: $('peer-badges'),
@@ -273,10 +274,34 @@ ui.delay.addEventListener('click', () => {
   updateDelay();
 });
 
+// Connecting for a long time usually means the networks block direct calls. Same wording as the app.
+const STUCK_HINT_MS = 15_000;
+let stuckTimer = null;
+
+function hasRelay(iceServers) {
+  return (iceServers ?? []).some((s) => [s.urls].flat().some((u) => /^turns?:/.test(u)));
+}
+
+function stuckHint() {
+  return hasRelay(engine?.iceServers)
+    ? 'This is taking a while. Check that both of you are online; switching one side between Wi-Fi and mobile data can help.'
+    : 'This is taking a while. Some networks (mobile data, gym or office Wi-Fi) block direct calls, and this server has no TURN relay to get around that. Try both on home Wi-Fi, or add TURN to the server.';
+}
+
 function renderStatus(status) {
   const connected = status === 'connected';
   ui.overlay.hidden = connected;
   ui.status.textContent = STATUS_TEXT[status] ?? status;
+  if (status === 'negotiating' || status === 'reconnecting') {
+    stuckTimer ??= setTimeout(() => {
+      ui.hint.textContent = stuckHint();
+      ui.hint.hidden = false;
+    }, STUCK_HINT_MS);
+  } else {
+    clearTimeout(stuckTimer);
+    stuckTimer = null;
+    ui.hint.hidden = true;
+  }
   ui.copyLink.hidden = !(status === 'waiting' || status === 'connecting');
   if (status === 'ended' || status === 'error') {
     ui.copyLink.hidden = true;

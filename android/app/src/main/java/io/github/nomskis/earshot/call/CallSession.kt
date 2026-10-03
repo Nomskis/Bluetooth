@@ -132,6 +132,7 @@ class CallSession(
     private var lastPeerId: String? = null
     /** The network seemed to choke on priority-marked packets; leave them unmarked for this call. */
     private var markingBroken = false
+    private var stuckJob: Job? = null
 
     /** One RTCPeerConnection and everything tied to it. */
     private class Link(val pc: PeerConnection, val session: String, var tracks: SendTracks) {
@@ -177,6 +178,7 @@ class CallSession(
         data class SendChat(val text: String) : Event
         data class SetEchoCancellation(val on: Boolean) : Event
         data class SetOutputHeld(val held: Boolean) : Event
+        data object StuckCheck : Event
         data object HangUp : Event
     }
 
@@ -362,6 +364,9 @@ class CallSession(
                 publishChat()
             }
             is Event.SetEchoCancellation -> setEchoCancellationNow(event.on)
+            Event.StuckCheck -> if (_state.value.phase == CallPhase.NEGOTIATING || _state.value.phase == CallPhase.RECONNECTING) {
+                _state.update { it.copy(connectHint = ConnectHint.forStuck(iceServers)) }
+            }
             is Event.SetOutputHeld -> if (event.held != _state.value.outputHeld) {
                 engine.setPlaybackMuted(event.held)
                 _state.update { it.copy(outputHeld = event.held) }
@@ -902,6 +907,19 @@ class CallSession(
 
     private fun setPhase(phase: CallPhase) {
         _state.update { if (it.isActive) it.copy(phase = phase) else it }
+        // Connecting for a long time usually means the networks block direct calls; say so.
+        if (phase == CallPhase.NEGOTIATING || phase == CallPhase.RECONNECTING) {
+            if (stuckJob?.isActive != true) {
+                stuckJob = scope.launch {
+                    delay(ConnectHint.AFTER_MS)
+                    post(Event.StuckCheck)
+                }
+            }
+        } else {
+            stuckJob?.cancel()
+            stuckJob = null
+            if (_state.value.connectHint != null) _state.update { it.copy(connectHint = null) }
+        }
     }
 
     private companion object {

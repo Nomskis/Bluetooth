@@ -166,6 +166,12 @@ input:not([type='checkbox']) {
   margin: 0;
 }
 
+.call-overlay p.call-hint {
+  max-width: 28rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
 .call-top {
   position: absolute;
   top: 0;

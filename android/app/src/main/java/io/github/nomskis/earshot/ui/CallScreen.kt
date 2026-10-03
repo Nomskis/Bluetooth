@@ -272,6 +272,12 @@ private fun RemotePlaceholder(state: CallState, compact: Boolean) {
             textAlign = TextAlign.Center,
             style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.titleMedium,
         )
+        if (!compact) {
+            state.connectHint?.let {
+                Spacer(Modifier.height(12.dp))
+                Text(it, color = Color.White.copy(alpha = 0.8f), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall)
+            }
+        }
         if (!compact && state.phase == CallPhase.WAITING) {
             Spacer(Modifier.height(20.dp))
             FilledTonalButton(onClick = { context.shareInvite(state.inviteLink) }) {

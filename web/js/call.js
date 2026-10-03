@@ -80,6 +80,11 @@ export class CallEngine extends EventTarget {
     return this.#remote;
   }
 
+  /** The ICE servers the server handed out (STUN, and TURN when it has a relay). */
+  get iceServers() {
+    return this.#iceServers;
+  }
+
   /** Older clients don't have chat; their join message doesn't list it. */
   get remoteHasChat() {
     return !!this.#remote?.client?.capabilities?.includes?.(CHAT_CAPABILITY);
