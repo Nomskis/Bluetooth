@@ -8,14 +8,14 @@ import io.github.nomskis.earshot.audio.AudioProfile
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.audio.AudioRouteMonitor
 import io.github.nomskis.earshot.audio.CodecInfo
-import io.github.nomskis.earshot.audio.LatencyProbe
 import io.github.nomskis.earshot.audio.DeviceKind
+import io.github.nomskis.earshot.audio.LatencyProbe
 import io.github.nomskis.earshot.audio.LinkConditions
 import io.github.nomskis.earshot.earbuds.EarbudBoost
+import io.github.nomskis.earshot.service.CallService
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.AudioMode
 import io.github.nomskis.earshot.settings.DelayRuns
-import io.github.nomskis.earshot.service.CallService
 import io.github.nomskis.earshot.settings.SettingsRepository
 import io.github.nomskis.earshot.signaling.ServerUrls
 import io.github.nomskis.earshot.turbo.TurboBoost
@@ -23,15 +23,17 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import org.webrtc.EglBase
@@ -123,9 +125,25 @@ class CallManager(
             } else {
                 null
             }
+            // Earbuds back from the case mid-call: many reset game mode, and HyperOS resets the codec.
+            val reapplyJob = if (boost || turbo != null) {
+                launch {
+                    listOfNotNull(boostJob, turboJob).forEach { it.join() }
+                    routeMonitor.route.map { it.bluetoothMusicAvailable }.distinctUntilChanged().drop(1).collect { available ->
+                        if (!available) return@collect
+                        delay(RECONNECT_SETTLE_MS)
+                        if (boost) earbudBoost.begin()
+                        val name = routeMonitor.snapshot().mediaOutput?.takeIf { it.kind == DeviceKind.BLUETOOTH_MUSIC }?.name
+                        turbo?.begin(settings.delayRuns.first(), name)
+                    }
+                }
+            } else {
+                null
+            }
 
             val end = session.state.first { !it.isActive }
             lipSyncJob?.cancel()
+            reapplyJob?.cancelAndJoin()
             if (end.error != null) _lastError.value = end.error
             unwatchNetwork()
             cellular.release()
@@ -219,6 +237,8 @@ class CallManager(
 
     private companion object {
         const val PROBE_SETTLE_MS = 1_500L
+        /** After earbuds reconnect, let A2DP and the companion channel come up first. */
+        const val RECONNECT_SETTLE_MS = 3_000L
     }
 
     private fun unwatchNetwork() {
