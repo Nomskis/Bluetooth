@@ -2,6 +2,7 @@ package io.github.nomskis.earshot.ui
 
 import android.app.Application
 import android.os.Build
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.nomskis.earshot.BuildConfig
@@ -41,6 +42,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+import java.util.concurrent.TimeUnit
 
 sealed interface ServerCheck {
     data object Idle : ServerCheck
@@ -55,6 +57,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         const val GAME_MODE_SETTLE_MS = 2_000L
         const val TURBO_READY_MS = 3_000L
         const val RADIO_SETTLE_MS = 2_000L
+        /** Render sleeps after 15 minutes without traffic. */
+        const val WAKE_EVERY_MS = 5 * 60_000L
+        const val WAKE_TIMEOUT_S = 90L
     }
 
     private val graph = app.appGraph
@@ -426,5 +431,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun resetServerCheck() {
         _serverCheck.value = ServerCheck.Idle
+    }
+
+    private var lastWake = 0L
+
+    /**
+     * Free hosting plans put the server to sleep when it's idle (Render's
+     * takes about a minute to wake). A request as the app comes to the front
+     * starts that, so it's usually awake by the time you join.
+     */
+    fun wakeServer() {
+        val now = SystemClock.elapsedRealtime()
+        if (lastWake != 0L && now - lastWake < WAKE_EVERY_MS) return
+        lastWake = now
+        viewModelScope.launch(Dispatchers.IO) {
+            val base = ServerUrls.normalizeBase(graph.settings.current().serverUrl) ?: return@launch
+            val patient = graph.http.newBuilder().callTimeout(WAKE_TIMEOUT_S, TimeUnit.SECONDS).readTimeout(WAKE_TIMEOUT_S, TimeUnit.SECONDS).build()
+            runCatching { patient.newCall(Request.Builder().url("$base/healthz").build()).execute().close() }
+        }
     }
 }

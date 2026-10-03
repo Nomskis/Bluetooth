@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private enum class Screen { HOME, SETTINGS, TUNER }
@@ -35,6 +36,11 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
     val radioTest by viewModel.radioTest.collectAsStateWithLifecycle()
     val earbudInfo by viewModel.earbuds.collectAsStateWithLifecycle()
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
+    // Each time the app comes to the front outside a call, nudge a sleeping server awake.
+    LifecycleStartEffect(session == null) {
+        if (session == null) viewModel.wakeServer()
+        onStopOrDispose { }
+    }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         val current = settings ?: return@Surface Box(Modifier.fillMaxSize())

@@ -534,7 +534,7 @@ class CallSession(
                 it.copy(
                     signalingOnline = false,
                     error = if (state.attempt >= 3 && it.phase == CallPhase.CONNECTING) {
-                        "Can't reach the server. Still trying…"
+                        "Can't reach the server. Still trying… (a server on a free plan can take a minute to wake up)"
                     } else {
                         it.error
                     },

@@ -43,7 +43,9 @@ docker compose --profile https up -d
   included [`render.yaml`](../render.yaml) does the rest. You get an address
   like `https://earshot-xxxx.onrender.com`; put it into the app's Settings.
   The free plan sleeps after a while without calls, so the first connection
-  afterwards takes about a minute.
+  afterwards takes about a minute. The Android app wakes it in the background
+  whenever you open the app, so it's usually up by the time you've picked a
+  room; the browser side wakes it by loading the invite page.
 - **Fly.io:** install `flyctl`, then in the repository run
   `fly launch --copy-config --no-deploy` and `fly deploy`. The included
   [`fly.toml`](../fly.toml) keeps one small machine running so calls connect
