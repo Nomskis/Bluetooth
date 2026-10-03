@@ -40,6 +40,7 @@ class CallAudioController(context: Context) {
     }
 
     fun end() {
+        endEarbudMic()
         if (!active) return
         active = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -48,6 +49,52 @@ class CallAudioController(context: Context) {
             endLegacyRouting()
         }
         audioManager.mode = previousMode
+    }
+
+    private var earbudMic = false
+
+    /**
+     * Hi-Fi call, temporarily on the earbuds' microphone: communication mode
+     * with the Bluetooth headset as the communication device. The earbuds
+     * drop to the call link (and call quality) until [endEarbudMic].
+     */
+    fun beginEarbudMic(): Boolean {
+        if (active || earbudMic) return earbudMic
+        val headset = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            audioManager.availableCommunicationDevices.firstOrNull {
+                it.type == AudioDeviceInfo.TYPE_BLE_HEADSET || it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+            } ?: return false
+        } else {
+            null
+        }
+        previousMode = audioManager.mode
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        if (headset != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !audioManager.setCommunicationDevice(headset)) {
+                audioManager.mode = previousMode
+                return false
+            }
+        } else {
+            beginLegacyRouting()
+        }
+        earbudMic = true
+        return true
+    }
+
+    fun endEarbudMic() {
+        if (!earbudMic) return
+        earbudMic = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audioManager.clearCommunicationDevice() else endLegacyRouting()
+        audioManager.mode = previousMode
+    }
+
+    /** True when a Bluetooth headset can carry a call (so the earbud mic is an option). */
+    fun earbudMicAvailable(): Boolean = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        audioManager.availableCommunicationDevices.any {
+            it.type == AudioDeviceInfo.TYPE_BLE_HEADSET || it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+        }
+    } else {
+        audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
     }
 
     /** For a video call the loudspeaker beats the earpiece when nothing is plugged in. */

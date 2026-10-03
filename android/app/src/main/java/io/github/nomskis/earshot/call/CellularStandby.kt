@@ -20,6 +20,7 @@ class CellularStandby(context: Context) {
     var available: Boolean = false
         private set
 
+    @Synchronized
     fun acquire() {
         if (callback != null || cm == null) return
         val request = NetworkRequest.Builder()
@@ -46,6 +47,7 @@ class CellularStandby(context: Context) {
             .onFailure { Log.w(TAG, "Could not request mobile data", it) }
     }
 
+    @Synchronized
     fun release() {
         val cb = callback ?: return
         callback = null

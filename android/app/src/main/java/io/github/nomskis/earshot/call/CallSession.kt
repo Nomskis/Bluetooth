@@ -159,6 +159,7 @@ class CallSession(
         data object ReplayFinished : Event
         data object SmartDuckUnsupported : Event
         data class UpdateRadio(val plan: RadioPlan) : Event
+        data class SetEarbudMic(val on: Boolean) : Event
         data class SetLipSync(val plan: LipSync.Plan?, val playoutMs: Double?, val measured: Boolean) : Event
         class Stats(val link: Link, val report: RTCStatsReport) : Event
         data object HangUp : Event
@@ -193,6 +194,7 @@ class CallSession(
     fun onNetworkChanged() = post(Event.NetworkChanged)
     fun toggleReplay() = post(Event.ToggleReplay)
     fun updateRadioPlan(plan: RadioPlan) = post(Event.UpdateRadio(plan))
+    fun setEarbudMic(on: Boolean) = post(Event.SetEarbudMic(on))
     /**
      * [playoutMs] is the app-to-ear delay in use (from the delay tuner when [measured]),
      * [plan] how far to hold video back for it.
@@ -220,6 +222,7 @@ class CallSession(
             it.copy(hasCamera = engine.hasVideo, frontCamera = engine.isFrontCamera, radioNote = RadioPlan.describe(radioPlan, null))
         }
         audioController.begin(profile)
+        _state.update { it.copy(earbudMicAvailable = profile.mode == AudioMode.HIFI && audioController.earbudMicAvailable()) }
         // Ducking only makes sense when the call plays next to music, i.e. in Hi-Fi mode.
         if (settings.smartDuck && profile.mode == AudioMode.HIFI) {
             smartDuck = SmartDuck(appContext) { post(Event.SmartDuckUnsupported) }
@@ -316,6 +319,7 @@ class CallSession(
                 _state.update { it.copy(smartDuckUnsupported = true) }
             }
             is Event.UpdateRadio -> onRadioPlan(event.plan)
+            is Event.SetEarbudMic -> setEarbudMicNow(event.on)
             is Event.SetLipSync -> {
                 lipSyncSink.delayMs = event.plan?.videoDelayMs ?: 0
                 playoutMs = event.playoutMs
@@ -325,6 +329,26 @@ class CallSession(
             is Event.Stats -> if (event.link === link) onStats(event.link, event.report)
             Event.HangUp -> finish(CallPhase.ENDED)
         }
+    }
+
+    /** Hi-Fi only: the earbuds' mic for a while (call quality), then back to the music link. */
+    private fun setEarbudMicNow(on: Boolean) {
+        if (profile.mode != AudioMode.HIFI || on == _state.value.earbudMic) return
+        if (on) {
+            if (!audioController.beginEarbudMic()) {
+                _state.update { it.copy(earbudMicAvailable = false) }
+                return
+            }
+            if (!engine.useEarbudMic(true)) {
+                audioController.endEarbudMic()
+                return
+            }
+        } else {
+            engine.useEarbudMic(false)
+            audioController.endEarbudMic()
+        }
+        _state.update { it.copy(earbudMic = on) }
+        sendMediaState()
     }
 
     // --- sharing the radio with Bluetooth ----------------------------------------------
@@ -357,7 +381,9 @@ class CallSession(
     private fun onStats(l: Link, report: RTCStatsReport) {
         val entries = report.statsMap.mapValues { (_, s) -> CallStats.Entry(s.type, s.members) }
         val delay = delayTracker.update(entries, playoutMs, playoutMeasured)
-        _state.update { it.copy(delay = delay) }
+        // Earbuds can connect mid-call; keep the earbud-mic button honest.
+        val micAvailable = profile.mode == AudioMode.HIFI && (_state.value.earbudMic || audioController.earbudMicAvailable())
+        _state.update { it.copy(delay = delay, earbudMicAvailable = micAvailable) }
         val path = RadioPlan.pathFor(CallStats.selectedNetworkType(entries)) ?: return
         if (path == _state.value.callPath) return
         Log.i(TAG, "Media now flows over $path")
@@ -721,7 +747,8 @@ class CallSession(
     private fun sendMediaState() {
         if (remote == null) return
         val s = _state.value
-        sendSignal(SignalData.MediaState(micMuted = s.micMuted, cameraOff = s.cameraOff, audioMode = profile.wireName))
+        val mode = if (s.earbudMic) "headset" else profile.wireName
+        sendSignal(SignalData.MediaState(micMuted = s.micMuted, cameraOff = s.cameraOff, audioMode = mode))
     }
 
     private fun setRemote(peer: PeerInfo?) {

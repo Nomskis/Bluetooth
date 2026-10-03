@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Cameraswitch
+import androidx.compose.material.icons.filled.HeadsetMic
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Replay
@@ -149,6 +150,7 @@ fun CallScreen(
             onVolume = session::setVoiceVolume,
             onVolumeDone = onVoiceVolumeSaved,
             onReplay = session::toggleReplay,
+            onEarbudMic = { session.setEarbudMic(!state.earbudMic) },
             onHangUp = session::hangUp,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
@@ -231,7 +233,14 @@ private fun TopBar(state: CallState, route: AudioRoute, boostNotes: List<String>
         RouteChip(route, state.audioMode)
         state.delay?.let { DelayChip(it) }
         // What Earshot is doing for the earbuds behind the scenes.
-        val lipSync = state.lipSync?.takeIf { state.hasRemoteVideo }?.let {
+        if (state.earbudMic) {
+            Text(
+                "Using your earbuds' mic: they're on the call link, so music sounds like a call until you switch back.",
+                color = Color.White.copy(alpha = 0.8f),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        val lipSync = state.lipSync?.takeIf { state.hasRemoteVideo && !state.earbudMic }?.let {
             "Video held back ${it.videoDelayMs} ms to match the earbuds" +
                 if (it.source == LipSync.Source.MEASURED) " (measured)" else ""
         }
@@ -297,6 +306,7 @@ private fun Controls(
     onVolume: (Float) -> Unit,
     onVolumeDone: (Float) -> Unit,
     onReplay: () -> Unit,
+    onEarbudMic: () -> Unit,
     onHangUp: () -> Unit,
     modifier: Modifier,
 ) {
@@ -335,7 +345,38 @@ private fun Controls(
                 )
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        // Extras above, the essentials below, so it all fits a narrow phone.
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (state.hasCamera) {
+                ControlButton(Icons.Filled.Cameraswitch, "Switch camera", active = false, small = true, onClick = onSwitchCamera)
+            }
+            ControlButton(
+                Icons.AutoMirrored.Filled.VolumeUp,
+                "Voice volume",
+                active = showVolume,
+                small = true,
+                onClick = { showVolume = !showVolume },
+            )
+            if (state.earbudMicAvailable) {
+                ControlButton(
+                    Icons.Filled.HeadsetMic,
+                    if (state.earbudMic) "Back to Hi-Fi (phone mic)" else "Use the earbuds' mic (call quality)",
+                    active = state.earbudMic,
+                    small = true,
+                    onClick = onEarbudMic,
+                )
+            }
+            if (state.canReplay) {
+                ControlButton(
+                    Icons.Filled.Replay,
+                    if (state.replaying) "Stop replay" else "Replay the last 8 seconds",
+                    active = state.replaying,
+                    small = true,
+                    onClick = onReplay,
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
             ControlButton(
                 icon = if (state.micMuted) Icons.Filled.MicOff else Icons.Filled.Mic,
                 label = if (state.micMuted) "Unmute" else "Mute",
@@ -348,16 +389,6 @@ private fun Controls(
                     label = if (state.cameraOff) "Camera on" else "Camera off",
                     active = state.cameraOff,
                     onClick = onCamera,
-                )
-                ControlButton(Icons.Filled.Cameraswitch, "Switch camera", active = false, onClick = onSwitchCamera)
-            }
-            ControlButton(Icons.AutoMirrored.Filled.VolumeUp, "Voice volume", active = showVolume, onClick = { showVolume = !showVolume })
-            if (state.canReplay) {
-                ControlButton(
-                    Icons.Filled.Replay,
-                    if (state.replaying) "Stop replay" else "Replay the last 8 seconds",
-                    active = state.replaying,
-                    onClick = onReplay,
                 )
             }
             FilledIconButton(
@@ -372,7 +403,7 @@ private fun Controls(
 }
 
 @Composable
-private fun ControlButton(icon: ImageVector, label: String, active: Boolean, onClick: () -> Unit) {
+private fun ControlButton(icon: ImageVector, label: String, active: Boolean, small: Boolean = false, onClick: () -> Unit) {
     FilledIconButton(
         onClick = onClick,
         shape = CircleShape,
@@ -380,7 +411,7 @@ private fun ControlButton(icon: ImageVector, label: String, active: Boolean, onC
             containerColor = if (active) Color.White else Color.White.copy(alpha = 0.16f),
             contentColor = if (active) Color.Black else Color.White,
         ),
-        modifier = Modifier.size(52.dp),
+        modifier = Modifier.size(if (small) 44.dp else 52.dp),
     ) {
         Icon(icon, contentDescription = label)
     }

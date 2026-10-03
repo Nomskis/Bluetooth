@@ -1,5 +1,6 @@
 package io.github.nomskis.earshot.call
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -260,6 +261,24 @@ class RtcEngine(
         audioSource.dispose()
         factory.dispose()
         audioDeviceModule.release()
+    }
+
+    /**
+     * Moves the microphone between the phone's own (Hi-Fi) and the earbuds'
+     * (call link). Applies to the running recording, no renegotiation.
+     */
+    fun useEarbudMic(on: Boolean): Boolean {
+        val device = if (on) bluetoothMic() ?: return false else builtInMic()
+        audioDeviceModule.setPreferredInputDevice(device)
+        return true
+    }
+
+    @SuppressLint("InlinedApi") // TYPE_BLE_HEADSET is a plain int; on older Android no device has it.
+    private fun bluetoothMic(): AudioDeviceInfo? {
+        val audioManager = appContext.getSystemService(AudioManager::class.java)
+        val inputs = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+        return inputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLE_HEADSET }
+            ?: inputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
     }
 
     private fun builtInMic(): AudioDeviceInfo? {

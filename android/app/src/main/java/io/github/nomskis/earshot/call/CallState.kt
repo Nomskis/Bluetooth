@@ -56,6 +56,10 @@ data class CallState(
     val lipSync: LipSync.Plan? = null,
     /** Where her voice spends its time on the way to your ear, once stats arrive. */
     val delay: DelayBreakdown? = null,
+    /** A Hi-Fi call temporarily using the earbuds' mic (and the call link). */
+    val earbudMic: Boolean = false,
+    /** The earbuds can carry a call, so the earbud mic can be switched on. */
+    val earbudMicAvailable: Boolean = false,
     val error: String? = null,
 ) {
     val isActive: Boolean
