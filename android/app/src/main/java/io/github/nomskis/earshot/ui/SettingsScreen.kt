@@ -208,6 +208,8 @@ fun SettingsScreen(
                 onUpdate { it.copy(startWithBackCamera = v) }
             }
             Toggle("Keep the screen on during calls", settings.keepScreenOn) { v -> onUpdate { it.copy(keepScreenOn = v) } }
+            Toggle("Screen off in your pocket", settings.pocketGuard) { v -> onUpdate { it.copy(pocketGuard = v) } }
+            Hint("Uses the proximity sensor, like a phone call, so a pocket can't mute or hang up. Turn off if the screen goes dark while the phone is propped up.")
 
             HorizontalDivider()
             Section("Sharing the radio with Bluetooth")

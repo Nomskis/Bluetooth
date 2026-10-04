@@ -1,5 +1,6 @@
 package io.github.nomskis.earshot.ui
 
+import android.os.PowerManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -83,6 +84,7 @@ fun CallScreen(
     route: AudioRoute,
     keepScreenOn: Boolean,
     inPictureInPicture: Boolean,
+    pocketGuard: Boolean = false,
     earbudBoost: EarbudBoost.Status?,
     turboNote: String?,
     onVoiceVolumeSaved: (Float) -> Unit,
@@ -96,6 +98,7 @@ fun CallScreen(
     }
     // Back keeps the call running; the notification brings you back.
     BackHandler(onBack = onLeaveScreen)
+    PocketGuard(enabled = pocketGuard && !inPictureInPicture)
 
     // Chat: what's unread, and their latest message as a bubble while it's closed.
     var chatOpen by rememberSaveable(session) { mutableStateOf(false) }
@@ -215,6 +218,34 @@ fun CallScreen(
 }
 
 private const val BUBBLE_MS = 6_000L
+
+/**
+ * Screen off while the proximity sensor is covered, as in a phone call: in a
+ * gym pocket the call screen can't be tapped by accident. The call itself,
+ * camera included, carries on.
+ */
+@Composable
+private fun PocketGuard(enabled: Boolean) {
+    val context = LocalContext.current
+    DisposableEffect(enabled) {
+        val power = context.getSystemService(PowerManager::class.java)
+        val lock = if (enabled && power?.isWakeLockLevelSupported(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK) == true) {
+            power.newWakeLock(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "earshot:pocket").apply {
+                setReferenceCounted(false)
+                acquire(POCKET_GUARD_MAX_MS)
+            }
+        } else {
+            null
+        }
+        onDispose {
+            // Wait for the sensor to clear, so the screen doesn't light up still in the pocket.
+            lock?.takeIf { it.isHeld }?.release(PowerManager.RELEASE_FLAG_WAIT_FOR_NO_PROXIMITY)
+        }
+    }
+}
+
+/** A safety net; the guard is released when the call screen goes. */
+private const val POCKET_GUARD_MAX_MS = 6 * 60 * 60 * 1000L
 
 /** Earbuds went away mid-call: their voice waits rather than coming out of the loudspeaker. */
 @Composable

@@ -51,6 +51,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 session = activeSession,
                 route = route,
                 keepScreenOn = current.keepScreenOn,
+                pocketGuard = current.pocketGuard,
                 inPictureInPicture = inPictureInPicture,
                 earbudBoost = earbudBoost,
                 turboNote = turboBoost?.text,

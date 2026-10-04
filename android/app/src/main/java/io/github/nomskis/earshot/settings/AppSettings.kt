@@ -66,6 +66,8 @@ data class AppSettings(
     val videoQuality: VideoQuality = VideoQuality.HIGH,
     val startWithBackCamera: Boolean = false,
     val keepScreenOn: Boolean = true,
+    /** Turn the screen off when the proximity sensor is covered (in a pocket), so it can't be tapped by accident. */
+    val pocketGuard: Boolean = true,
     /**
      * Label the call's audio as game audio (still routed like media). On phones
      * and earbuds whose Bluetooth stack supports it, Android then switches the

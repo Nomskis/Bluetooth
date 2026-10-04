@@ -30,6 +30,7 @@ class SettingsRepository(private val context: Context) {
         val videoQuality = stringPreferencesKey("video_quality")
         val startWithBackCamera = booleanPreferencesKey("start_with_back_camera")
         val keepScreenOn = booleanPreferencesKey("keep_screen_on")
+        val pocketGuard = booleanPreferencesKey("pocket_guard")
         val gameAudioLabel = booleanPreferencesKey("game_audio_label")
         val lowLatencyPlayback = booleanPreferencesKey("low_latency_playback")
         val headStartCue = booleanPreferencesKey("head_start_cue")
@@ -107,6 +108,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.videoQuality] = next.videoQuality.name
             prefs[Keys.startWithBackCamera] = next.startWithBackCamera
             prefs[Keys.keepScreenOn] = next.keepScreenOn
+            prefs[Keys.pocketGuard] = next.pocketGuard
             prefs[Keys.gameAudioLabel] = next.gameAudioLabel
             prefs[Keys.lowLatencyPlayback] = next.lowLatencyPlayback
             prefs[Keys.headStartCue] = next.headStartCue
@@ -150,6 +152,7 @@ class SettingsRepository(private val context: Context) {
             videoQuality = enumOrDefault(this[Keys.videoQuality], defaults.videoQuality),
             startWithBackCamera = this[Keys.startWithBackCamera] ?: defaults.startWithBackCamera,
             keepScreenOn = this[Keys.keepScreenOn] ?: defaults.keepScreenOn,
+            pocketGuard = this[Keys.pocketGuard] ?: defaults.pocketGuard,
             gameAudioLabel = this[Keys.gameAudioLabel] ?: defaults.gameAudioLabel,
             lowLatencyPlayback = this[Keys.lowLatencyPlayback] ?: defaults.lowLatencyPlayback,
             headStartCue = this[Keys.headStartCue] ?: defaults.headStartCue,
