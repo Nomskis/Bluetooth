@@ -4,6 +4,8 @@
  * tests so every implementation agrees on the format.
  */
 
+import { INBOX_ADDRESS_PATTERN, INBOX_KEY_PATTERN } from './inbox.js';
+
 export const PROTOCOL_VERSION = 1;
 
 export const ROOM_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,62}[a-z0-9])$/;
@@ -71,6 +73,16 @@ function cleanClient(client) {
   };
 }
 
+/** Why a call wasn't taken: turned down, or already on another call. */
+const RING_DECLINE_REASONS = new Set(['declined', 'busy']);
+
+function ringIdOf(msg) {
+  if (typeof msg.ringId !== 'string' || !PEER_ID_PATTERN.test(msg.ringId)) {
+    throw new ProtocolError(ErrorCode.BAD_REQUEST, 'ringId must be 8-64 URL-safe characters');
+  }
+  return msg.ringId;
+}
+
 /**
  * Parses and validates one message sent by a client.
  * Returns a normalized message object or throws ProtocolError.
@@ -108,6 +120,38 @@ export function parseClientMessage(raw) {
       }
       // The server relays signal payloads untouched; peers interpret them.
       return { type: 'signal', to: msg.to, data: msg.data };
+    }
+    case 'listen': {
+      if (typeof msg.inbox !== 'string' || !INBOX_KEY_PATTERN.test(msg.inbox)) {
+        throw new ProtocolError(ErrorCode.BAD_REQUEST, 'inbox must be a 22-128 character URL-safe key');
+      }
+      return { type: 'listen', inbox: msg.inbox };
+    }
+    case 'ring': {
+      if (typeof msg.to !== 'string' || !INBOX_ADDRESS_PATTERN.test(msg.to)) {
+        throw new ProtocolError(ErrorCode.BAD_REQUEST, 'ring needs a valid "to" inbox address');
+      }
+      if (msg.inbox !== undefined && msg.inbox !== null && (typeof msg.inbox !== 'string' || !INBOX_KEY_PATTERN.test(msg.inbox))) {
+        throw new ProtocolError(ErrorCode.BAD_REQUEST, 'inbox must be a 22-128 character URL-safe key');
+      }
+      return {
+        type: 'ring',
+        to: msg.to,
+        ringId: ringIdOf(msg),
+        room: normalizeRoom(msg.room),
+        name: cleanText(msg.name, MAX_NAME_LENGTH),
+        video: msg.video === true,
+        inbox: msg.inbox ?? null,
+      };
+    }
+    case 'ring-cancel':
+      return { type: 'ring-cancel', ringId: ringIdOf(msg) };
+    case 'ring-answer': {
+      if (typeof msg.accepted !== 'boolean') {
+        throw new ProtocolError(ErrorCode.BAD_REQUEST, 'ring-answer needs "accepted": true or false');
+      }
+      const reason = msg.accepted ? undefined : RING_DECLINE_REASONS.has(msg.reason) ? msg.reason : 'declined';
+      return { type: 'ring-answer', ringId: ringIdOf(msg), accepted: msg.accepted, reason };
     }
     case 'leave':
       return { type: 'leave' };

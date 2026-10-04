@@ -76,7 +76,37 @@ sealed interface ClientMessage {
     @Serializable
     @SerialName("ping")
     data object Ping : ClientMessage
+
+    /** Wait for calls on the inbox this secret key belongs to. */
+    @Serializable
+    @SerialName("listen")
+    data class Listen(val inbox: String) : ClientMessage
+
+    /** Ring someone's inbox address with the room to meet in. [inbox] (our own key) proves who's calling. */
+    @Serializable
+    @SerialName("ring")
+    data class Ring(
+        val to: String,
+        val ringId: String,
+        val room: String,
+        val name: String = "",
+        val video: Boolean = false,
+        val inbox: String? = null,
+    ) : ClientMessage
+
+    @Serializable
+    @SerialName("ring-cancel")
+    data class RingCancel(val ringId: String) : ClientMessage
+
+    /** [reason] when not accepted: "declined" or "busy". */
+    @Serializable
+    @SerialName("ring-answer")
+    data class RingAnswer(val ringId: String, val accepted: Boolean, val reason: String? = null) : ClientMessage
 }
+
+/** Who's calling: the name they gave, and their inbox address when they proved it. */
+@Serializable
+data class Caller(val name: String = "", val address: String? = null)
 
 /** Messages the server sends to a client. */
 @Serializable
@@ -112,6 +142,35 @@ sealed interface ServerMessage {
     @Serializable
     @SerialName("pong")
     data object Pong : ServerMessage
+
+    @Serializable
+    @SerialName("listening")
+    data class Listening(val address: String) : ServerMessage
+
+    /** Someone is ringing us. */
+    @Serializable
+    @SerialName("incoming")
+    data class Incoming(
+        val ringId: String,
+        val room: String,
+        val from: Caller = Caller(),
+        val video: Boolean = false,
+    ) : ServerMessage
+
+    /** Our ring reached [devices] devices ("ringing"), or nobody is listening ("unreachable"). */
+    @Serializable
+    @SerialName("ring-status")
+    data class RingStatus(val ringId: String, val status: String, val devices: Int = 0) : ServerMessage
+
+    /** Stop ringing: "cancelled" by the caller, "timeout", or "answered-elsewhere". */
+    @Serializable
+    @SerialName("ring-cancelled")
+    data class RingCancelled(val ringId: String, val reason: String = "cancelled") : ServerMessage
+
+    /** The answer to our ring; [reason] when not accepted: "declined", "busy" or "no-answer". */
+    @Serializable
+    @SerialName("ring-answered")
+    data class RingAnswered(val ringId: String, val accepted: Boolean, val reason: String? = null) : ServerMessage
 }
 
 /** Peer-to-peer payloads. The server relays these untouched. */

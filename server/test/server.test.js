@@ -190,9 +190,76 @@ describe('earshot server', () => {
     a.close();
   });
 
+  it('rings a phone that is only listening, and passes the answer back', async () => {
+    const phone = new TestClient(wsUrl);
+    const caller = new TestClient(wsUrl);
+    await Promise.all([phone.open(), caller.open()]);
+    phone.send({ type: 'listen', inbox: 'sam-secret-inbox-key-0001' });
+    const { address } = await phone.next('listening');
+
+    // The caller waits in a room, then rings.
+    caller.send({ type: 'join', room: 'ring-room', peerId: 'peer-cccc', name: 'Salma' });
+    await caller.next('joined');
+    caller.send({ type: 'ring', to: address, ringId: 'ring-0001', room: 'ring-room', name: 'Salma', video: true });
+    assert.equal((await caller.next('ring-status')).status, 'ringing');
+    const incoming = await phone.next('incoming');
+    assert.equal(incoming.room, 'ring-room');
+    assert.equal(incoming.from.name, 'Salma');
+    assert.equal(incoming.video, true);
+
+    phone.send({ type: 'ring-answer', ringId: 'ring-0001', accepted: true });
+    assert.equal((await caller.next('ring-answered')).accepted, true);
+    phone.close();
+    caller.close();
+  });
+
+  it('cancels the ring when the caller drops before an answer', async () => {
+    const phone = new TestClient(wsUrl);
+    const caller = new TestClient(wsUrl);
+    await Promise.all([phone.open(), caller.open()]);
+    phone.send({ type: 'listen', inbox: 'sam-secret-inbox-key-0002' });
+    const { address } = await phone.next('listening');
+    caller.send({ type: 'ring', to: address, ringId: 'ring-0002', room: 'ring-room', name: 'Salma' });
+    await phone.next('incoming');
+    caller.ws.terminate();
+    assert.equal((await phone.next('ring-cancelled')).reason, 'cancelled');
+    phone.close();
+  });
+
   it('only upgrades WebSockets on /ws', async () => {
     const ws = new WebSocket(wsUrl.replace('/ws', '/other'));
     const err = await new Promise((resolve) => ws.once('error', resolve));
     assert.match(err.message, /404/);
+  });
+});
+
+describe('phones waiting for calls', () => {
+  it("aren't pinged every heartbeat, and are dropped once silent too long", async () => {
+    const config = { ...loadConfig({}), heartbeatMs: 30, listenerIdleMs: 400 };
+    const server = createEarshotServer(config, { log: silentLog });
+    const { port } = await server.listen(0, '127.0.0.1');
+    const url = `ws://127.0.0.1:${port}/ws`;
+    try {
+      const listener = new TestClient(url);
+      const inCall = new TestClient(url);
+      await Promise.all([listener.open(), inCall.open()]);
+      let listenerPings = 0;
+      let callPings = 0;
+      listener.ws.on('ping', () => listenerPings++);
+      inCall.ws.on('ping', () => callPings++);
+      listener.send({ type: 'listen', inbox: 'sam-secret-inbox-key-0003' });
+      await listener.next('listening');
+      inCall.send({ type: 'join', room: 'heartbeat-room', peerId: 'peer-dddd' });
+      await inCall.next('joined');
+
+      const closed = new Promise((resolve) => listener.ws.once('close', resolve));
+      await new Promise((r) => setTimeout(r, 200));
+      assert.equal(listenerPings, 0);
+      assert.ok(callPings >= 2, `call socket pinged ${callPings} times`);
+      await closed; // nothing heard from it for 400 ms
+      inCall.close();
+    } finally {
+      await server.close();
+    }
   });
 });

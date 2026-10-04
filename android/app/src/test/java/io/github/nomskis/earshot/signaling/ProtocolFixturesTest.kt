@@ -69,6 +69,21 @@ class ProtocolFixturesTest {
     }
 
     @Test
+    fun ringMessagesDecodeAsTheServerSendsThem() {
+        val incoming = decodeServerMessage(File(fixtures, "server/incoming.json").readText()) as ServerMessage.Incoming
+        assertEquals("calm-otter-4821", incoming.room)
+        assertEquals(Caller("Salma", "1D8ANuTJStR4AyHh0kwUw6"), incoming.from)
+        assertTrue(incoming.video)
+        val status = decodeServerMessage(File(fixtures, "server/ring-status.json").readText()) as ServerMessage.RingStatus
+        assertEquals("ringing", status.status)
+        val cancelled = decodeServerMessage(File(fixtures, "server/ring-cancelled.json").readText()) as ServerMessage.RingCancelled
+        assertEquals("timeout", cancelled.reason)
+        val answered = decodeServerMessage(File(fixtures, "server/ring-answered.json").readText()) as ServerMessage.RingAnswered
+        assertTrue(answered.accepted)
+        assertNull(answered.reason)
+    }
+
+    @Test
     fun requestOfferWithNullSessionFromTheWebClientDecodes() {
         // JSON.stringify keeps nulls, so the web client sends "session": null.
         val text = """{"type":"signal","from":"abcdefgh","data":{"kind":"request-offer","session":null}}"""

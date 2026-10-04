@@ -45,6 +45,39 @@ stays in the room, including across reconnects.
 `iceServers` is in the browser's `RTCIceServer` format. When the server has a
 TURN secret configured, it issues time-limited TURN credentials per peer.
 
+## Ringing
+
+A client can wait for calls, and another can ring it, without either being in
+a room. The server only passes rings along and forgets them once they're
+answered, declined or over.
+
+Each install keeps a secret **inbox key** (22 to 128 URL-safe characters). Its
+public **address** is the first 22 characters of the base64url (no padding)
+SHA-256 of `earshot-inbox:` followed by the key. Knowing an address lets you
+ring it, not listen on it. Clients exchange addresses over the chat data
+channel during a call (see `contact` below).
+
+| Client → server | Fields | Meaning |
+| --- | --- | --- |
+| `listen` | `inbox` | Deliver rings for this key's address to this socket. Several devices may listen on one address. |
+| `ring` | `to`, `ringId`, `room`, `name?`, `video?`, `inbox?` | Ring an address. `ringId` is chosen by the caller (8 to 64 URL-safe characters). `inbox` is the caller's own key, which proves its address to the callee. |
+| `ring-cancel` | `ringId` | The caller gave up. Closing the socket does the same. |
+| `ring-answer` | `ringId`, `accepted`, `reason?` (`declined`, `busy`) | From a device listening on the rung address. The first answer wins. |
+
+| Server → client | Fields | Meaning |
+| --- | --- | --- |
+| `listening` | `address` | Rings for this address will come here. |
+| `incoming` | `ringId`, `room`, `from: { name, address }`, `video` | Someone is ringing. `address` is null if the caller didn't prove one. |
+| `ring-status` | `ringId`, `status` (`ringing`, `unreachable`), `devices?` | To the caller, straight after `ring`. |
+| `ring-cancelled` | `ringId`, `reason` (`cancelled`, `timeout`, `answered-elsewhere`) | To listening devices: stop ringing. |
+| `ring-answered` | `ringId`, `accepted`, `reason?` (`declined`, `busy`, `no-answer`) | To the caller. |
+
+Rings time out after `RING_TIMEOUT_MS` (60 s). To accept, the callee joins
+`room`, where the caller is already waiting; the call then sets up as usual.
+A socket that only listens isn't pinged by the server's heartbeat (that would
+keep waking the phone); it sends its own `ping` every few minutes, and is
+dropped after `LISTENER_IDLE_MS` (10 minutes) without hearing from it.
+
 ## Reconnecting
 
 If a socket closes without `leave`, the server keeps the peer's slot for
@@ -116,6 +149,10 @@ frame is one JSON text message:
 | --- | --- | --- |
 | `chat` | `id`, `text`, `sentAt?` | A message. `id` is 1 to 64 characters, unique per sender; `text` is trimmed and at most 1000 characters; `sentAt` is the sender's clock in ms since 1970. |
 | `chat-ack` | `id` | Received. Sent for every `chat` frame, repeats included. |
+
+A third frame, `contact` with `name` and `address`, introduces each side's
+inbox address (see Ringing), so the apps can call each other directly next
+time. It isn't acknowledged; it's sent again whenever the channel opens.
 
 A client sends each message again, with the same `id`, when a new
 connection's channel opens and the message hasn't been acknowledged yet. The

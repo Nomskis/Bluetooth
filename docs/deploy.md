@@ -134,6 +134,8 @@ offers TCP or TLS on port 443, which almost every network allows.
 | `MAX_PEERS_PER_ROOM` | `2` | Room size. The clients are one-to-one for now. |
 | `RECONNECT_GRACE_MS` | `20000` | How long a dropped peer keeps its slot |
 | `HEARTBEAT_MS` | `25000` | WebSocket ping interval for detecting dead connections |
+| `RING_TIMEOUT_MS` | `60000` | How long a call rings before it counts as unanswered |
+| `LISTENER_IDLE_MS` | `600000` | Phones waiting for calls check in every few minutes; silent this long, they're dropped |
 | `STUN_URLS` | Google's public STUN servers | Comma-separated |
 | `TURN_URLS` | none | Comma-separated TURN URLs |
 | `TURN_SECRET` | none | Shared secret for time-limited TURN credentials |

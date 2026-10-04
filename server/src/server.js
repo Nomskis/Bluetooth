@@ -2,6 +2,7 @@ import http from 'node:http';
 import { WebSocketServer } from 'ws';
 import { buildIceServers } from './ice.js';
 import { ErrorCode, ProtocolError, parseClientMessage } from './protocol.js';
+import { Inbox } from './inbox.js';
 import { RoomManager } from './rooms.js';
 import { createStaticHandler } from './static.js';
 import { createTurnService } from './turn-service.js';
@@ -25,6 +26,7 @@ export function createEarshotServer(config, { log = console, fetchImpl = globalT
     reconnectGraceMs: config.reconnectGraceMs,
     iceServersFor: (peerId) => [...buildIceServers(config.ice, peerId), ...(turnService?.current() ?? [])],
   });
+  const inbox = new Inbox({ ringTimeoutMs: config.ringTimeoutMs });
   const serveStatic = createStaticHandler(config.webRoot);
 
   const httpServer = http.createServer(async (req, res) => {
@@ -68,6 +70,8 @@ export function createEarshotServer(config, { log = console, fetchImpl = globalT
     let tokens = RATE_BUCKET_SIZE;
     let lastRefill = Date.now();
     ws.isAlive = true;
+    ws.conn = conn;
+    ws.lastSeen = Date.now();
 
     ws.on('pong', () => {
       ws.isAlive = true;
@@ -76,6 +80,7 @@ export function createEarshotServer(config, { log = console, fetchImpl = globalT
     ws.on('message', (data, isBinary) => {
       ws.isAlive = true;
       const now = Date.now();
+      ws.lastSeen = now;
       tokens = Math.min(RATE_BUCKET_SIZE, tokens + ((now - lastRefill) / 1000) * RATE_REFILL_PER_SECOND);
       lastRefill = now;
       if (tokens < 1) {
@@ -113,16 +118,38 @@ export function createEarshotServer(config, { log = console, fetchImpl = globalT
         case 'ping':
           conn.send({ type: 'pong' });
           break;
+        case 'listen':
+          inbox.listen(conn, msg.inbox);
+          break;
+        case 'ring':
+          inbox.ring(conn, msg);
+          break;
+        case 'ring-cancel':
+          inbox.cancel(conn, msg);
+          break;
+        case 'ring-answer':
+          inbox.answer(conn, msg);
+          break;
       }
     });
 
-    ws.on('close', () => rooms.disconnected(conn));
+    ws.on('close', () => {
+      inbox.disconnected(conn);
+      rooms.disconnected(conn);
+    });
     ws.on('error', (err) => log.warn('websocket error', err.message));
   });
 
   // Detect sockets that died without a close frame (common on mobile networks).
   const heartbeat = setInterval(() => {
+    const now = Date.now();
     for (const ws of wss.clients) {
+      // Only waiting for calls: no pings, which would keep waking the phone. It checks in
+      // itself every few minutes; silent for longer than listenerIdleMs, it's presumed gone.
+      if (ws.conn?.inboxAddress && !ws.conn.member) {
+        if (now - ws.lastSeen > config.listenerIdleMs) ws.terminate();
+        continue;
+      }
       if (!ws.isAlive) {
         ws.terminate();
         continue;
@@ -137,6 +164,7 @@ export function createEarshotServer(config, { log = console, fetchImpl = globalT
     httpServer,
     rooms,
     turnService,
+    inbox,
     async listen(port = config.port, host = config.host) {
       // Credentials first, so the first caller after a cold start gets a relay too.
       await turnService?.start();
@@ -153,6 +181,7 @@ export function createEarshotServer(config, { log = console, fetchImpl = globalT
       turnService?.stop();
       for (const ws of wss.clients) ws.terminate();
       rooms.dispose();
+      inbox.dispose();
       await new Promise((resolve) => wss.close(() => resolve()));
       await new Promise((resolve) => httpServer.close(() => resolve()));
     },

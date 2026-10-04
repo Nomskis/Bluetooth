@@ -565,6 +565,9 @@ class CallSession(
                 else -> Log.w(TAG, "Server error ${message.code}: ${message.message}")
             }
             ServerMessage.Pong -> Unit
+            // Ringing is handled by the inbox connection and the outgoing-ring code.
+            is ServerMessage.Listening, is ServerMessage.Incoming, is ServerMessage.RingCancelled -> Unit
+            is ServerMessage.RingStatus, is ServerMessage.RingAnswered -> Unit
         }
     }
 
