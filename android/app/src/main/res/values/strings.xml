@@ -14,6 +14,15 @@
     <string name="notification_hifi">Hi-Fi audio</string>
     <string name="notification_output_held">Earbuds disconnected: their voice is paused until they\'re back. Open to play on the speaker.</string>
     <string name="notification_channel_chat">Chat messages during calls</string>
+    <string name="channel_incoming_calls">Incoming calls</string>
+    <string name="channel_missed_calls">Missed calls</string>
+    <string name="channel_ready_for_calls">Ready for calls</string>
+    <string name="ready_for_calls">Ready for calls</string>
+    <string name="incoming_video_call">Earshot video call</string>
+    <string name="incoming_voice_call">Earshot voice call</string>
+    <string name="missed_call_title">Missed call from %1$s</string>
+    <string name="missed_call_text">Tap to open Earshot</string>
+    <string name="missed_call_busy">They called while you were on another call</string>
     <string name="chat_you">You</string>
     <string name="chat_reply">Reply</string>
     <string name="chat_someone">The other person</string>

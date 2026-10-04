@@ -34,6 +34,7 @@ class SettingsRepository(private val context: Context) {
         val startWithBackCamera = booleanPreferencesKey("start_with_back_camera")
         val flip = booleanPreferencesKey("flip")
         val keepScreenOn = booleanPreferencesKey("keep_screen_on")
+        val receiveCalls = booleanPreferencesKey("receive_calls")
         val pocketGuard = booleanPreferencesKey("pocket_guard")
         val gameAudioLabel = booleanPreferencesKey("game_audio_label")
         val lowLatencyPlayback = booleanPreferencesKey("low_latency_playback")
@@ -138,6 +139,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.startWithBackCamera] = next.startWithBackCamera
             prefs[Keys.flip] = next.flip
             prefs[Keys.keepScreenOn] = next.keepScreenOn
+            prefs[Keys.receiveCalls] = next.receiveCalls
             prefs[Keys.pocketGuard] = next.pocketGuard
             prefs[Keys.gameAudioLabel] = next.gameAudioLabel
             prefs[Keys.lowLatencyPlayback] = next.lowLatencyPlayback
@@ -183,6 +185,7 @@ class SettingsRepository(private val context: Context) {
             startWithBackCamera = this[Keys.startWithBackCamera] ?: defaults.startWithBackCamera,
             flip = this[Keys.flip] ?: defaults.flip,
             keepScreenOn = this[Keys.keepScreenOn] ?: defaults.keepScreenOn,
+            receiveCalls = this[Keys.receiveCalls] ?: defaults.receiveCalls,
             pocketGuard = this[Keys.pocketGuard] ?: defaults.pocketGuard,
             gameAudioLabel = this[Keys.gameAudioLabel] ?: defaults.gameAudioLabel,
             lowLatencyPlayback = this[Keys.lowLatencyPlayback] ?: defaults.lowLatencyPlayback,

@@ -68,6 +68,8 @@ data class AppSettings(
     /** Flip: your video mirrored left to right, the same for you and the other person. */
     val flip: Boolean = false,
     val keepScreenOn: Boolean = true,
+    /** Ring when someone calls you, like a phone (keeps a connection to your server). */
+    val receiveCalls: Boolean = true,
     /** Turn the screen off when the proximity sensor is covered (in a pocket), so it can't be tapped by accident. */
     val pocketGuard: Boolean = true,
     /**

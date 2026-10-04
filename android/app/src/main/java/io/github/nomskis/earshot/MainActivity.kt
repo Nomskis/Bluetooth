@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Rational
 import android.view.Display
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -54,7 +55,11 @@ class MainActivity : ComponentActivity() {
         // you can keep watching while you pick songs in your music app.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.session.collect { updatePictureInPictureParams(inCall = it != null) }
+                viewModel.session.collect {
+                    updatePictureInPictureParams(inCall = it != null)
+                    // Like a phone call: a call answered from the lock screen stays in front of it.
+                    showOverLockScreen(it != null)
+                }
             }
         }
 
@@ -86,6 +91,17 @@ class MainActivity : ComponentActivity() {
         getSystemService(DisplayManager::class.java)?.unregisterDisplayListener(displayListener)
         publishVisibility()
         super.onStop()
+    }
+
+    private fun showOverLockScreen(show: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(show)
+            setTurnScreenOn(show)
+        } else {
+            @Suppress("DEPRECATION")
+            val flags = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            if (show) window.addFlags(flags) else window.clearFlags(flags)
+        }
     }
 
     /** Chat messages become notifications while you can't see the call screen. */

@@ -5,6 +5,7 @@ import android.content.Context
 import io.github.nomskis.earshot.audio.AudioRouteMonitor
 import io.github.nomskis.earshot.audio.CodecWatcher
 import io.github.nomskis.earshot.call.CallManager
+import io.github.nomskis.earshot.calls.CallInbox
 import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.earbuds.EarbudControl
 import io.github.nomskis.earshot.settings.SettingsRepository
@@ -36,6 +37,14 @@ class AppGraph(context: Context) {
         earbudBoost = EarbudBoost(earbuds),
         turboBoost = TurboBoost { turbo },
     ) { codecWatcher.latest.value }
+    /** Incoming calls: waits for them and rings the phone. */
+    val callInbox = CallInbox(
+        context,
+        settings,
+        http,
+        isBusy = { callManager.session.value != null },
+        startCall = { room, withVideo -> callManager.startCall(room, withVideo) },
+    )
 }
 
 class EarshotApp : Application() {
@@ -46,6 +55,7 @@ class EarshotApp : Application() {
         super.onCreate()
         graph = AppGraph(this)
         graph.codecWatcher.start()
+        graph.callInbox.follow()
     }
 }
 
