@@ -50,6 +50,7 @@ are out of scope on purpose.
 | Feature | Status | Notes |
 | --- | --- | --- |
 | A conversation per contact, kept on the phone | ✅ | |
+| Calls shown between the messages | ✅ | "Missed voice call", "Video call · 12:34"; a tap calls back the same way |
 | Messages wait for a phone that's offline | ✅ | On your own server, until their phone confirms them |
 | Sent and delivered | ✅ | |
 | Read ("Seen") | ✅ | Sent when the conversation is on screen or you reply from the notification |

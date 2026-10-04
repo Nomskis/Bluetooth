@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -52,6 +54,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
+import io.github.nomskis.earshot.calls.CallRecord
 import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.messages.Conversation
 import io.github.nomskis.earshot.messages.TextMessage
@@ -80,6 +83,8 @@ fun ConversationScreen(
     /** Off this phone only. */
     onDelete: (TextMessage) -> Unit = {},
     onClear: () -> Unit = {},
+    /** Calls with them, shown between the messages like a messaging app does. */
+    calls: List<CallRecord> = emptyList(),
 ) {
     var menu by remember { mutableStateOf(false) }
     var clearing by remember { mutableStateOf(false) }
@@ -100,9 +105,10 @@ fun ConversationScreen(
     BackHandler(onBack = onBack)
     var draft by rememberSaveable(contact.address) { mutableStateOf("") }
     val messages = conversation?.messages.orEmpty()
+    val items = remember(messages, calls) { timeline(messages, calls) }
     val list = rememberLazyListState()
     // Newest at the bottom, and in view as they come.
-    LaunchedEffect(messages.size) { if (messages.isNotEmpty()) list.animateScrollToItem(list.layoutInfo.totalItemsCount.coerceAtLeast(1) - 1) }
+    LaunchedEffect(items.size) { if (items.isNotEmpty()) list.animateScrollToItem(list.layoutInfo.totalItemsCount.coerceAtLeast(1) - 1) }
 
     Scaffold(
         topBar = {
@@ -137,7 +143,7 @@ fun ConversationScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
-            if (messages.isEmpty()) {
+            if (items.isEmpty()) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text(
                         "Say hi to ${contact.name}",
@@ -155,13 +161,20 @@ fun ConversationScreen(
                 ) {
                     val zone = ZoneId.systemDefault()
                     val today = LocalDate.now(zone)
-                    messages.forEachIndexed { i, message ->
-                        val day = Instant.ofEpochMilli(message.atMillis).atZone(zone).toLocalDate()
-                        val previous = messages.getOrNull(i - 1)?.let { Instant.ofEpochMilli(it.atMillis).atZone(zone).toLocalDate() }
+                    items.forEachIndexed { i, entry ->
+                        val day = Instant.ofEpochMilli(entry.atMillis).atZone(zone).toLocalDate()
+                        val previous = items.getOrNull(i - 1)?.let { Instant.ofEpochMilli(it.atMillis).atZone(zone).toLocalDate() }
                         if (day != previous) {
                             item(key = "day-$day") { DayHeader(dayLabel(day, today)) }
                         }
-                        item(key = (if (message.mine) "me-" else "them-") + message.id) { MessageBubble(message, onDelete = { onDelete(message) }) }
+                        when (entry) {
+                            is ChatItem.Text -> item(key = (if (entry.message.mine) "me-" else "them-") + entry.message.id) {
+                                MessageBubble(entry.message, onDelete = { onDelete(entry.message) })
+                            }
+                            is ChatItem.Call -> item(key = "call-${entry.call.atMillis}-$i") {
+                                CallEvent(entry.call, onCall = { onCall(entry.call.video) })
+                            }
+                        }
                     }
                 }
             }
@@ -192,6 +205,50 @@ fun ConversationScreen(
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                 }
             }
+        }
+    }
+}
+
+/** One line of a conversation: a message, or a call with them. */
+internal sealed interface ChatItem {
+    val atMillis: Long
+
+    data class Text(val message: TextMessage) : ChatItem {
+        override val atMillis: Long get() = message.atMillis
+    }
+
+    data class Call(val call: CallRecord) : ChatItem {
+        override val atMillis: Long get() = call.atMillis
+    }
+}
+
+/** Messages and calls, oldest first. */
+internal fun timeline(messages: List<TextMessage>, calls: List<CallRecord>): List<ChatItem> =
+    (messages.map { ChatItem.Text(it) } + calls.map { ChatItem.Call(it) }).sortedBy { it.atMillis }
+
+/** "Missed voice call", "Video call · 12:34", "Voice call · No answer". */
+internal fun callEventText(call: CallRecord): String {
+    val kind = if (call.video) "Video call" else "Voice call"
+    return if (call.missed) "Missed ${kind.lowercase()}" else "$kind · ${call.summary}"
+}
+
+/** A call in the conversation, centred like a day header; a tap calls back the same way. */
+@Composable
+private fun CallEvent(call: CallRecord, onCall: () -> Unit) {
+    val time = Instant.ofEpochMilli(call.atMillis).atZone(ZoneId.systemDefault()).toLocalTime().format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT))
+    val color = if (call.missed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+    Box(Modifier.fillMaxWidth().padding(vertical = 2.dp), contentAlignment = Alignment.Center) {
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(onClickLabel = if (call.video) "Video call back" else "Call back", onClick = onCall)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(if (call.video) Icons.Filled.Videocam else Icons.Filled.Call, contentDescription = null, tint = color, modifier = Modifier.size(16.dp))
+            Text("${callEventText(call)} · $time", style = MaterialTheme.typography.labelMedium, color = color)
         }
     }
 }

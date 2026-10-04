@@ -104,6 +104,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean) {
                             onBack = { viewModel.openConversation(null) },
                             onDelete = { message -> viewModel.deleteMessage(contact.address, message) },
                             onClear = { viewModel.clearConversation(contact.address) },
+                            calls = callLog.filter { it.address == contact.address },
                         )
                     }
                     screen == Screen.SETTINGS -> SettingsScreen(

@@ -86,6 +86,24 @@ class MidCallAndSettingsTest {
         assertEquals(1, cleared)
     }
 
+    @Test
+    fun callsShowInTheConversationAndCallBack() {
+        val sam = io.github.nomskis.earshot.calls.Contact("Sam", "c2FtLWFkZHJlc3MtMDAwMD")
+        val chat = io.github.nomskis.earshot.messages.Conversation(sam.address).received("m1", "Call me?", 1_000).sending("m2", "Now?", 3_000)
+        val missed = io.github.nomskis.earshot.calls.CallRecord("Sam", sam.address, io.github.nomskis.earshot.calls.CallRecord.Direction.INCOMING, io.github.nomskis.earshot.calls.CallRecord.Outcome.MISSED, video = false, atMillis = 2_000)
+        val talked = io.github.nomskis.earshot.calls.CallRecord("Sam", sam.address, io.github.nomskis.earshot.calls.CallRecord.Direction.OUTGOING, io.github.nomskis.earshot.calls.CallRecord.Outcome.ANSWERED, video = true, atMillis = 4_000, durationSeconds = 754)
+        // In time order, the call between the two messages.
+        assertEquals(listOf(1_000L, 2_000L, 3_000L, 4_000L), timeline(chat.messages, listOf(talked, missed)).map { it.atMillis })
+        assertEquals("Missed voice call", callEventText(missed))
+        assertEquals("Video call · ${talked.summary}", callEventText(talked))
+        val calledBack = mutableListOf<Boolean>()
+        compose.setContent {
+            EarshotTheme { ConversationScreen(sam, chat, onSend = {}, onCall = { calledBack += it }, onBack = {}, calls = listOf(talked, missed)) }
+        }
+        compose.onNodeWithText("Missed voice call", substring = true).performClick()
+        assertEquals(listOf(false), calledBack)
+    }
+
     private fun settings(
         update: AppUpdater.State? = null,
         replies: List<String> = QuickReplies.DEFAULT,

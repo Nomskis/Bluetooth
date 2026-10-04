@@ -131,7 +131,8 @@ this list works with every pair of classic Bluetooth earbuds.
   it, then shows "Delivered" and "Seen". Reply or mark as read right from the
   notification;
   long-press a message to copy or delete it.
-  A call's chat lands in the same conversation. Someone you block can't ring
+  A call's chat lands in the same conversation, and the calls themselves show
+  between the messages ("Missed voice call", "Video call · 12:34"). Someone you block can't ring
   you or write to you, and isn't told.
 
 And two optional extras that go further:
