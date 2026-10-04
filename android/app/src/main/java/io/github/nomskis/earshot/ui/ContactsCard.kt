@@ -61,6 +61,8 @@ fun ContactsCard(
     onOpen: ((Contact) -> Unit)? = null,
     /** Your own name for them; theirs no longer replaces it. */
     onRename: ((Contact, String) -> Unit)? = null,
+    /** Their calls stop ringing and their messages stop arriving (after you confirm). */
+    onBlock: ((Contact) -> Unit)? = null,
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -83,7 +85,7 @@ fun ContactsCard(
             }
             // Whoever you've talked to most recently first, by call or message.
             contacts.sortedByDescending { maxOf(it.lastCallAtMillis, conversations[it.address]?.last?.atMillis ?: 0) }.forEach { contact ->
-                ContactRow(contact, now, onCall, onRemove, conversations[contact.address], onOpen, onRename)
+                ContactRow(contact, now, onCall, onRemove, conversations[contact.address], onOpen, onRename, onBlock)
             }
         }
     }
@@ -98,14 +100,30 @@ private fun ContactRow(
     conversation: Conversation?,
     onOpen: ((Contact) -> Unit)?,
     onRename: ((Contact, String) -> Unit)?,
+    onBlock: ((Contact) -> Unit)?,
 ) {
     var menu by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
+    var blocking by remember { mutableStateOf(false) }
     if (renaming && onRename != null) {
         RenameDialog(contact, onDone = { name ->
             renaming = false
             if (name != null) onRename(contact, name)
         })
+    }
+    if (blocking && onBlock != null) {
+        AlertDialog(
+            onDismissRequest = { blocking = false },
+            title = { Text("Block ${contact.name}?") },
+            text = { Text("Their calls won't ring and their messages won't arrive. They aren't told. You can unblock them in Settings.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    blocking = false
+                    onBlock(contact)
+                }) { Text("Block") }
+            },
+            dismissButton = { TextButton(onClick = { blocking = false }) { Text("Cancel") } },
+        )
     }
     Row(
         modifier = Modifier
@@ -186,6 +204,15 @@ private fun ContactRow(
                         onRemove(contact)
                     },
                 )
+                if (onBlock != null) {
+                    DropdownMenuItem(
+                        text = { Text("Block") },
+                        onClick = {
+                            menu = false
+                            blocking = true
+                        },
+                    )
+                }
             }
         }
     }

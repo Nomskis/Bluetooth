@@ -95,6 +95,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun openConversation(address: String?) {
         _openConversation.value = address
+    }
+
+    /** The conversation in front of the user right now (null: none, or the app is in the background). */
+    fun conversationOnScreen(address: String?) {
         graph.messenger.open = address
         address?.let { MessageNotifications.cancel(getApplication(), it) }
     }
@@ -103,6 +107,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun renameContact(address: String, name: String) {
         viewModelScope.launch { graph.settings.renameContact(address, name) }
+    }
+
+    /** People whose calls don't ring and whose messages are dropped. */
+    val blocked: StateFlow<List<Contact>> =
+        graph.settings.blocked.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun block(contact: Contact) {
+        viewModelScope.launch { graph.settings.block(contact) }
+    }
+
+    fun unblock(address: String) {
+        viewModelScope.launch { graph.settings.unblock(address) }
     }
 
     /** A call button in a conversation: back home, which rings them (asking for permissions first). */

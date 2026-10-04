@@ -214,6 +214,7 @@ internal fun messageMeta(message: TextMessage, zone: ZoneId = ZoneId.systemDefau
         TextMessage.Status.WAITING -> "Waiting for their phone"
         TextMessage.Status.SENT -> "Sent"
         TextMessage.Status.DELIVERED -> "Delivered"
+        TextMessage.Status.READ -> "Seen"
         TextMessage.Status.RECEIVED -> null
     }
     return listOfNotNull(time, status).joinToString(" · ")

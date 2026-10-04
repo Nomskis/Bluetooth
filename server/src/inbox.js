@@ -109,6 +109,19 @@ export class Inbox {
     }
   }
 
+  /**
+   * The recipient has seen their messages up to `msg.id` (one of the sender's, `msg.to`):
+   * passed to the sender's devices that are online. Not held: a read receipt that misses
+   * them only leaves "delivered" showing.
+   */
+  messageRead(conn, msg) {
+    const me = conn.inboxAddress;
+    if (!me) return;
+    for (const device of this.#listeners.get(msg.to) ?? []) {
+      device.send({ type: 'message-status', id: msg.id, to: me, status: 'read' });
+    }
+  }
+
   /** How many chat messages wait for an address; for tests and logs. */
   waitingMessages(address) {
     return this.#waitingFor(address).length;

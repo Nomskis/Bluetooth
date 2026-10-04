@@ -102,6 +102,7 @@ fun HomeScreen(
     /** The call history, newest first. */
     recentCalls: List<CallRecord> = emptyList(),
     onRenameContact: ((Contact, String) -> Unit)? = null,
+    onBlockContact: ((Contact) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
@@ -285,6 +286,7 @@ fun HomeScreen(
                     conversations = conversations,
                     onOpen = onOpenConversation,
                     onRename = onRenameContact,
+                    onBlock = onBlockContact,
                 )
             }
 

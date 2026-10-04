@@ -84,6 +84,27 @@ class CallingAppPartsTest {
     }
 
     @Test
+    fun aContactCanBeBlockedAfterConfirming() {
+        val salma = io.github.nomskis.earshot.calls.Contact("Salma", sam)
+        val blocked = mutableListOf<String>()
+        compose.setContent {
+            EarshotTheme { ContactsCard(listOf(salma), onCall = { _, _ -> }, onRemove = {}, onBlock = { blocked += it.address }) }
+        }
+        compose.onNodeWithContentDescription("More for Salma").performClick()
+        compose.onNodeWithText("Block").performClick()
+        compose.onNodeWithText("Block Salma?").assertIsDisplayed()
+        assertEquals(emptyList<String>(), blocked)
+        compose.onNodeWithText("Block").performClick()
+        assertEquals(listOf(sam), blocked)
+    }
+
+    @Test
+    fun ourMessagesSayWhenTheyveBeenSeen() {
+        val seen = io.github.nomskis.earshot.messages.TextMessage("m1", "Hi", mine = true, atMillis = 0, status = io.github.nomskis.earshot.messages.TextMessage.Status.READ)
+        assertEquals(true, messageMeta(seen, ZoneOffset.UTC).endsWith(" · Seen"))
+    }
+
+    @Test
     fun conversationDaysReadLikeAMessagingApp() {
         val today = java.time.LocalDate.of(2026, 10, 4)
         assertEquals("Today", dayLabel(today, today))

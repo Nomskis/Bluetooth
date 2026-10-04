@@ -142,6 +142,8 @@ class CallInbox(
     }
 
     private suspend fun onIncoming(message: ServerMessage.Incoming) {
+        // Someone you blocked: no ring and no missed call; on their side it rings out.
+        if (message.from.address?.let { settings.isBlocked(it) } == true) return
         val contacts = settings.contacts.first()
         val contact = message.from.address?.let { address -> contacts.firstOrNull { it.address == address } }
         val name = contact?.name ?: message.from.name.ifBlank { "Someone" }

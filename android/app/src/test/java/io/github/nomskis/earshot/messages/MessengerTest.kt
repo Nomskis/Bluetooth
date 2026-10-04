@@ -20,6 +20,7 @@ class MessengerTest {
     private val saved = mutableMapOf<String, Conversation>()
     private val notified = mutableListOf<Pair<String, String>>()
     private val newContacts = mutableListOf<Contact>()
+    private val blocked = mutableSetOf<String>()
     private var clock = 1_000L
 
     private val store = object : Messenger.Store {
@@ -38,6 +39,7 @@ class MessengerTest {
             myName = { "Salma" },
             contact = { address -> if (address == sam) Contact("Sam", sam) else null },
             saveContact = { newContacts += it },
+            isBlocked = { it in blocked },
             notify = { name, address, _ -> notified += name to address },
             now = { clock },
             io = dispatcher,
@@ -91,13 +93,50 @@ class MessengerTest {
     }
 
     @Test
-    fun anOpenConversationReadsAsItArrives() {
+    fun anOpenConversationReadsAsItArrivesAndTellsThem() {
         val m = messenger()
         m.open = sam
+        // Nothing of theirs yet: nothing to say.
+        assertTrue(sent.isEmpty())
         clock = 2_000
         m.onServerMessage(incoming("m-00000002"))
         assertTrue(notified.isEmpty())
         assertEquals(0, m.conversations.value.getValue(sam).unread)
+        assertEquals(ClientMessage.MessageRead(to = sam, id = "m-00000002"), sent.last())
+    }
+
+    @Test
+    fun openingAConversationTellsThemTheirsWereSeen() {
+        val m = messenger()
+        m.onServerMessage(incoming("m-00000004"))
+        m.onServerMessage(incoming("m-00000005", text = "Call me"))
+        sent.clear()
+        m.open = sam
+        assertEquals(listOf(ClientMessage.MessageRead(to = sam, id = "m-00000005")), sent)
+    }
+
+    @Test
+    fun oursShowSeenWhenTheyveReadThem() {
+        val m = messenger()
+        m.send(sam, "One")
+        m.send(sam, "Two")
+        val (one, two) = sent.map { (it as ClientMessage.Message).id }
+        m.onServerMessage(ServerMessage.MessageStatus(one, sam, "delivered"))
+        m.onServerMessage(ServerMessage.MessageStatus(two, sam, "delivered"))
+        m.onServerMessage(ServerMessage.MessageStatus(two, sam, "read"))
+        assertEquals(listOf(TextMessage.Status.READ, TextMessage.Status.READ), m.conversations.value.getValue(sam).messages.map { it.status })
+    }
+
+    @Test
+    fun someoneBlockedIsConfirmedButNotKeptOrNotified() {
+        blocked += stranger
+        val m = messenger()
+        m.onServerMessage(incoming("m-00000006", from = stranger))
+        // Confirmed, so the server stops handing it over.
+        assertEquals(ClientMessage.MessageAck(to = stranger, id = "m-00000006"), sent.single())
+        assertTrue(notified.isEmpty())
+        assertTrue(newContacts.isEmpty())
+        assertEquals(null, m.conversations.value[stranger])
     }
 
     @Test

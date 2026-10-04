@@ -72,6 +72,7 @@ class AppGraph(context: Context) {
         myName = { settings.current().displayName },
         contact = { address -> settings.contacts.first().firstOrNull { it.address == address } },
         saveContact = settings::saveContact,
+        isBlocked = settings::isBlocked,
         notify = { name, address, conversation -> MessageNotifications.show(context, name, address, conversation) },
     ).also { messenger ->
         callInbox.onChat = messenger::onServerMessage

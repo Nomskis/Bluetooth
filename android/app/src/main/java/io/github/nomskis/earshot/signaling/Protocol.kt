@@ -117,6 +117,11 @@ sealed interface ClientMessage {
     @Serializable
     @SerialName("message-ack")
     data class MessageAck(val to: String, val id: String) : ClientMessage
+
+    /** We've seen [to]'s messages up to [id]: passed to them, so theirs show "Seen". */
+    @Serializable
+    @SerialName("message-read")
+    data class MessageRead(val to: String, val id: String) : ClientMessage
 }
 
 /** Who's calling: the name they gave, and their inbox address when they proved it. */

@@ -30,6 +30,8 @@ class Messenger(
     private val contact: suspend (address: String) -> Contact?,
     /** Someone new wrote to us: keep them, like after a first call. */
     private val saveContact: suspend (Contact) -> Unit,
+    /** Someone we blocked: what they write is dropped. */
+    private val isBlocked: suspend (address: String) -> Boolean,
     /** Their message arrived while their conversation isn't on screen. */
     private val notify: (name: String, address: String, conversation: Conversation) -> Unit,
     private val now: () -> Long = System::currentTimeMillis,
@@ -80,13 +82,18 @@ class Messenger(
             is ServerMessage.Message -> scope.launch { receive(message) }
             is ServerMessage.MessageStatus -> {
                 val status = Conversation.statusOf(message.status) ?: return
-                change(message.to) { it.status(message.id, status) }
+                change(message.to) { if (status == TextMessage.Status.READ) it.seen(message.id) else it.status(message.id, status) }
             }
             else -> Unit
         }
     }
 
-    fun markRead(address: String) = change(address) { it.read(now()) }
+    /** Their messages so far are seen (on screen, or answered from the notification); they're told, so theirs show "Seen". */
+    fun markRead(address: String) {
+        change(address) { it.read(now()) }
+        val latest = _conversations.value[address]?.lastReceived ?: return
+        send(ClientMessage.MessageRead(to = address, id = latest.id))
+    }
 
     /** A message from a call's own chat, kept in the conversation with them too. */
     fun recordCallChat(address: String, id: String, text: String, mine: Boolean, atMillis: Long) = change(address) {
@@ -96,7 +103,9 @@ class Messenger(
     private suspend fun receive(message: ServerMessage.Message) {
         val address = message.from.address ?: return
         // Confirm every copy, the same one again included: that's how their phone learns it got here.
+        // A blocked sender's too, or the server would keep handing it over.
         send(ClientMessage.MessageAck(to = address, id = message.id))
+        if (isBlocked(address)) return
         val known = contact(address)
         if (known == null) saveContact(Contact(message.from.name.ifBlank { "Someone" }, address, 0))
         val at = now()
