@@ -39,6 +39,17 @@ Roughly in order. Each item stands on its own; pick any.
 - **App links** so `https://<server>/r/<room>` opens the Android app when it's
   installed (`earshot://join/<room>` already works).
 
+- **Try the relay route by itself.** The relay route (Calls abroad) is a
+  switch to compare by hand. WebRTC prunes a relayed path while a direct one
+  works on the same network, so the two can't be measured side by side; a
+  call that stays weak could instead try the relay for a minute, compare loss
+  and delay, and keep the better one.
+- **Confirm the bad-connection features on a real long-distance call.**
+  Voice first, longer packets and resends are tested against WebRTC's own
+  code and a simulated lossy link; a real call between two countries on weak
+  Wi-Fi or mobile data, with the readout's numbers noted, would tune the
+  thresholds.
+
 ## Later
 
 - **Group calls.** The server already supports bigger rooms

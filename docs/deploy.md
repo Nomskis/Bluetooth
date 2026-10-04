@@ -46,6 +46,12 @@ docker compose --profile https up -d
   afterwards takes about a minute. The Android app wakes it in the background
   whenever you open the app, so it's usually up by the time you've picked a
   room; the browser side wakes it by loading the invite page.
+  Render puts a Blueprint's service in Oregon unless `render.yaml` says
+  otherwise. If the people calling are in Europe or Africa, add
+  `region: frankfurt` to the service in `render.yaml` before creating it
+  (Render can't move an existing service; make a new one and update the
+  address in the app): every message that sets up or adjusts a call,
+  ringing included, then crosses an ocean less.
 - **Fly.io:** install `flyctl`, then in the repository run
   `fly launch --copy-config --no-deploy` and `fly deploy`. The included
   [`fly.toml`](../fly.toml) keeps one small machine running so calls connect
