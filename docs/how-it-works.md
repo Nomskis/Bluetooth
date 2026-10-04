@@ -103,6 +103,7 @@ are in [research/latency.md](research/latency.md); in short:
 | What | How | Works with |
 | --- | --- | --- |
 | Shorter network path | 10 ms Opus packets (`a=ptime:10`), redundant audio (RED) preferred, a jitter buffer that shrinks quickly (`audioJitterBufferFastAccelerate`) | everything |
+| Ride out bad Wi-Fi | Each audio packet repeats the 3 before it, a jitter buffer sized for spiky networks, VP8 temporal layers, Wi-Fi kept out of power save (see below) | everything |
 | Fast playback path | `PERFORMANCE_MODE_LOW_LATENCY` with a self-adjusting buffer (`setUseLowLatency`), game-audio label | everything; low-latency Bluetooth where the phone supports it |
 | Measure it | The sonar meter in the delay tuner: chirps through an earbud held to the mic, matched filter, calibrated against the phone speaker | everything |
 | See them talk first | A voice detector on their decoded audio, 100–250 ms ahead of your ears: the call screen glows, music dips (`AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`), 8-second replay | everything |
@@ -112,6 +113,40 @@ are in [research/latency.md](research/latency.md); in short:
 | Turbo | Android's privileged Bluetooth controls, through Shizuku: for each call, low-latency mode, the codec measured fastest, the shortest buffer; undone after | Android 13+ with Wireless debugging |
 | Fast failover | ICE tuned to swap a stalled path in ~1 s; mobile data on standby if you allow it | everything |
 | Live readout | Mouth-to-ear delay from stats plus the measured app-to-ear figure | everything |
+
+## Riding out bad Wi-Fi
+
+Gym and café Wi-Fi rarely runs out of bandwidth first. It loses packets in
+bursts and delivers others late, in clumps. Each setting below was checked
+against the WebRTC source the app ships with
+([`call/WebRtcTuning.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/WebRtcTuning.kt)):
+
+- **Audio repeats itself.** With RED, every 10 ms packet also carries the 3
+  before it (`WebRTC-Audio-Red-For-Opus/Enabled-3/`; WebRTC's default is 1),
+  so up to 30 ms of consecutive loss is repaired exactly instead of
+  concealed. That adds bytes, not packets, and on Wi-Fi each packet's airtime
+  costs more than its size: about 100 kbps more at HD voice. Opus's own
+  in-band FEC stays on underneath.
+- **A jitter buffer sized for spikes.** WebRTC sizes the audio buffer to
+  absorb 95% of the delay spikes it has seen; Earshot asks for 97%
+  (`WebRTC-Audio-NetEqDelayManagerConfig/quantile:0.97/`), so a jittery
+  network causes fewer dropouts. On a steady network the two are the same;
+  the extra delay only appears while the network is that bad. The buffer can
+  hold a full second (`audioJitterBufferMaxPackets` 100), so a long stall
+  doesn't overflow it.
+- **Video that doesn't freeze on a lost packet.** VP8 sent with three
+  temporal layers (`scalabilityMode` L1T3): half the frames are referenced by
+  nothing and a quarter by one other, so a loss usually costs one frame
+  instead of stalling the picture until it's resent or a new keyframe
+  arrives. Hardware encoders ignore it. WebRTC already keeps the frame rate
+  and lowers resolution when bandwidth drops (`MAINTAIN_FRAMERATE`), so
+  motion stays smooth.
+- **Wi-Fi out of power save.** A phone in power save lets the router hold its
+  packets and fetches them in bursts. The call holds Android's low-latency
+  Wi-Fi lock (screen on, app in front) and the high-performance one, which
+  also covers the screen being off on Android 10 to 13. From Android 14 there
+  is no way for an app to do that with the screen off.
+- **Fast failover** (above), and mobile data on standby if you allow it.
 
 ## Sharing the radio with Bluetooth
 

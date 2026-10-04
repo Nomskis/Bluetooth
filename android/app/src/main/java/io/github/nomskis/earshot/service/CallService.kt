@@ -34,7 +34,7 @@ import kotlinx.coroutines.launch
  */
 class CallService : LifecycleService() {
 
-    private var wifiLock: WifiManager.WifiLock? = null
+    private var wifiLocks: List<WifiManager.WifiLock> = emptyList()
     private lateinit var chatNotifier: ChatNotifier
 
     override fun onCreate() {
@@ -94,7 +94,8 @@ class CallService : LifecycleService() {
     }
 
     override fun onDestroy() {
-        wifiLock?.takeIf { it.isHeld }?.release()
+        wifiLocks.filter { it.isHeld }.forEach { it.release() }
+        wifiLocks = emptyList()
         super.onDestroy()
     }
 
@@ -107,17 +108,26 @@ class CallService : LifecycleService() {
         return types
     }
 
+    /**
+     * Keeps Wi-Fi out of power save for the call, which otherwise holds packets for
+     * us at the router and sends them in bursts (delay spikes, a fuller jitter buffer).
+     * Android applies the low-latency lock only while the screen is on and Earshot is
+     * in front; the high-performance one also covers the screen being off (phone in a
+     * pocket) on Android 10 to 13. From Android 14 the latter counts as a low-latency
+     * lock, so holding both is never worse.
+     */
     @Suppress("DEPRECATION")
     private fun acquireWifiLock() {
         val wifi = applicationContext.getSystemService(WifiManager::class.java) ?: return
-        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            WifiManager.WIFI_MODE_FULL_LOW_LATENCY
-        } else {
-            WifiManager.WIFI_MODE_FULL_HIGH_PERF
+        val modes = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) add(WifiManager.WIFI_MODE_FULL_LOW_LATENCY)
+            add(WifiManager.WIFI_MODE_FULL_HIGH_PERF)
         }
-        wifiLock = wifi.createWifiLock(mode, "earshot:call").apply {
-            setReferenceCounted(false)
-            acquire()
+        wifiLocks = modes.map { mode ->
+            wifi.createWifiLock(mode, "earshot:call:$mode").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
         }
     }
 

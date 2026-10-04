@@ -841,6 +841,7 @@ class CallSession(
                 recoveryJob?.cancel()
                 setPhase(CallPhase.CONNECTED)
                 sendMediaState()
+                engine.useTemporalLayers(l.pc)
                 applyVideoCap(l)
                 applyPacketPriority(l)
                 if (statsJob?.isActive != true) watchStats(l)

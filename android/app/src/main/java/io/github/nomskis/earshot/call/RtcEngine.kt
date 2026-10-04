@@ -286,6 +286,23 @@ class RtcEngine(
     }
 
     /**
+     * Temporal layers for our video when it's VP8 (see [WebRtcTuning.VIDEO_SCALABILITY_MODE]).
+     * Called once the call is connected, when the codec is settled; its own setParameters
+     * call, so a refusal doesn't take other settings with it.
+     */
+    fun useTemporalLayers(pc: PeerConnection) {
+        for (sender in pc.senders) {
+            val kind = runCatching { sender.track()?.kind() }.getOrNull()
+            if (kind != MediaStreamTrack.VIDEO_TRACK_KIND) continue
+            val parameters = sender.parameters
+            if (parameters.codecs.firstOrNull()?.name?.equals("VP8", ignoreCase = true) != true) continue
+            if (parameters.encodings.isEmpty() || parameters.encodings.all { it.scalabilityMode == WebRtcTuning.VIDEO_SCALABILITY_MODE }) continue
+            parameters.encodings.forEach { it.scalabilityMode = WebRtcTuning.VIDEO_SCALABILITY_MODE }
+            if (!sender.setParameters(parameters)) Log.w(TAG, "Could not use temporal layers for video")
+        }
+    }
+
+    /**
      * DSCP marks for our packets: EF for voice and AF42 for video when [high],
      * unmarked otherwise. Phones' Wi-Fi drivers map both to WMM's video access
      * category, which wins airtime over best-effort traffic on a busy network.
@@ -334,9 +351,9 @@ class RtcEngine(
                 PeerConnection.CandidateNetworkPolicy.LOW_COST
             }
             // Let the jitter buffer shrink quickly after a network hiccup instead of staying
-            // inflated, and cap how far it can grow (50 packets = 0.5 s at 10 ms packets).
+            // inflated, with room to grow through a long Wi-Fi stall (see WebRtcTuning).
             audioJitterBufferFastAccelerate = true
-            audioJitterBufferMaxPackets = 50
+            audioJitterBufferMaxPackets = WebRtcTuning.JITTER_BUFFER_MAX_PACKETS
             // Ranks above network cost in ICE's choice, so a working mobile-data
             // path wins over Wi-Fi; without it Wi-Fi (cheaper) always wins.
             if (preferCellular) networkPreference = PeerConnection.AdapterType.CELLULAR
@@ -440,14 +457,12 @@ class RtcEngine(
         const val UNWRITABLE_TIME_MS = 2_500
         const val UNWRITABLE_MIN_CHECKS = 3
 
-        /** Makes sure the RED encoder for Opus is available. */
-        private const val FIELD_TRIALS = "WebRTC-Audio-Red-For-Opus/Enabled/"
-
         fun initializeWebRtc(context: Context) {
             if (!initialized.compareAndSet(false, true)) return
             PeerConnectionFactory.initialize(
                 PeerConnectionFactory.InitializationOptions.builder(context.applicationContext)
-                    .setFieldTrials(FIELD_TRIALS)
+                    // Redundant audio for bursts of loss, and a jitter buffer sized for spiky Wi-Fi.
+                    .setFieldTrials(WebRtcTuning.fieldTrials)
                     .createInitializationOptions(),
             )
             if (BuildConfig.DEBUG) Logging.enableLogToDebugOutput(Logging.Severity.LS_WARNING)
