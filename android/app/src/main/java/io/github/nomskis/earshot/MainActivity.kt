@@ -20,6 +20,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import io.github.nomskis.earshot.call.RoomCodes
+import io.github.nomskis.earshot.messages.MessageNotifications
 import io.github.nomskis.earshot.signaling.ServerUrls
 import io.github.nomskis.earshot.ui.EarshotRoot
 import io.github.nomskis.earshot.ui.MainViewModel
@@ -153,6 +154,11 @@ class MainActivity : ComponentActivity() {
      * optionally ?server=<https origin>, from a web invite page.
      */
     private fun handleIntent(intent: Intent?) {
+        // A message notification: straight to that conversation.
+        intent?.getStringExtra(MessageNotifications.EXTRA_CONVERSATION)?.let { address ->
+            viewModel.openConversation(address)
+            return
+        }
         val data = intent?.data ?: return
         val serverParam = if (data.isHierarchical) data.getQueryParameter("server") else null
         val (room, server) = ServerUrls.invite(data.scheme, data.authority, data.pathSegments, serverParam) ?: return

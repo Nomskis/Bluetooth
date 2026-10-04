@@ -9,11 +9,18 @@ import io.github.nomskis.earshot.calls.CallBackRequest
 import io.github.nomskis.earshot.calls.CallInbox
 import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.earbuds.EarbudControl
+import io.github.nomskis.earshot.messages.MessageNotifications
+import io.github.nomskis.earshot.messages.MessageStore
+import io.github.nomskis.earshot.messages.Messenger
 import io.github.nomskis.earshot.settings.SettingsRepository
 import io.github.nomskis.earshot.turbo.TurboBoost
 import io.github.nomskis.earshot.turbo.TurboClient
 import io.github.nomskis.earshot.update.AppUpdater
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -57,6 +64,24 @@ class AppGraph(context: Context) {
     val callBack = MutableStateFlow<CallBackRequest?>(null)
     /** Newer builds, installed over this one. */
     val updater = AppUpdater(context, http)
+    /** Chat with contacts, in a call or not, over the inbox connection. */
+    val messenger = Messenger(
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+        store = MessageStore(context),
+        send = callInbox::sendInbox,
+        myName = { settings.current().displayName },
+        contact = { address -> settings.contacts.first().firstOrNull { it.address == address } },
+        saveContact = settings::saveContact,
+        notify = { name, address, conversation -> MessageNotifications.show(context, name, address, conversation) },
+    ).also { messenger ->
+        callInbox.onChat = messenger::onServerMessage
+        callManager.onCallChat = { address, message ->
+            // Their own ids: kept apart from messages sent through the server.
+            messenger.recordCallChat(address, "call-${message.id}", message.text, message.mine, message.atMillis)
+        }
+        MessageNotifications.createChannel(context)
+        messenger.load()
+    }
 }
 
 class EarshotApp : Application() {

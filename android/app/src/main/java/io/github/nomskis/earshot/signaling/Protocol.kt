@@ -107,6 +107,16 @@ sealed interface ClientMessage {
     @Serializable
     @SerialName("ring-answer")
     data class RingAnswer(val ringId: String, val accepted: Boolean, val reason: String? = null) : ClientMessage
+
+    /** A chat message to someone's inbox address, sent over our own listening inbox connection. */
+    @Serializable
+    @SerialName("message")
+    data class Message(val to: String, val id: String, val text: String, val name: String = "") : ClientMessage
+
+    /** We have [id] from [to]: the server stops holding it and tells them it was delivered. */
+    @Serializable
+    @SerialName("message-ack")
+    data class MessageAck(val to: String, val id: String) : ClientMessage
 }
 
 /** Who's calling: the name they gave, and their inbox address when they proved it. */
@@ -151,6 +161,16 @@ sealed interface ServerMessage {
     @Serializable
     @SerialName("listening")
     data class Listening(val address: String) : ServerMessage
+
+    /** A chat message for us; [from] is proven by the server (the address the sender listens on). */
+    @Serializable
+    @SerialName("message")
+    data class Message(val id: String, val from: Caller, val text: String, val sentAt: Long = 0) : ServerMessage
+
+    /** How a message we sent to [to] is doing: "sent", "queued" (their phone is offline) or "delivered". */
+    @Serializable
+    @SerialName("message-status")
+    data class MessageStatus(val id: String, val to: String, val status: String) : ServerMessage
 
     /** Someone is ringing us. [preconnect]: their app lets us connect while it rings (see [ClientMessage.Ring]). */
     @Serializable

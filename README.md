@@ -31,7 +31,14 @@ full story, with the Android rules involved, is in
 
 Music-quality Bluetooth has more delay than the call link, so most of Earshot
 is about winning that back, or making what's left not matter. Everything in
-this list works with every pair of classic Bluetooth earbuds:
+this list works with every pair of classic Bluetooth earbuds.
+
+> **For now, calls run on WebRTC's own defaults.** After the first real calls
+> between two countries went badly, the network tunings below (packet
+> lengths, RED, resends, voice first, the deeper jitter buffer, airtime
+> sharing, the route memory's start, the 2.4 GHz video cap) are switched off
+> in `call/CallTuning.kt`, and each comes back once a call report shows it
+> helps. See [docs/research/checklist.md](docs/research/checklist.md).
 
 - **Leaner network path.** 10 ms audio packets instead of 20, redundant audio
   (RED) so a lost packet is repaired without the jitter buffer growing, lost
@@ -109,6 +116,12 @@ this list works with every pair of classic Bluetooth earbuds:
   a quick reply ("Can't hear you", "One sec"), also straight from the
   notification with the phone in your pocket. Messages go phone to phone,
   encrypted, and are re-sent if the connection drops.
+- **Messages between calls.** Tap a contact for your conversation with them,
+  like a messaging app, with their latest message and what's unread on the
+  home screen. A message to a phone that's offline waits on your server and
+  arrives when it's back; yours stays "waiting" until their phone confirms
+  it. Replies right from the notification. A call's chat lands in the same
+  conversation.
 
 And two optional extras that go further:
 
@@ -247,9 +260,9 @@ Android clients.
 
 | Tested | How |
 | --- | --- |
-| Server | 69 unit and integration tests, including mangled invite links still opening the call, the app-link file, ringing (who can ring whom, first answer wins, cancel and timeout, connecting while it rings), hosted-TURN credentials and the browser client's voice detector, delay readout (which way it's weak), chat, packet-length policy and SDP tweaks |
+| Server | 75 unit and integration tests, including messages between contacts (held for a phone that's offline until it confirms them), mangled invite links still opening the call, the app-link file, ringing (who can ring whom, first answer wins, cancel and timeout, connecting while it rings), hosted-TURN credentials and the browser client's voice detector, delay readout (which way it's weak), chat, packet-length policy and SDP tweaks |
 | Browser calls | 16 end-to-end tests: two real Chromium browsers calling each other through the server (video, audio, reloads, dropped connections, room full, camera-less join, 10 ms packets, fewer packets next to earbuds, redundant audio, HD voice, talking cue, text chat across a reload, the open-in-app link, home-screen install), three of them over a simulated bad connection, a relay that drops packets (lost voice resent; longer packets asked for and renegotiated in place, both ways round) |
-| Android app | 299 tests: protocol and chat against the shared examples, signaling reconnects against a scripted server, incoming calls end to end against a scripted server (ringing, accept, decline, busy, missed call, calling each other at once, which calls connect while they ring, a caller ringing again after reconnecting), opening invite links, the outgoing ring's states (including a phone that joined while still ringing), audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio, path-steering, voice-first bandwidth sharing, packet length, relay route, heat and lip-sync planning, which way the connection is weak, the bad-Wi-Fi tuning, keeping calls off mobile data next to working Wi-Fi, call history and call reports, SDP tweaks, plus Robolectric tests that start the real app and render every screen. Android lint, debug and release builds |
+| Android app | 311 tests: protocol and chat against the shared examples, signaling reconnects against a scripted server, incoming calls end to end against a scripted server (ringing, accept, decline, busy, missed call, calling each other at once, which calls connect while they ring, a caller ringing again after reconnecting), opening invite links, the outgoing ring's states (including a phone that joined while still ringing), audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio, path-steering, voice-first bandwidth sharing, packet length, relay route, heat and lip-sync planning, which way the connection is weak, the bad-Wi-Fi tuning, keeping calls off mobile data next to working Wi-Fi, call history and call reports, SDP tweaks, plus Robolectric tests that start the real app and render every screen. Android lint, debug and release builds |
 | Android on a real phone | **Not yet.** The audio routing and the earbud drivers have to be confirmed on real hardware; the in-app audio check and the delay tuner are there for exactly that. |
 
 ## Trade-offs to know about

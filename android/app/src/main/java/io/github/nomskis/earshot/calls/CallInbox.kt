@@ -65,6 +65,12 @@ class CallInbox(
     val status: StateFlow<InboxClient.State> = _status.asStateFlow()
 
     private var client: InboxClient? = null
+
+    /** Chat traffic on the inbox connection (and "listening", when the outbox can go out); see [io.github.nomskis.earshot.messages.Messenger]. */
+    var onChat: (ServerMessage) -> Unit = {}
+
+    /** Sends on the inbox connection; false when it isn't up. */
+    fun sendInbox(message: ClientMessage): Boolean = client?.send(message) == true
     /** When each ring arrived, for the history. */
     private val ringStartedAt = HashMap<String, Long>()
     /** Our own address, to settle who wins when two people call each other at once. */
@@ -123,6 +129,7 @@ class CallInbox(
 
     private suspend fun onMessage(message: ServerMessage) {
         when (message) {
+            is ServerMessage.Listening, is ServerMessage.Message, is ServerMessage.MessageStatus -> onChat(message)
             is ServerMessage.Incoming -> onIncoming(message)
             is ServerMessage.RingCancelled -> {
                 val ring = _ringing.value ?: return

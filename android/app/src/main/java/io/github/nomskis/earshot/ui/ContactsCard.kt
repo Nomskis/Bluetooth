@@ -1,6 +1,7 @@
 package io.github.nomskis.earshot.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -33,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.nomskis.earshot.calls.Contact
+import io.github.nomskis.earshot.messages.Conversation
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -49,6 +52,10 @@ fun ContactsCard(
     onCall: (Contact, withVideo: Boolean) -> Unit,
     onRemove: (Contact) -> Unit,
     now: Long = System.currentTimeMillis(),
+    /** Conversations by address, for the latest message and what's unread. */
+    conversations: Map<String, Conversation> = emptyMap(),
+    /** Tapping a name opens the conversation with them. */
+    onOpen: ((Contact) -> Unit)? = null,
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -69,8 +76,9 @@ fun ContactsCard(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
             }
-            contacts.forEach { contact ->
-                ContactRow(contact, now, onCall, onRemove)
+            // Whoever you've talked to most recently first, by call or message.
+            contacts.sortedByDescending { maxOf(it.lastCallAtMillis, conversations[it.address]?.last?.atMillis ?: 0) }.forEach { contact ->
+                ContactRow(contact, now, onCall, onRemove, conversations[contact.address], onOpen)
             }
         }
     }
@@ -82,11 +90,14 @@ private fun ContactRow(
     now: Long,
     onCall: (Contact, withVideo: Boolean) -> Unit,
     onRemove: (Contact) -> Unit,
+    conversation: Conversation?,
+    onOpen: ((Contact) -> Unit)?,
 ) {
     var menu by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .then(if (onOpen != null) Modifier.clickable(onClickLabel = "Messages with ${contact.name}") { onOpen(contact) } else Modifier)
             .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -105,12 +116,33 @@ private fun ContactRow(
             )
         }
         Column(Modifier.weight(1f)) {
-            Text(contact.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (contact.lastCallAtMillis > 0) {
+            val unread = conversation?.unread ?: 0
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    "Last call ${lastCallText(contact.lastCallAtMillis, now)}",
+                    contact.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (unread > 0) FontWeight.Bold else null,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (unread > 0) {
+                    Badge(containerColor = MaterialTheme.colorScheme.primary) { Text(if (unread > 99) "99+" else "$unread") }
+                }
+            }
+            val last = conversation?.last
+            val subtitle = when {
+                last != null && last.atMillis >= contact.lastCallAtMillis -> (if (last.mine) "You: " else "") + last.text
+                contact.lastCallAtMillis > 0 -> "Last call ${lastCallText(contact.lastCallAtMillis, now)}"
+                else -> null
+            }
+            if (subtitle != null) {
+                Text(
+                    subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (unread > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }

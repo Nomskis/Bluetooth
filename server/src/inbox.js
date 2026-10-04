@@ -1,9 +1,11 @@
 import crypto from 'node:crypto';
 
 /**
- * Ringing. A client waits for calls by listening on its inbox; another
+ * Ringing and chat. A client waits for calls by listening on its inbox; another
  * client rings that inbox with a room to meet in. The server only passes the
- * ring along and keeps nothing once it's answered, declined or over.
+ * ring along and keeps nothing once it's answered, declined or over. Chat
+ * messages go the same way, and wait in memory for a phone that's offline
+ * until one of its devices confirms them.
  *
  * Each install keeps a secret inbox key. Its public address is derived from
  * it (a hash), so knowing someone's address lets you ring them but not
@@ -24,20 +26,35 @@ const DEFAULT_RING_TIMEOUT_MS = 60_000;
 /** One person ringing several people at once is fine; a flood isn't. */
 const MAX_RINGS_PER_CONNECTION = 5;
 
+/** How long a chat message waits for a phone that's offline, and how many can wait per inbox. */
+const MESSAGE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const MAX_QUEUED_PER_INBOX = 500;
+/** A conversation is fine; a flood isn't. */
+const MAX_MESSAGES_PER_WINDOW = 30;
+const MESSAGE_WINDOW_MS = 10_000;
+
 export class Inbox {
   /** address -> Set of listening connections (one per device). */
   #listeners = new Map();
   /** ringId -> { caller, to, room, timer } */
   #rings = new Map();
+  /**
+   * address -> chat messages for it that no device has confirmed yet: [{ out, from, id, at }].
+   * Kept in memory only; the sending phone keeps each message until it hears "delivered" and
+   * sends it again after a reconnect, so a server restart loses nothing.
+   */
+  #messages = new Map();
   #ringTimeoutMs;
   #timers;
+  #now;
 
-  constructor({ ringTimeoutMs = DEFAULT_RING_TIMEOUT_MS, timers = globalThis } = {}) {
+  constructor({ ringTimeoutMs = DEFAULT_RING_TIMEOUT_MS, timers = globalThis, now = Date.now } = {}) {
     this.#ringTimeoutMs = ringTimeoutMs;
     this.#timers = timers;
+    this.#now = now;
   }
 
-  /** Starts delivering rings for this key's address to `conn`. */
+  /** Starts delivering rings (and chat messages, the waiting ones first) for this key's address to `conn`. */
   listen(conn, key) {
     const address = inboxAddress(key);
     if (conn.inboxAddress && conn.inboxAddress !== address) this.#removeListener(conn);
@@ -46,6 +63,55 @@ export class Inbox {
     if (!set) this.#listeners.set(address, (set = new Set()));
     set.add(conn);
     conn.send({ type: 'listening', address });
+    for (const waiting of this.#waitingFor(address)) conn.send(waiting.out);
+  }
+
+  /**
+   * A chat message to `msg.to`, from the address `conn` listens on (so the sender can't
+   * be faked). Delivered to each of their devices now, or when one comes online; it waits
+   * until one confirms it (message-ack).
+   */
+  message(conn, msg) {
+    const from = conn.inboxAddress;
+    if (!from) {
+      conn.send({ type: 'error', code: 'not-listening', message: 'Listen on your inbox before sending messages.' });
+      return;
+    }
+    if (!this.#allowMessage(conn)) {
+      conn.send({ type: 'error', code: 'rate-limited', message: 'Too many messages at once.' });
+      return;
+    }
+    const out = { type: 'message', id: msg.id, from: { address: from, name: msg.name }, text: msg.text, sentAt: this.#now() };
+    const waiting = this.#waitingFor(msg.to);
+    // Sent again after a reconnect: still the one message.
+    if (!waiting.some((m) => m.from === from && m.id === msg.id)) {
+      waiting.push({ out, from, id: msg.id, at: out.sentAt });
+      while (waiting.length > MAX_QUEUED_PER_INBOX) waiting.shift();
+      this.#messages.set(msg.to, waiting);
+    }
+    const devices = [...(this.#listeners.get(msg.to) ?? [])];
+    for (const device of devices) device.send(out);
+    conn.send({ type: 'message-status', id: msg.id, to: msg.to, status: devices.length > 0 ? 'sent' : 'queued' });
+  }
+
+  /** A device of the recipient has the message: stop holding it, and tell the sender's devices. */
+  messageAck(conn, msg) {
+    const me = conn.inboxAddress;
+    if (!me) return;
+    const waiting = this.#messages.get(me);
+    if (waiting) {
+      const left = waiting.filter((m) => !(m.from === msg.to && m.id === msg.id));
+      if (left.length > 0) this.#messages.set(me, left);
+      else this.#messages.delete(me);
+    }
+    for (const device of this.#listeners.get(msg.to) ?? []) {
+      device.send({ type: 'message-status', id: msg.id, to: me, status: 'delivered' });
+    }
+  }
+
+  /** How many chat messages wait for an address; for tests and logs. */
+  waitingMessages(address) {
+    return this.#waitingFor(address).length;
   }
 
   /** Rings everyone listening on `msg.to`. */
@@ -111,6 +177,24 @@ export class Inbox {
     for (const ring of this.#rings.values()) this.#timers.clearTimeout(ring.timer);
     this.#rings.clear();
     this.#listeners.clear();
+    this.#messages.clear();
+  }
+
+  /** The messages still waiting for an address, dropping any too old to keep. */
+  #waitingFor(address) {
+    const now = this.#now();
+    const waiting = (this.#messages.get(address) ?? []).filter((m) => now - m.at < MESSAGE_TTL_MS);
+    if (waiting.length > 0) this.#messages.set(address, waiting);
+    else this.#messages.delete(address);
+    return waiting;
+  }
+
+  #allowMessage(conn) {
+    const now = this.#now();
+    conn.messageTimes = (conn.messageTimes ?? []).filter((t) => now - t < MESSAGE_WINDOW_MS);
+    if (conn.messageTimes.length >= MAX_MESSAGES_PER_WINDOW) return false;
+    conn.messageTimes.push(now);
+    return true;
   }
 
   #expire(ringId) {

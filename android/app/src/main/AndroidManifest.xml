@@ -144,6 +144,10 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+        <!-- "Reply" typed into a message notification. -->
+        <receiver
+            android:name=".messages.MessageReplyReceiver"
+            android:exported="false" />
         <!-- Android's answers while an update installs. -->
         <receiver
             android:name=".update.UpdateReceiver"
