@@ -16,35 +16,29 @@ class WebRtcTuningTest {
     }
 
     @Test
-    fun redundantAudioIsOnWithTheRedundancyWebRtcParses() {
+    fun redundantAudioUsesTheRedundancyWebRtcParsesWhenItsOn() {
         // audio_encoder_copy_red.cc: sscanf("Enabled-%zu"), at most 9, else the default of 1.
-        val red = trials().getValue("WebRTC-Audio-Red-For-Opus")
-        assertTrue(red.startsWith("Enabled")) // what turns RED on
+        val red = trials()["WebRTC-Audio-Red-For-Opus"]
+        if (!CallTuning.REDUNDANT_AUDIO) return assertEquals(null, red)
+        assertTrue(red!!.startsWith("Enabled")) // what turns RED on
         val level = red.removePrefix("Enabled-").toInt()
         assertTrue(level in 2..9)
         assertEquals(WebRtcTuning.RED_REDUNDANCY, level)
     }
 
     @Test
-    fun theJitterBufferCoversMoreSpikesThanWebRtcsDefault() {
+    fun theDeeperJitterBufferIsOnlySetWhenItsOn() {
         // delay_manager.cc parses "quantile:<double>"; the default is 0.95.
-        val config = trials().getValue("WebRTC-Audio-NetEqDelayManagerConfig")
-        val quantile = config.removePrefix("quantile:").toDouble()
+        val config = trials()["WebRTC-Audio-NetEqDelayManagerConfig"]
+        if (!CallTuning.DEEP_JITTER_BUFFER) return assertEquals(null, config)
+        val quantile = config!!.removePrefix("quantile:").toDouble()
         assertTrue(quantile > 0.95 && quantile < 1.0)
     }
 
     @Test
-    fun smallVideoIsEncodedInSoftwareSoTemporalLayersWorkWhateverTheCodec() {
-        // video_encoder_software_fallback_wrapper.cc: ParseFieldTrial({resolution_threshold_px},
-        // "WebRTC-Video-EncoderFallbackSettings"); unlike the VP8-only trial, any codec switches.
-        val config = trials().getValue("WebRTC-Video-EncoderFallbackSettings")
-        val (key, value) = config.split(':')
-        assertEquals("resolution_threshold_px", key)
-        val maxPixels = value.toInt()
-        // 360p and below in software, 540p and up in hardware; above WebRTC's 320x180 floor.
-        assertTrue(640 * 360 <= maxPixels && 960 * 540 > maxPixels)
-        assertTrue(maxPixels > 320 * 180)
-        // It takes precedence over the VP8-only trial, which would only confuse; it isn't set.
+    fun videoIsLeftToWebRtcsOwnEncoderChoice() {
+        // Forcing small video into software made phones encode on the CPU and the picture fell apart.
+        assertFalse(trials().containsKey("WebRTC-Video-EncoderFallbackSettings"))
         assertFalse(trials().containsKey("WebRTC-VP8-Forced-Fallback-Encoder-v2"))
     }
 

@@ -209,23 +209,6 @@ class RtcEngine(
         }
     }
 
-    /**
-     * Puts VP9 first for video (WebRtcTuning.PREFERRED_VIDEO_CODEC), keeping every other
-     * codec, RTX and FEC included, as fallbacks in their usual order.
-     */
-    fun preferVp9(pc: PeerConnection) {
-        val codecs = factory.getRtpReceiverCapabilities(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO).codecs
-        val (vp9, rest) = codecs.partition {
-            it.name.equals(WebRtcTuning.PREFERRED_VIDEO_CODEC, ignoreCase = true) && (it.parameters["profile-id"] ?: "0") == "0"
-        }
-        if (vp9.isEmpty()) return
-        for (transceiver in pc.transceivers) {
-            if (transceiver.mediaType != MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO) continue
-            runCatching { transceiver.setCodecPreferences(vp9 + rest) }
-                .onFailure { Log.w(TAG, "Could not prefer VP9", it) }
-        }
-    }
-
     fun createSendTracks(): SendTracks = SendTracks(
         audio = createAudioTrack(),
         video = videoSource?.let { factory.createVideoTrack(Ids.random(6, "v"), it) },
@@ -346,24 +329,6 @@ class RtcEngine(
     }
 
     /**
-     * Temporal layers for our video when it's VP8 or VP9 (see [WebRtcTuning.VIDEO_SCALABILITY_MODE]).
-     * Called once the call is connected, when the codec is settled; its own setParameters
-     * call, so a refusal doesn't take other settings with it.
-     */
-    fun useTemporalLayers(pc: PeerConnection) {
-        for (sender in pc.senders) {
-            val kind = runCatching { sender.track()?.kind() }.getOrNull()
-            if (kind != MediaStreamTrack.VIDEO_TRACK_KIND) continue
-            val parameters = sender.parameters
-            val codec = parameters.codecs.firstOrNull()?.name ?: continue
-            if (WebRtcTuning.TEMPORAL_LAYER_CODECS.none { it.equals(codec, ignoreCase = true) }) continue
-            if (parameters.encodings.isEmpty() || parameters.encodings.all { it.scalabilityMode == WebRtcTuning.VIDEO_SCALABILITY_MODE }) continue
-            parameters.encodings.forEach { it.scalabilityMode = WebRtcTuning.VIDEO_SCALABILITY_MODE }
-            if (!sender.setParameters(parameters)) Log.w(TAG, "Could not use temporal layers for video")
-        }
-    }
-
-    /**
      * DSCP marks for our packets: EF for voice and AF42 for video when [high],
      * unmarked otherwise. Phones' Wi-Fi drivers map both to WMM's video access
      * category, which wins airtime over best-effort traffic on a busy network.
@@ -416,7 +381,7 @@ class RtcEngine(
             // Let the jitter buffer shrink quickly after a network hiccup instead of staying
             // inflated, with room to grow through a long Wi-Fi stall (see WebRtcTuning).
             audioJitterBufferFastAccelerate = true
-            audioJitterBufferMaxPackets = WebRtcTuning.JITTER_BUFFER_MAX_PACKETS
+            if (CallTuning.DEEP_JITTER_BUFFER) audioJitterBufferMaxPackets = WebRtcTuning.JITTER_BUFFER_MAX_PACKETS
             // Ranks above network cost in ICE's choice, so a working mobile-data
             // path wins over Wi-Fi; without it Wi-Fi (cheaper) always wins.
             if (preferCellular) networkPreference = PeerConnection.AdapterType.CELLULAR

@@ -168,7 +168,7 @@ class CallSession(
     /** Media has gone over Wi-Fi on this call, so mobile data later means Wi-Fi gave out. */
     private var wasOnWifi = false
     /** The audio packet length we ask the other side for; lives across reconnects, like the network it reflects. */
-    private val packetTime = PacketTime(startFrom?.packetStep ?: PacketTime.START)
+    private val packetTime = PacketTime(startFrom?.packetStep?.takeIf { CallTuning.ADAPTIVE_PACKET_TIME } ?: PacketTime.START)
     /** What the route carries, learned as the call goes, for reconnects within it and for the next call. */
     private val learner = LinkLearner()
     @Volatile
@@ -739,12 +739,12 @@ class CallSession(
     }
 
     /** What we ask them to cap their video at. When mobile data is preferred we don't, so it isn't held back there. */
-    private fun RadioPlan.remoteVideoCap(): Int? = if (preferCellular) null else wifiVideoCapKbps
+    private fun RadioPlan.remoteVideoCap(): Int? = if (preferCellular || !CallTuning.RADIO_VIDEO_CAP) null else wifiVideoCapKbps
 
     private fun applyVideoCap(l: Link) {
         val thermal = _state.value.thermal
         val kbps = listOfNotNull(
-            radioPlan.videoCapFor(_state.value.callPath),
+            radioPlan.videoCapFor(_state.value.callPath).takeIf { CallTuning.RADIO_VIDEO_CAP },
             thermal?.maxKbps,
             l.budget.videoCapBps?.let { it / 1000 },
             airtime.capKbps,
@@ -811,6 +811,7 @@ class CallSession(
      * still doesn't leave room for a picture. Each comes back by itself.
      */
     private fun followMediaBudget(l: Link, entries: Map<String, CallStats.Entry>) {
+        if (!CallTuning.VOICE_FIRST) return
         val now = SystemClock.elapsedRealtime()
         val bytes = CallStats.outboundBytes(entries, "audio")
         val packets = CallStats.outboundPackets(entries, "audio")
@@ -880,7 +881,7 @@ class CallSession(
      */
     private fun followTheirLink(l: Link, nowMs: Long) {
         val theirs = _state.value.remoteMedia
-        if (airtime.update(theirs.network, theirs.uplink, nowMs)) {
+        if (CallTuning.AIRTIME_SHARE && airtime.update(theirs.network, theirs.uplink, nowMs)) {
             Log.i(TAG, airtime.capKbps?.let { "Their Wi-Fi uplink is struggling; our video to them capped at $it kbps" } ?: "Lifting the cap on our video to them")
             applyVideoCap(l)
         }
@@ -894,6 +895,7 @@ class CallSession(
      * our description, so a change means renegotiating, without restarting ICE.
      */
     private fun followPacketTime(l: Link, entries: Map<String, CallStats.Entry>) {
+        if (!CallTuning.ADAPTIVE_PACKET_TIME) return
         val now = SystemClock.elapsedRealtime()
         val counters = CallStats.inboundAudioCounters(entries)
         if (counters != null && packetTime.update(counters, now)) {
@@ -1102,8 +1104,7 @@ class CallSession(
                 RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY),
             )
         }
-        engine.preferRedundantAudio(l.pc)
-        engine.preferVp9(l.pc)
+        if (CallTuning.REDUNDANT_AUDIO) engine.preferRedundantAudio(l.pc)
         setPhase(CallPhase.NEGOTIATING)
         sendOffer(l, iceRestart = false)
     }
@@ -1147,8 +1148,7 @@ class CallSession(
             addLocalTracks(l)
             if (holding) applyHold(l)
         }
-        engine.preferRedundantAudio(l.pc)
-        engine.preferVp9(l.pc)
+        if (CallTuning.REDUNDANT_AUDIO) engine.preferRedundantAudio(l.pc)
         val answer = l.pc.awaitCreateAnswer()
         if (link !== l) return
         l.pc.awaitSetLocal(answer)
@@ -1159,10 +1159,13 @@ class CallSession(
     }
 
     /** Our tweaks to every description we send. */
-    private fun tune(sdp: String): String = SdpTuning.capVideoBandwidth(
-        SdpTuning.requestAudioResends(SdpTuning.preferHdVoice(SdpTuning.askForPacketTime(sdp, packetTime.ms))),
-        radioPlan.remoteVideoCap(),
-    )
+    private fun tune(sdp: String): String {
+        var tuned = sdp
+        if (CallTuning.ADAPTIVE_PACKET_TIME) tuned = SdpTuning.askForPacketTime(tuned, packetTime.ms)
+        if (CallTuning.HD_VOICE) tuned = SdpTuning.preferHdVoice(tuned)
+        if (CallTuning.AUDIO_RESENDS) tuned = SdpTuning.requestAudioResends(tuned)
+        return SdpTuning.capVideoBandwidth(tuned, radioPlan.remoteVideoCap())
+    }
 
     private suspend fun onAnswer(data: SignalData.Answer) {
         val l = link ?: return
@@ -1221,7 +1224,6 @@ class CallSession(
                 recoveryJob?.cancel()
                 setPhase(CallPhase.CONNECTED)
                 sendMediaState()
-                engine.useTemporalLayers(l.pc)
                 applyVideoCap(l)
                 applyPacketPriority(l)
                 if (statsJob?.isActive != true) watchStats(l)
@@ -1370,7 +1372,7 @@ class CallSession(
             ?: error("WebRTC could not create a peer connection")
         qualityTracker.mobileData(mobileData ?: "kept off, next to working Wi-Fi")
         // Start the bandwidth estimate where this route has been, not at WebRTC's blind 300 kbps.
-        startBitrateBps?.let { if (!pc.setBitrate(null, it, null)) Log.w(TAG, "Could not set the start bitrate") }
+        startBitrateBps?.takeIf { CallTuning.START_FROM_MEMORY }?.let { if (!pc.setBitrate(null, it, null)) Log.w(TAG, "Could not set the start bitrate") }
         // Before any audio stream exists, so a ringing call never starts the microphone ([applyHold]).
         pc.setAudioRecording(!holding)
         pc.setAudioPlayout(!ringing)
