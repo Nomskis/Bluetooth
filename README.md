@@ -66,7 +66,11 @@ this list works with every pair of classic Bluetooth earbuds:
   mic (call quality) for a noisy moment, and back, without reconnecting.
 - **Calls survive your pocket.** A per-phone-brand guide through the battery
   switches HyperOS, ColorOS, EMUI, Funtouch and One UI use to stop background
-  apps.
+  apps, and one tap to rejoin if a call gets cut off anyway. In a pocket the
+  screen goes dark (proximity sensor), so it can't mute or hang up by itself.
+- **Earbuds dying mid-call don't embarrass you.** Their voice pauses instead
+  of jumping to the loudspeaker (one tap plays it there), and echo
+  cancellation switches on whenever the call plays out loud.
 - **Text chat for loud moments.** Muted, or the gym is too loud? Type, or tap
   a quick reply ("Can't hear you", "One sec"), also straight from the
   notification with the phone in your pocket. Messages go phone to phone,
