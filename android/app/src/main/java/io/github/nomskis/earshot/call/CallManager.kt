@@ -18,6 +18,7 @@ import io.github.nomskis.earshot.audio.CodecInfo
 import io.github.nomskis.earshot.audio.DeviceKind
 import io.github.nomskis.earshot.audio.LatencyProbe
 import io.github.nomskis.earshot.audio.LinkConditions
+import io.github.nomskis.earshot.calls.InboxKeys
 import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.service.CallService
 import io.github.nomskis.earshot.settings.AppSettings
@@ -104,6 +105,8 @@ class CallManager(
             val route = routeMonitor.snapshot()
             val profile = AudioProfile.forCall(current, route)
             val radioPlan = radioPlan(current, route)
+            // Swapped with the other side during the call, so you can call each other directly next time.
+            val me = Chat.Frame.Contact(current.displayName, InboxKeys.address(settings.inboxKey()))
             val session = CallSession(
                 context = appContext,
                 room = room,
@@ -115,6 +118,8 @@ class CallManager(
                 http = http,
                 withVideo = withVideo,
                 radioPlan = radioPlan,
+                me = me,
+                onContact = { contact -> scope.launch { settings.saveContact(contact) } },
             )
             _lastError.value = null
             _session.value = session

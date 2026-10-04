@@ -128,6 +128,7 @@ test('chat: parser accepts the shared fixtures and rejects junk', () => {
     const raw = fs.readFileSync(new URL(file, dir), 'utf8');
     assert.equal(parseChat(raw)?.kind, JSON.parse(raw).kind, file);
   }
+  assert.equal(parseChat(JSON.stringify({ kind: 'contact', name: 'Sam', address: 'too-short' })), null);
   assert.equal(parseChat('nope'), null);
   assert.equal(parseChat(JSON.stringify({ kind: 'chat', id: 'a', text: '  ' })), null);
   assert.equal(parseChat(JSON.stringify({ kind: 'chat', text: 'no id' })), null);

@@ -2,6 +2,7 @@
 
 package io.github.nomskis.earshot.call
 
+import io.github.nomskis.earshot.calls.InboxKeys
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -38,6 +39,11 @@ object Chat {
         @Serializable
         @SerialName("chat-ack")
         data class Ack(val id: String) : Frame
+
+        /** Introduces our inbox address, so the other app can call us directly next time. */
+        @Serializable
+        @SerialName("contact")
+        data class Contact(val name: String = "", val address: String) : Frame
     }
 
     private val json = Json {
@@ -59,6 +65,7 @@ object Chat {
         val id = when (frame) {
             is Frame.Message -> frame.id
             is Frame.Ack -> frame.id
+            is Frame.Contact -> return frame.takeIf { InboxKeys.isAddress(it.address) }
         }
         if (id.isEmpty() || id.length > 64) return null
         if (frame !is Frame.Message) return frame
@@ -120,6 +127,8 @@ class ChatLog(
                 }
                 return null
             }
+            // Contact cards are the session's business, not the conversation's.
+            is Chat.Frame.Contact -> return null
             is Chat.Frame.Message -> {
                 // Acknowledge repeats too: the first acknowledgement may be what got lost.
                 transmit?.invoke(Chat.encode(Chat.Frame.Ack(frame.id)))

@@ -58,6 +58,7 @@ class ChatLogTest {
             val kind = when (frame) {
                 is Chat.Frame.Message -> "chat"
                 is Chat.Frame.Ack -> "chat-ack"
+                is Chat.Frame.Contact -> "contact"
                 null -> null
             }
             assertTrue(file.name, file.readText().contains("\"kind\": \"$kind\""))

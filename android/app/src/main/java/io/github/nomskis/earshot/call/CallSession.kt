@@ -10,6 +10,7 @@ import io.github.nomskis.earshot.audio.LinkConditions
 import io.github.nomskis.earshot.audio.RemoteVoiceTap
 import io.github.nomskis.earshot.audio.ReplayPlayer
 import io.github.nomskis.earshot.audio.SmartDuck
+import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.settings.AudioMode
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.signaling.CandidatePayload
@@ -77,6 +78,10 @@ class CallSession(
     private val withVideo: Boolean,
     /** How to treat the radio Wi-Fi shares with Bluetooth; updated as the network changes. */
     radioPlan: RadioPlan = RadioPlan.NONE,
+    /** Our contact card (name and inbox address), sent to the other side so they can call us directly. */
+    private val me: Chat.Frame.Contact? = null,
+    /** Their contact card arrived; save it. Called on the call thread. */
+    private val onContact: (Contact) -> Unit = {},
 ) {
     private val appContext = context.applicationContext
     private val executor = Executors.newSingleThreadExecutor { Thread(it, "EarshotCall") }
@@ -366,10 +371,21 @@ class CallSession(
             is Event.Stats -> if (event.link === link) onStats(event.link, event.report)
             is Event.ChatChannelState -> if (event.link === link) {
                 val channel = event.link.chatChannel
-                if (event.open && channel != null) chat.attach { text -> channel.sendText(text) } else chat.detach()
+                if (event.open && channel != null) {
+                    chat.attach { text -> channel.sendText(text) }
+                    me?.let { channel.sendText(Chat.encode(it)) }
+                } else {
+                    chat.detach()
+                }
                 publishChat()
             }
             is Event.ChatIncoming -> if (event.link === link) {
+                val card = Chat.decode(event.text) as? Chat.Frame.Contact
+                if (card != null) {
+                    val name = card.name.ifBlank { remote?.name.orEmpty() }
+                    onContact(Contact(name, card.address, System.currentTimeMillis()))
+                    return
+                }
                 val incoming = chat.receive(event.text)
                 publishChat()
                 if (incoming != null) _state.update { it.copy(lastIncomingChat = incoming) }

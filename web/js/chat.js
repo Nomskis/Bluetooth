@@ -25,6 +25,11 @@ export function parseChat(raw) {
   } catch {
     return null;
   }
+  if (msg?.kind === 'contact') {
+    // Someone's inbox address, for calling them directly later (docs/protocol.md, Ringing).
+    if (typeof msg.address !== 'string' || !/^[A-Za-z0-9_-]{22}$/.test(msg.address)) return null;
+    return { kind: 'contact', name: typeof msg.name === 'string' ? msg.name.trim().slice(0, 64) : '', address: msg.address };
+  }
   if (!msg || typeof msg !== 'object' || typeof msg.id !== 'string' || !msg.id || msg.id.length > 64) return null;
   if (msg.kind === 'chat-ack') return { kind: 'chat-ack', id: msg.id };
   if (msg.kind !== 'chat' || typeof msg.text !== 'string') return null;
@@ -38,7 +43,8 @@ export function parseChat(raw) {
  * `{ id, text, mine, at, status }` with status 'sending', 'delivered',
  * 'failed' (mine) or 'received' (theirs).
  *
- * Events: 'change' after any update, 'message' with an incoming message as detail.
+ * Events: 'change' after any update, 'message' with an incoming message as
+ * detail, 'contact' with the other side's contact card as detail.
  */
 export class ChatLog extends EventTarget {
   messages = [];
@@ -84,6 +90,10 @@ export class ChatLog extends EventTarget {
   receive(raw) {
     const msg = parseChat(raw);
     if (!msg) return;
+    if (msg.kind === 'contact') {
+      this.dispatchEvent(new CustomEvent('contact', { detail: { name: msg.name, address: msg.address } }));
+      return;
+    }
     if (msg.kind === 'chat-ack') {
       const mine = this.messages.find((m) => m.mine && m.id === msg.id);
       if (mine && mine.status !== 'delivered') {

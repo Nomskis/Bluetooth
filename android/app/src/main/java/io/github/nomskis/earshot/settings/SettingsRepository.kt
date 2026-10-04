@@ -11,6 +11,9 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.github.nomskis.earshot.BuildConfig
 import io.github.nomskis.earshot.call.Ids
+import io.github.nomskis.earshot.calls.Contact
+import io.github.nomskis.earshot.calls.Contacts
+import io.github.nomskis.earshot.calls.InboxKeys
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -49,9 +52,32 @@ class SettingsRepository(private val context: Context) {
         val lastRoom = stringPreferencesKey("last_room")
         val peerId = stringPreferencesKey("peer_id")
         val delayRuns = stringPreferencesKey("delay_runs")
+        val inboxKey = stringPreferencesKey("inbox_key")
+        val contacts = stringPreferencesKey("contacts")
         val activeCallRoom = stringPreferencesKey("active_call_room")
         val activeCallVideo = booleanPreferencesKey("active_call_video")
         val activeCallAliveAt = longPreferencesKey("active_call_alive_at")
+    }
+
+    /** People you've called with, most recent first; see [Contacts]. */
+    val contacts: Flow<List<Contact>> = context.dataStore.data.map { Contacts.decode(it[Keys.contacts]) }
+
+    suspend fun saveContact(contact: Contact) {
+        context.dataStore.edit { prefs -> prefs[Keys.contacts] = Contacts.encode(Contacts.upsert(Contacts.decode(prefs[Keys.contacts]), contact)) }
+    }
+
+    suspend fun removeContact(address: String) {
+        context.dataStore.edit { prefs -> prefs[Keys.contacts] = Contacts.encode(Contacts.remove(Contacts.decode(prefs[Keys.contacts]), address)) }
+    }
+
+    /** This install's secret inbox key (made on first use); see [InboxKeys]. */
+    suspend fun inboxKey(): String {
+        context.dataStore.data.first()[Keys.inboxKey]?.let { return it }
+        var key = ""
+        context.dataStore.edit { prefs ->
+            key = prefs[Keys.inboxKey] ?: InboxKeys.newKey().also { prefs[Keys.inboxKey] = it }
+        }
+        return key
     }
 
     /** The call that was running when the app last died without hanging up, if any. */
