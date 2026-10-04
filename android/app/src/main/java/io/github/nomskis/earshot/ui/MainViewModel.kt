@@ -101,6 +101,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun sendMessage(address: String, text: String) = graph.messenger.send(address, text)
 
+    fun renameContact(address: String, name: String) {
+        viewModelScope.launch { graph.settings.renameContact(address, name) }
+    }
+
     /** A call button in a conversation: back home, which rings them (asking for permissions first). */
     fun callFromConversation(contact: Contact, video: Boolean) {
         openConversation(null)

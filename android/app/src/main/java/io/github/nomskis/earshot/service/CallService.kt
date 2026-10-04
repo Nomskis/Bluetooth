@@ -11,7 +11,9 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
+import androidx.core.app.Person
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
@@ -70,6 +72,7 @@ class CallService : LifecycleService() {
                                 it.micMuted,
                                 it.outputHeld,
                                 calling = it.outgoing?.takeIf { o -> o.status == OutgoingRing.Status.CALLING || o.status == OutgoingRing.Status.RINGING }?.name,
+                                connectedAt = it.connectedAt,
                             )
                         }
                         .distinctUntilChanged()
@@ -146,6 +149,8 @@ class CallService : LifecycleService() {
         val outputHeld: Boolean,
         /** Ringing this contact. */
         val calling: String? = null,
+        /** When it connected (SystemClock.elapsedRealtime), for the timer. */
+        val connectedAt: Long? = null,
     )
 
     private fun buildNotification(state: NotificationInfo?): Notification {
@@ -179,6 +184,9 @@ class CallService : LifecycleService() {
                 if (state?.audioMode == AudioMode.HIFI) append(" · ").append(getString(R.string.notification_hifi))
             }
         }
+        // Android's own ongoing-call look, as calling apps use: the call chip in the status bar,
+        // who it's with, a running timer, and Hang up.
+        val person = Person.Builder().setName(state?.calling ?: state?.peerName?.takeIf { it.isNotBlank() } ?: title).setImportant(true).build()
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
@@ -188,6 +196,14 @@ class CallService : LifecycleService() {
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .setStyle(NotificationCompat.CallStyle.forOngoingCall(person, hangUp))
+            .apply {
+                state?.connectedAt?.let { at ->
+                    setUsesChronometer(true)
+                    setShowWhen(true)
+                    setWhen(System.currentTimeMillis() - (SystemClock.elapsedRealtime() - at))
+                }
+            }
             .apply {
                 if (state != null) {
                     val mute = PendingIntent.getService(
@@ -199,7 +215,6 @@ class CallService : LifecycleService() {
                     addAction(0, getString(if (state.micMuted) R.string.unmute else R.string.mute), mute)
                 }
             }
-            .addAction(0, getString(R.string.hang_up), hangUp)
             .build()
     }
 

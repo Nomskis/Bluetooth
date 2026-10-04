@@ -2,10 +2,12 @@ package io.github.nomskis.earshot.ui
 
 import android.app.Application
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextReplacement
 import io.github.nomskis.earshot.calls.CallRecord
 import io.github.nomskis.earshot.calls.IncomingRing
 import io.github.nomskis.earshot.ui.theme.EarshotTheme
@@ -63,6 +65,29 @@ class CallingAppPartsTest {
         compose.onNodeWithText("Message").performClick()
         compose.onNodeWithText(QUICK_REPLIES.first()).performClick()
         assertEquals(listOf(QUICK_REPLIES.first()), replies)
+    }
+
+    @Test
+    fun aContactCanBeRenamed() {
+        val salma = io.github.nomskis.earshot.calls.Contact("Salma", sam)
+        var renamed: Pair<String, String>? = null
+        compose.setContent {
+            EarshotTheme {
+                ContactsCard(listOf(salma), onCall = { _, _ -> }, onRemove = {}, onRename = { c, name -> renamed = c.address to name })
+            }
+        }
+        compose.onNodeWithContentDescription("More for Salma").performClick()
+        compose.onNodeWithText("Rename").performClick()
+        compose.onNode(hasSetTextAction()).performTextReplacement("Salma ❤️")
+        compose.onNodeWithText("Save").performClick()
+        assertEquals(sam to "Salma ❤️", renamed)
+    }
+
+    @Test
+    fun conversationDaysReadLikeAMessagingApp() {
+        val today = java.time.LocalDate.of(2026, 10, 4)
+        assertEquals("Today", dayLabel(today, today))
+        assertEquals("Yesterday", dayLabel(today.minusDays(1), today))
     }
 
     @Test

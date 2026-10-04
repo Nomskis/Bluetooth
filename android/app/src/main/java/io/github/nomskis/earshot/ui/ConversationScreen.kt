@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -46,9 +45,13 @@ import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.messages.Conversation
 import io.github.nomskis.earshot.messages.TextMessage
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import java.time.format.TextStyle
+import java.time.temporal.ChronoUnit
+import java.util.Locale
 
 /**
  * A conversation with one contact, like a messaging app: their name with call buttons
@@ -69,7 +72,7 @@ fun ConversationScreen(
     val messages = conversation?.messages.orEmpty()
     val list = rememberLazyListState()
     // Newest at the bottom, and in view as they come.
-    LaunchedEffect(messages.size) { if (messages.isNotEmpty()) list.animateScrollToItem(messages.lastIndex) }
+    LaunchedEffect(messages.size) { if (messages.isNotEmpty()) list.animateScrollToItem(list.layoutInfo.totalItemsCount.coerceAtLeast(1) - 1) }
 
     Scaffold(
         topBar = {
@@ -107,7 +110,16 @@ fun ConversationScreen(
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    items(messages, key = { (if (it.mine) "me-" else "them-") + it.id }) { message -> MessageBubble(message) }
+                    val zone = ZoneId.systemDefault()
+                    val today = LocalDate.now(zone)
+                    messages.forEachIndexed { i, message ->
+                        val day = Instant.ofEpochMilli(message.atMillis).atZone(zone).toLocalDate()
+                        val previous = messages.getOrNull(i - 1)?.let { Instant.ofEpochMilli(it.atMillis).atZone(zone).toLocalDate() }
+                        if (day != previous) {
+                            item(key = "day-$day") { DayHeader(dayLabel(day, today)) }
+                        }
+                        item(key = (if (message.mine) "me-" else "them-") + message.id) { MessageBubble(message) }
+                    }
                 }
             }
             Row(
@@ -138,6 +150,31 @@ fun ConversationScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DayHeader(label: String) {
+    Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+        )
+    }
+}
+
+/** "Today", "Yesterday", the weekday within a week, then the date. */
+internal fun dayLabel(day: LocalDate, today: LocalDate): String {
+    val days = ChronoUnit.DAYS.between(day, today)
+    return when {
+        days <= 0 -> "Today"
+        days == 1L -> "Yesterday"
+        days < 7 -> day.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())
+        else -> day.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
     }
 }
 

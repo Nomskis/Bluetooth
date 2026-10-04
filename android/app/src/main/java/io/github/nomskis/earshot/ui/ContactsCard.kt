@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -23,7 +24,9 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +59,8 @@ fun ContactsCard(
     conversations: Map<String, Conversation> = emptyMap(),
     /** Tapping a name opens the conversation with them. */
     onOpen: ((Contact) -> Unit)? = null,
+    /** Your own name for them; theirs no longer replaces it. */
+    onRename: ((Contact, String) -> Unit)? = null,
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -78,7 +83,7 @@ fun ContactsCard(
             }
             // Whoever you've talked to most recently first, by call or message.
             contacts.sortedByDescending { maxOf(it.lastCallAtMillis, conversations[it.address]?.last?.atMillis ?: 0) }.forEach { contact ->
-                ContactRow(contact, now, onCall, onRemove, conversations[contact.address], onOpen)
+                ContactRow(contact, now, onCall, onRemove, conversations[contact.address], onOpen, onRename)
             }
         }
     }
@@ -92,8 +97,16 @@ private fun ContactRow(
     onRemove: (Contact) -> Unit,
     conversation: Conversation?,
     onOpen: ((Contact) -> Unit)?,
+    onRename: ((Contact, String) -> Unit)?,
 ) {
     var menu by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
+    if (renaming && onRename != null) {
+        RenameDialog(contact, onDone = { name ->
+            renaming = false
+            if (name != null) onRename(contact, name)
+        })
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -157,6 +170,15 @@ private fun ContactRow(
                 Icon(Icons.Filled.MoreVert, contentDescription = "More for ${contact.name}")
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                if (onRename != null) {
+                    DropdownMenuItem(
+                        text = { Text("Rename") },
+                        onClick = {
+                            menu = false
+                            renaming = true
+                        },
+                    )
+                }
                 DropdownMenuItem(
                     text = { Text("Remove from Earshot") },
                     onClick = {
@@ -167,6 +189,26 @@ private fun ContactRow(
             }
         }
     }
+}
+
+/** Your own name for a contact. Null when cancelled. */
+@Composable
+private fun RenameDialog(contact: Contact, onDone: (String?) -> Unit) {
+    var name by remember { mutableStateOf(contact.name) }
+    AlertDialog(
+        onDismissRequest = { onDone(null) },
+        title = { Text("Rename") },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it.take(64) },
+                singleLine = true,
+                label = { Text("Name") },
+            )
+        },
+        confirmButton = { TextButton(onClick = { onDone(name.trim()) }, enabled = name.isNotBlank()) { Text("Save") } },
+        dismissButton = { TextButton(onClick = { onDone(null) }) { Text("Cancel") } },
+    )
 }
 
 /** "today", "yesterday", "3 days ago", then the date. */
