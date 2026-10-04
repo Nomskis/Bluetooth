@@ -382,11 +382,15 @@ coexistence costs on that phone.
 ## Surviving gym Wi-Fi
 
 **Mobile data is never used next to working Wi-Fi unless you turn it on.**
-By default a call gathers no candidates on mobile data while the phone's own
-network is Wi-Fi that reaches the internet (WebRTC's `LOW_COST` candidate
-policy, decided per connection). When Wi-Fi is gone, or stuck at a gym's
-login page so Android itself is on mobile data, the call uses mobile data
-like any other app would.
+By default a call gathers no candidates on mobile data while the phone is
+connected to Wi-Fi that reaches the internet (WebRTC's `LOW_COST` candidate
+policy, decided per connection). That holds even when Wi-Fi isn't the phone's
+default network: some phones move their own traffic to mobile data when Wi-Fi
+seems slow, and a VPN becomes the default on top of Wi-Fi, so Earshot looks at
+every network Android has checked reaches the internet, not just the default
+one. When Wi-Fi is gone, or stuck at a gym's login page, the call uses mobile
+data like any other app would. The call report says which it was ("Mobile
+data: kept off, next to working Wi-Fi", or why it was allowed).
 
 WebRTC's defaults check standby paths every 25 seconds and call a path dead
 after 5 seconds without an answer. Earshot switches when the path in use

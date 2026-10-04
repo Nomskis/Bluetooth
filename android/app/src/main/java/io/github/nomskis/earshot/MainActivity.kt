@@ -20,6 +20,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import io.github.nomskis.earshot.call.RoomCodes
+import io.github.nomskis.earshot.signaling.ServerUrls
 import io.github.nomskis.earshot.ui.EarshotRoot
 import io.github.nomskis.earshot.ui.MainViewModel
 import io.github.nomskis.earshot.ui.theme.EarshotTheme
@@ -147,11 +148,14 @@ class MainActivity : ComponentActivity() {
             .build()
     }
 
-    /** earshot://join/<room>, optionally ?server=<https origin> from a web invite page. */
+    /**
+     * An invite: https://<server>/r/<room> (the link itself), or earshot://join/<room>,
+     * optionally ?server=<https origin>, from a web invite page.
+     */
     private fun handleIntent(intent: Intent?) {
         val data = intent?.data ?: return
-        if (data.scheme != "earshot" || data.host != "join") return
-        val room = data.pathSegments.firstOrNull()?.let(RoomCodes::normalize) ?: return
-        viewModel.offerRoom(room, server = data.getQueryParameter("server"))
+        val serverParam = if (data.isHierarchical) data.getQueryParameter("server") else null
+        val (room, server) = ServerUrls.invite(data.scheme, data.authority, data.pathSegments, serverParam) ?: return
+        viewModel.offerRoom(RoomCodes.normalize(room) ?: return, server = server)
     }
 }

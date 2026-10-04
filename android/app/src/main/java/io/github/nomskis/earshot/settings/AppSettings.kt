@@ -70,8 +70,12 @@ data class AppSettings(
     val keepScreenOn: Boolean = true,
     /** Ring when someone calls you, like a phone (keeps a connection to your server). */
     val receiveCalls: Boolean = true,
-    /** Turn the screen off when the proximity sensor is covered (in a pocket), so it can't be tapped by accident. */
-    val pocketGuard: Boolean = true,
+    /**
+     * Turn the screen off when the proximity sensor is covered (in a pocket), so it can't be tapped
+     * by accident. Off by default: on many phones the sensor is an estimate that a hand near the
+     * top of the screen sets off, and the screen kept going dark mid-call.
+     */
+    val pocketGuard: Boolean = false,
     /**
      * Label the call's audio as game audio (still routed like media). On phones
      * and earbuds whose Bluetooth stack supports it, Android then switches the

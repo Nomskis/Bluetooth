@@ -1,3 +1,4 @@
+import java.net.URI
 import java.util.Properties
 
 plugins {
@@ -28,6 +29,11 @@ android {
         // Pre-fill the server address, e.g. ./gradlew assembleDebug -Pearshot.serverUrl=https://calls.example.com
         val serverUrl = providers.gradleProperty("earshot.serverUrl").getOrElse("")
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"$serverUrl\"")
+        // Room links on this server (https://<host>/r/<room>) open the app straight away; the
+        // server's /.well-known/assetlinks.json vouches for the app.
+        val linkServer = providers.gradleProperty("earshot.serverUrl")
+            .orElse(providers.gradleProperty("earshot.defaultServerUrl")).getOrElse("")
+        manifestPlaceholders["roomLinkHost"] = URI(linkServer.ifBlank { "https://calls.example.com" }).host
     }
 
     signingConfigs {
@@ -66,6 +72,11 @@ android {
             versionNameSuffix = ""
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
+            // Comes with the server already set, so nobody has to type an address
+            // (gradle.properties; -Pearshot.serverUrl still wins).
+            val server = providers.gradleProperty("earshot.serverUrl")
+                .orElse(providers.gradleProperty("earshot.defaultServerUrl")).getOrElse("")
+            buildConfigField("String", "DEFAULT_SERVER_URL", "\"$server\"")
         }
         release {
             isMinifyEnabled = true

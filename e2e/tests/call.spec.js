@@ -277,6 +277,11 @@ test('on Android, the invite page offers the app with the room and server', asyn
   expect(href).toContain('intent://join/calm-otter-4821?server=');
   expect(href).toContain('scheme=earshot');
   expect(href).toContain('S.browser_fallback_url=');
+  // Without the app, the page offers it.
+  await expect(page.locator('#get-app')).toBeVisible();
+  // A link that lost its /r/ on the way still finds its room.
+  await page.goto('/calm-otter-4821');
+  await expect(page.locator('#room-input')).toHaveValue('calm-otter-4821');
   await context.close();
 
   // Desktop browsers don't see it.
@@ -284,6 +289,7 @@ test('on Android, the invite page offers the app with the room and server', asyn
   const desktopPage = await desktop.newPage();
   await desktopPage.goto('/r/calm-otter-4821');
   await expect(desktopPage.locator('#open-app')).toBeHidden();
+  await expect(desktopPage.locator('#get-app')).toBeHidden();
   await desktop.close();
 });
 

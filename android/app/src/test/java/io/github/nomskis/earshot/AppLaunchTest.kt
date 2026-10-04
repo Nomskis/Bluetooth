@@ -36,7 +36,7 @@ class AppLaunchTest {
     @Test
     fun launchesAndOpensSettingsAndTheTuner() {
         compose.onNodeWithText("Earshot").assertIsDisplayed()
-        compose.onNodeWithText("Join call").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Invite someone").performScrollTo().assertIsDisplayed()
 
         compose.onNodeWithContentDescription("Settings").performClick()
         compose.onNodeWithText("Open delay tuner").performScrollTo().performClick()

@@ -15,15 +15,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.TextButton
@@ -40,7 +39,6 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -50,7 +48,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -59,15 +56,12 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import io.github.nomskis.earshot.audio.AudioRoute
-import io.github.nomskis.earshot.audio.CodecInfo
 import io.github.nomskis.earshot.call.RoomCodes
 import io.github.nomskis.earshot.calls.CallBackRequest
 import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.calls.InboxClient
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.AudioMode
-import io.github.nomskis.earshot.settings.DelayRun
-import io.github.nomskis.earshot.settings.DelayRuns
 import io.github.nomskis.earshot.settings.InterruptedCall
 import io.github.nomskis.earshot.signaling.ServerUrls
 
@@ -81,15 +75,10 @@ fun HomeScreen(
     onConsumePendingRoom: () -> Unit,
     onDismissError: () -> Unit,
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
-    delayRuns: List<DelayRun>,
-    estimate: Pair<String, Double>?,
-    onEstimate: () -> Unit,
     earbuds: EarbudInfo,
     onDetectEarbuds: () -> Unit,
-    codec: CodecInfo?,
     onJoin: (room: String, withVideo: Boolean) -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenTuner: () -> Unit,
     interrupted: InterruptedCall? = null,
     onDismissInterrupted: () -> Unit = {},
     contacts: List<Contact> = emptyList(),
@@ -103,7 +92,10 @@ fun HomeScreen(
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     var room by rememberSaveable { mutableStateOf(settings.lastRoom) }
-    var withVideo by rememberSaveable { mutableStateOf(true) }
+    // Joining by typing a code is the exception; it stays folded away until asked for.
+    var showCode by rememberSaveable { mutableStateOf(false) }
+    // The room an invite link opened the app with, waiting for one tap.
+    var invited by rememberSaveable { mutableStateOf<String?>(null) }
     // Until a name is set, ask for it here (it stays while you type); Settings has it too.
     val askName by rememberSaveable { mutableStateOf(settings.displayName.isBlank()) }
     // What's typed lives here, not in the stored name: that one is trimmed, so
@@ -111,15 +103,14 @@ fun HomeScreen(
     var name by rememberSaveable { mutableStateOf(settings.displayName) }
     var permissionError by remember { mutableStateOf<String?>(null) }
 
-    // A silent probe for Android's own estimate of these earbuds' delay, once per pair,
-    // and a look at whether Earshot can switch their game mode.
+    // A look at whether Earshot can switch these earbuds' game mode, once per pair.
     LaunchedEffect(route.mediaOutput?.name) {
-        onEstimate()
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || context.hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) onDetectEarbuds()
     }
     LaunchedEffect(pendingRoom) {
         if (pendingRoom != null) {
             room = pendingRoom
+            invited = pendingRoom
             onConsumePendingRoom()
         }
     }
@@ -168,15 +159,22 @@ fun HomeScreen(
 
     fun callContact(contact: Contact, withVideo: Boolean) = withPermissions(withVideo) { video -> onCallContact(contact, video) }
 
+    /** One tap: a new room, the call started in it, and the link on its way to them. */
+    fun invite() {
+        val base = serverBase ?: return
+        val code = RoomCodes.generate()
+        room = code
+        withPermissions(withVideo = true) { video ->
+            onJoin(code, video)
+            context.shareInvite(ServerUrls.inviteLink(base, code))
+        }
+    }
+
     // "Call back" on a missed call: ring them now, unless it's stale.
     LaunchedEffect(callBack) {
         val request = callBack ?: return@LaunchedEffect
         onConsumeCallBack()
         if (request.isFresh(System.currentTimeMillis()) && serverBase != null) callContact(request.contact, request.video)
-    }
-
-    fun join() {
-        joinRoom(normalizedRoom ?: return, withVideo)
     }
 
     Scaffold(
@@ -211,6 +209,26 @@ fun HomeScreen(
                 }
             }
 
+            val invitedRoom = invited?.let(RoomCodes::normalize)
+            if (invitedRoom != null && serverBase != null) {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("You're invited to a call", style = MaterialTheme.typography.titleMedium)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = {
+                                invited = null
+                                joinRoom(invitedRoom, withVideo = true)
+                            }) { Text("Join") }
+                            OutlinedButton(onClick = {
+                                invited = null
+                                joinRoom(invitedRoom, withVideo = false)
+                            }) { Text("Voice only") }
+                            TextButton(onClick = { invited = null }) { Text("Not now") }
+                        }
+                    }
+                }
+            }
+
             if (interrupted != null && serverBase != null && interrupted.isRecent(System.currentTimeMillis())) {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -227,17 +245,6 @@ fun HomeScreen(
                 }
             }
 
-            // What you do every time first; what explains the setup below it. Once you've
-            // called someone, ringing them is the everyday way in.
-            @Composable
-            fun Calls() {
-                ContactsCard(contacts, onCall = ::callContact, onRemove = onRemoveContact)
-                if (settings.receiveCalls && inboxStatus != null) {
-                    CallsReadyCard(inboxStatus, settings.callSetupDone, onSetupDone = { onUpdateSettings { it.copy(callSetupDone = true) } })
-                }
-            }
-            if (serverBase != null && contacts.isNotEmpty()) Calls()
-
             if (askName) {
                 OutlinedTextField(
                     value = name,
@@ -249,77 +256,58 @@ fun HomeScreen(
                     label = { Text("Your name") },
                     placeholder = { Text("Shown to the other person") },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            OutlinedTextField(
-                value = room,
-                onValueChange = { room = it },
-                label = { Text("Room") },
-                placeholder = { Text("calm-otter-4821") },
-                singleLine = true,
-                isError = room.isNotBlank() && normalizedRoom == null,
-                supportingText = {
-                    if (room.isNotBlank() && normalizedRoom == null) Text("3–64 letters, numbers or dashes")
-                },
-                trailingIcon = {
-                    IconButton(onClick = { room = RoomCodes.generate() }) {
-                        Icon(Icons.Filled.Casino, contentDescription = "New room code")
-                    }
-                },
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, imeAction = ImeAction.Go),
-                keyboardActions = KeyboardActions(onGo = { join() }),
-                modifier = Modifier.fillMaxWidth(),
-            )
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Camera", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                Switch(checked = withVideo, onCheckedChange = { withVideo = it })
-            }
-
-            AudioModePicker(settings.audioMode) { mode -> onUpdateSettings { it.copy(audioMode = mode) } }
+            if (serverBase != null) ContactsCard(contacts, onCall = ::callContact, onRemove = onRemoveContact)
 
             Button(
-                onClick = { join() },
-                enabled = normalizedRoom != null && serverBase != null,
+                onClick = { invite() },
+                enabled = serverBase != null,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
             ) {
-                Text("Join call", style = MaterialTheme.typography.titleMedium)
-            }
-
-            OutlinedButton(
-                onClick = {
-                    if (serverBase != null && normalizedRoom != null) {
-                        context.shareInvite(ServerUrls.inviteLink(serverBase, normalizedRoom))
-                    }
-                },
-                enabled = normalizedRoom != null && serverBase != null,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
                 Icon(Icons.Filled.Share, contentDescription = null)
-                Spacer(Modifier.padding(4.dp))
-                Text("Send invite link")
+                Spacer(Modifier.width(8.dp))
+                Text("Invite someone", style = MaterialTheme.typography.titleMedium)
             }
 
-            Text(
-                "The other person can join from the link in any browser, or with this app using the same room code.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            TextButton(onClick = { showCode = !showCode }, enabled = serverBase != null) {
+                Text(if (showCode) "Hide room code" else "Join with a room code")
+            }
+            if (showCode && serverBase != null) {
+                OutlinedTextField(
+                    value = room,
+                    onValueChange = { room = it },
+                    label = { Text("Room") },
+                    placeholder = { Text("calm-otter-4821") },
+                    singleLine = true,
+                    isError = room.isNotBlank() && normalizedRoom == null,
+                    supportingText = {
+                        if (room.isNotBlank() && normalizedRoom == null) Text("3–64 letters, numbers or dashes")
+                    },
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, imeAction = ImeAction.Go),
+                    keyboardActions = KeyboardActions(onGo = { normalizedRoom?.let { joinRoom(it, withVideo = true) } }),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { normalizedRoom?.let { joinRoom(it, withVideo = true) } }, enabled = normalizedRoom != null) {
+                        Text("Join call")
+                    }
+                    OutlinedButton(onClick = { normalizedRoom?.let { joinRoom(it, withVideo = false) } }, enabled = normalizedRoom != null) {
+                        Text("Voice only")
+                    }
+                }
+            }
 
-            // Before the first call: how people get onto the call list.
-            if (serverBase != null && contacts.isEmpty()) Calls()
+            if (serverBase != null && settings.receiveCalls && inboxStatus != null) {
+                CallsReadyCard(inboxStatus, settings.callSetupDone, onSetupDone = { onUpdateSettings { it.copy(callSetupDone = true) } })
+            }
 
-            RouteCard(route, settings.audioMode, codec = codec)
-
-            DelayCard(
-                DelayRuns.latestFor(delayRuns, route.mediaOutput?.name),
-                estimate?.takeIf { it.first == route.mediaOutput?.name }?.second,
-                onOpenTuner,
-            )
+            BackgroundCard(done = settings.backgroundGuideDone) { onUpdateSettings { it.copy(backgroundGuideDone = true) } }
 
             if (earbuds.family != null && !settings.autoGameMode && !settings.gameModeHintDone) {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
@@ -339,38 +327,6 @@ fun HomeScreen(
                     }
                 }
             }
-
-            BackgroundCard(done = settings.backgroundGuideDone) { onUpdateSettings { it.copy(backgroundGuideDone = true) } }
-
-        }
-    }
-}
-
-/** Shows the earbuds' measured delay and opens the tuner. */
-@Composable
-private fun DelayCard(latest: DelayRun?, estimateMs: Double?, onOpenTuner: () -> Unit) {
-    Card(
-        onClick = onOpenTuner,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Earbud delay", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(
-                    latest?.let { "${it.delayMs.toInt()} ms · ${it.label}" }
-                        ?: estimateMs?.let { "≈ ${it.toInt()} ms (Android's estimate)" }
-                        ?: "Not measured yet",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    "Measure it by sound and find the fastest setup.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Icon(Icons.Filled.Speed, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         }
     }
 }

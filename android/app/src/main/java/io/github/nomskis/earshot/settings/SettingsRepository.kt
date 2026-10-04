@@ -208,7 +208,7 @@ class SettingsRepository(private val context: Context) {
     private fun Preferences.toSettings(): AppSettings {
         val defaults = AppSettings()
         return AppSettings(
-            serverUrl = this[Keys.serverUrl] ?: BuildConfig.DEFAULT_SERVER_URL,
+            serverUrl = this[Keys.serverUrl]?.takeIf { it.isNotBlank() } ?: BuildConfig.DEFAULT_SERVER_URL,
             displayName = this[Keys.displayName] ?: defaults.displayName,
             audioMode = enumOrDefault(this[Keys.audioMode], defaults.audioMode),
             micSource = enumOrDefault(this[Keys.micSource], defaults.micSource),
