@@ -81,7 +81,8 @@ hands them to each caller; nothing else to run.
 
 - **Cloudflare** (the first 1,000 GB a month are free, shared with its SFU
   product; a relayed video call uses roughly 1 to 2 GB an hour). In the Cloudflare
-  dashboard, open Realtime, create a TURN key, and set its two values:
+  dashboard, open Realtime, create a TURN key, and set its two values (on
+  Render: your service's **Environment** tab, then save, which redeploys):
 
   ```sh
   CLOUDFLARE_TURN_KEY_ID=...

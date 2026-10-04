@@ -1,6 +1,11 @@
 # One-click hosting on Render (https://render.com): New > Blueprint, pick this
 # repository, done. The free plan sleeps when idle, so the first call after a
 # while takes about a minute to connect; a paid instance doesn't.
+#
+# Optional relay for networks that block direct calls (mobile data, gym
+# Wi-Fi): after the first deploy, open the service's Environment tab and add
+# CLOUDFLARE_TURN_KEY_ID and CLOUDFLARE_TURN_API_TOKEN (see docs/deploy.md).
+# They aren't listed here because Render would ask for them during setup.
 services:
   - type: web
     name: earshot
@@ -9,18 +14,3 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /healthz
     autoDeploy: true
-    envVars:
-      # Optional relay for networks that block direct calls (mobile data, gym
-      # Wi-Fi); see docs/deploy.md. Easiest: a Cloudflare TURN key.
-      - key: CLOUDFLARE_TURN_KEY_ID
-        sync: false
-      - key: CLOUDFLARE_TURN_API_TOKEN
-        sync: false
-      - key: TURN_CREDENTIALS_URL
-        sync: false
-      - key: TURN_URLS
-        sync: false
-      - key: TURN_USERNAME
-        sync: false
-      - key: TURN_CREDENTIAL
-        sync: false
