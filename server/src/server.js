@@ -135,6 +135,9 @@ export function createEarshotServer(config, { log = console, fetchImpl = globalT
         case 'message-ack':
           inbox.messageAck(conn, msg);
           break;
+        case 'message-read':
+          inbox.messageRead(conn, msg);
+          break;
       }
     });
 

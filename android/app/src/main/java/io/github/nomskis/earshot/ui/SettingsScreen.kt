@@ -28,11 +28,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.ui.platform.LocalContext
 import io.github.nomskis.earshot.calls.CallRecord
+import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.signaling.ServerHealth
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -64,6 +66,9 @@ fun SettingsScreen(
     onBack: () -> Unit,
     /** The latest call that connected, for its quality report. */
     lastCall: CallRecord? = null,
+    /** People you blocked; the section only shows when there are some. */
+    blocked: List<Contact> = emptyList(),
+    onUnblock: (Contact) -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
@@ -147,6 +152,16 @@ fun SettingsScreen(
                     "It keeps a small connection to your server open, with a quiet \"Ready for calls\" notification. " +
                     "Off, people can only reach you with a room code or invite link.",
             )
+            if (blocked.isNotEmpty()) {
+                Section("Blocked")
+                blocked.forEach { person ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(person.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                        TextButton(onClick = { onUnblock(person) }) { Text("Unblock") }
+                    }
+                }
+                Hint("Their calls don't ring and their messages don't arrive. Unblocking puts them back in your contacts.")
+            }
 
             HorizontalDivider()
             Section("Call audio")

@@ -250,6 +250,22 @@ describe('chat messages', () => {
     assert.equal(tablet.last('message'), undefined);
   });
 
+  it('tell the sender when they have been read', () => {
+    const inbox = new Inbox({ timers: fakeTimers() });
+    const salma = conn('salma');
+    const sam = conn('sam');
+    inbox.listen(salma, SALMA_KEY);
+    inbox.listen(sam, SAM_KEY);
+    inbox.message(salma, chat(SAM));
+    inbox.messageRead(sam, { type: 'message-read', to: SALMA, id: 'msg-00000001' });
+    assert.deepEqual(salma.last('message-status'), { type: 'message-status', id: 'msg-00000001', to: SAM, status: 'read' });
+    assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'message-read', to: SALMA, id: 'msg-00000001' })), {
+      type: 'message-read',
+      to: SALMA,
+      id: 'msg-00000001',
+    });
+  });
+
   it('only from a phone that listens on its own inbox, and not as a flood', () => {
     const inbox = new Inbox({ timers: fakeTimers(), now: () => 5000 });
     const stranger = conn('stranger');

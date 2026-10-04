@@ -40,6 +40,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
     val callBack by viewModel.callBack.collectAsStateWithLifecycle()
     val inboxStatus by viewModel.inboxStatus.collectAsStateWithLifecycle()
     val callLog by viewModel.callLog.collectAsStateWithLifecycle()
+    val blocked by viewModel.blocked.collectAsStateWithLifecycle()
     // Each time the app comes to the front outside a call, nudge a sleeping server awake.
     LifecycleStartEffect(session == null) {
         if (session == null) {
@@ -72,6 +73,11 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
             )
             openConversation != null && contacts.any { it.address == openConversation } -> {
                 val contact = contacts.first { it.address == openConversation }
+                // Read as they come only while it's really on screen, not with the app in the background.
+                LifecycleStartEffect(contact.address) {
+                    viewModel.conversationOnScreen(contact.address)
+                    onStopOrDispose { viewModel.conversationOnScreen(null) }
+                }
                 ConversationScreen(
                     contact = contact,
                     conversation = conversations[contact.address],
@@ -91,6 +97,8 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                     screen = Screen.HOME
                 },
                 lastCall = callLog.firstOrNull { it.quality != null },
+                blocked = blocked,
+                onUnblock = { person -> viewModel.unblock(person.address) },
             )
             screen == Screen.TUNER -> TunerScreen(
                 settings = current,
@@ -160,6 +168,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 onOpenConversation = { contact -> viewModel.openConversation(contact.address) },
                 recentCalls = callLog,
                 onRenameContact = { contact, name -> viewModel.renameContact(contact.address, name) },
+                onBlockContact = viewModel::block,
             )
         }
     }

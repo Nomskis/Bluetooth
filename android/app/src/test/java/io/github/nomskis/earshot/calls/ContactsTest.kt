@@ -31,6 +31,14 @@ class ContactsTest {
     }
 
     @Test
+    fun blockingKeepsOnePerPersonNewestFirst() {
+        var list = Contacts.block(emptyList(), Contact("Spam", "FpXE_Hse1mKgCltfE83ULb"))
+        list = Contacts.block(list, Contact("Ex", "1D8ANuTJStR4AyHh0kwUw6"))
+        list = Contacts.block(list, Contact("Spam again", "FpXE_Hse1mKgCltfE83ULb"))
+        assertEquals(listOf("Spam again", "Ex"), list.map { it.name })
+    }
+
+    @Test
     fun theContactCardTravelsOverTheChatChannelAndIsCheckedOnArrival() {
         val card = Chat.Frame.Contact("Sam", "FpXE_Hse1mKgCltfE83ULb")
         assertEquals(card, Chat.decode(Chat.encode(card)))

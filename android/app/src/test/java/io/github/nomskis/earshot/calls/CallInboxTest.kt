@@ -223,6 +223,26 @@ class CallInboxTest {
     }
 
     @Test
+    fun someoneBlockedDoesntRingAndComesBackAsAContactWhenUnblocked() {
+        runBlocking { settings.block(Contact("Salma ❤️", SALMA_ADDRESS)) }
+        try {
+            assertTrue(runBlocking { settings.contacts.first() }.none { it.address == SALMA_ADDRESS })
+            ring(waitMs = 1_000)
+            assertNull(inbox.ringing.value)
+            // No answer at all: on their side it rings out, like a call nobody picks up.
+            assertNull(fromPhone.poll())
+            assertTrue(notifications.allNotifications.none { it.extras.getString("android.title")?.contains("Salma") == true })
+            // A call or a message from them doesn't bring them back.
+            runBlocking { settings.saveContact(Contact("Salma", SALMA_ADDRESS)) }
+            assertTrue(runBlocking { settings.contacts.first() }.none { it.address == SALMA_ADDRESS })
+        } finally {
+            runBlocking { settings.unblock(SALMA_ADDRESS) }
+        }
+        assertEquals("Salma ❤️", runBlocking { settings.contacts.first() }.single { it.address == SALMA_ADDRESS }.name)
+        assertTrue(runBlocking { settings.blocked.first() }.isEmpty())
+    }
+
+    @Test
     fun decliningSaysSo() {
         ring()
         inbox.decline()

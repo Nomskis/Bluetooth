@@ -155,7 +155,8 @@ inbox, so the server knows (rather than trusts) who a message is from.
 | client → server | `message` | `to`, `id`, `text`, `name?` | A message to the inbox address `to`. `id`: 8 to 64 URL-safe characters, made by the sender; `text`: 1 to 4000 characters. |
 | server → client | `message` | `id`, `from: { address, name }`, `text`, `sentAt` | A message for us. `from.address` is the sender's proven address. |
 | client → server | `message-ack` | `to`, `id` | We have message `id` from `to`. Sent for every copy, repeats included. |
-| server → client | `message-status` | `id`, `to`, `status` | How our message to `to` is doing: `sent` (a device of theirs is online), `queued` (none is; it waits), `delivered` (one of their devices has it). |
+| client → server | `message-read` | `to`, `id` | We've seen `to`'s messages up to `id` (their latest we have). Sent when the conversation is on screen. |
+| server → client | `message-status` | `id`, `to`, `status` | How our message to `to` is doing: `sent` (a device of theirs is online), `queued` (none is; it waits), `delivered` (one of their devices has it), `read` (they've seen it, and the ones before it that were delivered). |
 
 The server delivers a message to every device listening on `to`, and holds
 it in memory until one of them acks it (at most 14 days, 500 per inbox);
@@ -166,6 +167,12 @@ restart loses nothing. A message sent twice is held once (same sender and
 `id`), and the receiving app keeps it once. More than 30 messages in 10
 seconds from one connection gets `rate-limited`; sending without listening
 gets `not-listening`.
+
+A `message-read` is passed to the sender's devices that are online and not
+held: one that misses them leaves "delivered" showing until the reader opens
+the conversation again. Blocking someone happens on the phone alone: their
+rings are ignored (on their side the call rings out) and their messages are
+acked and dropped, so the server stops holding them and they aren't told.
 
 ## Reconnecting
 

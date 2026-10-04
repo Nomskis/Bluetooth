@@ -13,7 +13,7 @@ data class TextMessage(
     val status: Status,
 ) {
     /** In the order a message we send moves through; theirs are [RECEIVED]. */
-    enum class Status { SENDING, WAITING, SENT, DELIVERED, RECEIVED }
+    enum class Status { SENDING, WAITING, SENT, DELIVERED, READ, RECEIVED }
 }
 
 /** Everything said with one contact (by inbox address), oldest first. */
@@ -28,7 +28,10 @@ data class Conversation(
     val last: TextMessage? get() = messages.lastOrNull()
 
     /** Ours that they haven't confirmed yet: sent again whenever the phone reconnects. */
-    val outbox: List<TextMessage> get() = messages.filter { it.mine && it.status != TextMessage.Status.DELIVERED }
+    val outbox: List<TextMessage> get() = messages.filter { it.mine && it.status < TextMessage.Status.DELIVERED }
+
+    /** Their latest, which a read receipt names. */
+    val lastReceived: TextMessage? get() = messages.lastOrNull { !it.mine }
 
     fun sending(id: String, text: String, nowMs: Long): Conversation =
         if (messages.any { it.mine && it.id == id }) this else copy(messages = trim(messages + TextMessage(id, text, mine = true, nowMs, TextMessage.Status.SENDING)))
@@ -43,6 +46,21 @@ data class Conversation(
             if (m.mine && m.id == id && status.ordinal > m.status.ordinal) m.copy(status = status) else m
         },
     )
+
+    /**
+     * They've seen ours up to [id]: that one, and the ones before it their phone confirmed.
+     * One still on its way stays as it is, and keeps being sent until it's confirmed.
+     */
+    fun seen(id: String): Conversation {
+        val upTo = messages.indexOfLast { it.mine && it.id == id }
+        if (upTo < 0) return this
+        return copy(
+            messages = messages.mapIndexed { i, m ->
+                val seen = m.mine && (i == upTo || (i < upTo && m.status == TextMessage.Status.DELIVERED))
+                if (seen && m.status < TextMessage.Status.READ) m.copy(status = TextMessage.Status.READ) else m
+            },
+        )
+    }
 
     fun read(nowMs: Long): Conversation = if (unread == 0) this else copy(readUpTo = maxOf(readUpTo, nowMs, messages.maxOfOrNull { it.atMillis } ?: 0))
 
@@ -59,6 +77,7 @@ data class Conversation(
             "queued" -> TextMessage.Status.WAITING
             "sent" -> TextMessage.Status.SENT
             "delivered" -> TextMessage.Status.DELIVERED
+            "read" -> TextMessage.Status.READ
             else -> null
         }
     }

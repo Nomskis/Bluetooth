@@ -176,11 +176,12 @@ export function parseClientMessage(raw) {
       }
       return { type: 'message', to: msg.to, id: messageIdOf(msg), text: msg.text, name: cleanText(msg.name, MAX_NAME_LENGTH) };
     }
-    case 'message-ack': {
+    case 'message-ack':
+    case 'message-read': {
       if (typeof msg.to !== 'string' || !INBOX_ADDRESS_PATTERN.test(msg.to)) {
-        throw new ProtocolError(ErrorCode.BAD_REQUEST, 'message-ack needs a valid "to" inbox address');
+        throw new ProtocolError(ErrorCode.BAD_REQUEST, `${msg.type} needs a valid "to" inbox address`);
       }
-      return { type: 'message-ack', to: msg.to, id: messageIdOf(msg) };
+      return { type: msg.type, to: msg.to, id: messageIdOf(msg) };
     }
     case 'leave':
       return { type: 'leave' };

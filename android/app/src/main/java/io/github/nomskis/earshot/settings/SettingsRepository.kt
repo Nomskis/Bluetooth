@@ -62,6 +62,7 @@ class SettingsRepository(private val context: Context) {
         val delayRuns = stringPreferencesKey("delay_runs")
         val inboxKey = stringPreferencesKey("inbox_key")
         val contacts = stringPreferencesKey("contacts")
+        val blocked = stringPreferencesKey("blocked")
         val linkMemories = stringPreferencesKey("link_memories")
         val callLog = stringPreferencesKey("call_log")
         val activeCallRoom = stringPreferencesKey("active_call_room")
@@ -73,7 +74,34 @@ class SettingsRepository(private val context: Context) {
     val contacts: Flow<List<Contact>> = context.dataStore.data.map { Contacts.decode(it[Keys.contacts]) }
 
     suspend fun saveContact(contact: Contact) {
-        context.dataStore.edit { prefs -> prefs[Keys.contacts] = Contacts.encode(Contacts.upsert(Contacts.decode(prefs[Keys.contacts]), contact)) }
+        context.dataStore.edit { prefs ->
+            // Someone you blocked doesn't come back by calling or writing.
+            if (Contacts.decode(prefs[Keys.blocked]).any { it.address == contact.address }) return@edit
+            prefs[Keys.contacts] = Contacts.encode(Contacts.upsert(Contacts.decode(prefs[Keys.contacts]), contact))
+        }
+    }
+
+    /** People whose calls don't ring and whose messages are dropped, newest first. */
+    val blocked: Flow<List<Contact>> = context.dataStore.data.map { Contacts.decode(it[Keys.blocked]) }
+
+    suspend fun isBlocked(address: String): Boolean = blocked.first().any { it.address == address }
+
+    /** Their calls no longer ring and their messages are dropped; they leave your contacts. */
+    suspend fun block(contact: Contact) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.blocked] = Contacts.encode(Contacts.block(Contacts.decode(prefs[Keys.blocked]), contact))
+            prefs[Keys.contacts] = Contacts.encode(Contacts.remove(Contacts.decode(prefs[Keys.contacts]), contact.address))
+        }
+    }
+
+    /** Back to normal, and back in your contacts. */
+    suspend fun unblock(address: String) {
+        context.dataStore.edit { prefs ->
+            val blocked = Contacts.decode(prefs[Keys.blocked])
+            val contact = blocked.firstOrNull { it.address == address } ?: return@edit
+            prefs[Keys.blocked] = Contacts.encode(Contacts.remove(blocked, address))
+            prefs[Keys.contacts] = Contacts.encode(Contacts.upsert(Contacts.decode(prefs[Keys.contacts]), contact))
+        }
     }
 
     suspend fun renameContact(address: String, name: String) {

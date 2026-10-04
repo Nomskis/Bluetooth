@@ -68,4 +68,11 @@ object Contacts {
     private fun cleanName(name: String) = name.trim().take(MAX_NAME).ifEmpty { "Contact" }
 
     fun remove(contacts: List<Contact>, address: String): List<Contact> = contacts.filter { it.address != address }
+
+    /** Most blocked people kept; the oldest go first. */
+    const val MAX_BLOCKED = 200
+
+    /** Adds [contact] to the people you blocked (newest first), with the name they had, for Settings to list. */
+    fun block(blocked: List<Contact>, contact: Contact): List<Contact> =
+        (listOf(contact) + blocked.filter { it.address != contact.address }).take(MAX_BLOCKED)
 }
