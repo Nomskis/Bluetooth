@@ -124,13 +124,20 @@ a `4000` close.
 | `answer` | `session`, `sdp` | the answerer |
 | `candidate` | `session`, `candidate: { candidate, sdpMid, sdpMLineIndex, usernameFragment? }` | both |
 | `request-offer` | `session` (may be null), `iceRestart?` | the answerer, when it needs a fresh offer |
-| `media-state` | `micMuted`, `cameraOff`, `audioMode?` (`hifi`, `headset`, `standard`), `inPocket?`, `weakConnection?` | both, after connecting and on every change |
+| `media-state` | `micMuted`, `cameraOff`, `audioMode?` (`hifi`, `headset`, `standard`), `inPocket?`, `weakConnection?`, `network?`, `uplink?`, `radioShared?` | both, after connecting and on every change |
 
 `inPocket: true` (with `cameraOff: true`) means the camera paused itself
 because the phone's proximity sensor is covered, a pocket usually; show that
 rather than "camera off". `weakConnection: true` (with `cameraOff: true`)
 means the camera is on but the sender paused its video because the
 connection can't carry it next to the voice; it resumes by itself.
+
+`network` (`wifi`, `cellular`), `uplink` (`tight`, `starved`; absent when
+fine) and `radioShared` describe the sender's half of the route, so the other
+side can help: lighter video towards a starving Wi-Fi uplink, and at least
+20 ms audio packets towards a phone whose 2.4 GHz Wi-Fi shares its radio
+with Bluetooth earbuds (see how-it-works.md). Clients send them when they
+change.
 
 `request-offer` with `iceRestart: false` means the connection is fine and
 the answerer only wants to change what it asks for (the audio packet length,

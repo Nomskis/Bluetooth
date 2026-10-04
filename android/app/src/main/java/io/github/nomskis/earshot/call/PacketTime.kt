@@ -28,6 +28,19 @@ class PacketTime(start: Step = Step.SHORT) {
         private set
     val ms: Int get() = step.ms
 
+    /**
+     * The shortest packets to ask for right now. 20 ms while either phone's Wi-Fi
+     * shares its radio with Bluetooth earbuds (2.4 GHz): every Wi-Fi frame there
+     * is airtime the earbuds can't use, and the voice's 100 packets a second each
+     * way are as many frames as the video's. Halving them costs 10 ms and gives
+     * the earbuds their turns back. Raising it takes effect at once.
+     */
+    var floor: Step = Step.SHORT
+        set(value) {
+            field = value
+            if (step < value) step = value
+        }
+
     private var last: Counters? = null
     private var roughSamples = 0
     private var calmSince: Long? = null
@@ -69,7 +82,7 @@ class PacketTime(start: Step = Step.SHORT) {
             return true
         }
         val calmFor = calmSince?.let { nowMs - it } ?: return false
-        if (step != Step.SHORT && calmFor >= holdMs && sinceChange >= holdMs) {
+        if (step > floor && calmFor >= holdMs && sinceChange >= holdMs) {
             change(Step.entries[step.ordinal - 1], nowMs)
             downAt = nowMs
             return true

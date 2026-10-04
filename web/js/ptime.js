@@ -21,6 +21,7 @@ export const HELD_MS = 60_000;
 
 export class PacketTime {
   #step = 0;
+  #floor = 0;
   #last = null;
   #roughSamples = 0;
   #calmSince = null;
@@ -30,6 +31,16 @@ export class PacketTime {
 
   get ms() {
     return PACKET_STEPS_MS[this.#step];
+  }
+
+  /**
+   * The shortest packets to ask for: 20 ms while the other phone's Wi-Fi shares
+   * its radio with Bluetooth earbuds (it says so in media-state), so it sends
+   * half as many. Raising it takes effect at once.
+   */
+  set floorMs(ms) {
+    this.#floor = Math.max(0, PACKET_STEPS_MS.indexOf(ms));
+    if (this.#step < this.#floor) this.#step = this.#floor;
   }
 
   /**
@@ -68,7 +79,7 @@ export class PacketTime {
       return true;
     }
     if (this.#calmSince === null) return false;
-    if (this.#step > 0 && nowMs - this.#calmSince >= this.#holdMs && sinceChange >= this.#holdMs) {
+    if (this.#step > this.#floor && nowMs - this.#calmSince >= this.#holdMs && sinceChange >= this.#holdMs) {
       this.#change(this.#step - 1, nowMs);
       this.#downAt = nowMs;
       return true;

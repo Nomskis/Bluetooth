@@ -68,6 +68,11 @@ class ProtocolFixturesTest {
         assertEquals(SignalData.MediaState(micMuted = false, cameraOff = true, audioMode = "hifi", inPocket = true), pocket.data)
         val weak = decodeServerMessage(File(fixtures, "server/signal-media-state-weak.json").readText()) as ServerMessage.Signal
         assertEquals(SignalData.MediaState(micMuted = false, cameraOff = true, audioMode = "hifi", weakConnection = true), weak.data)
+        val link = decodeServerMessage(File(fixtures, "server/signal-media-state-link.json").readText()) as ServerMessage.Signal
+        assertEquals(
+            SignalData.MediaState(micMuted = false, cameraOff = false, audioMode = "hifi", network = "wifi", uplink = "starved", radioShared = true),
+            link.data,
+        )
     }
 
     @Test

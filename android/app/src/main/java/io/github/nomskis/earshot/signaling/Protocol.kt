@@ -210,6 +210,12 @@ sealed interface SignalData {
         val inPocket: Boolean? = null,
         /** Video is paused because the connection can't carry it next to the voice (cameraOff is true too). */
         val weakConnection: Boolean? = null,
+        /** The network our media goes over: "wifi" or "cellular". */
+        val network: String? = null,
+        /** How our uplink is doing: "tight" or "starved"; absent when fine. */
+        val uplink: String? = null,
+        /** Our Wi-Fi shares its radio with Bluetooth earbuds (2.4 GHz): fewer, longer packets please. */
+        val radioShared: Boolean? = null,
     ) : SignalData
 }
 

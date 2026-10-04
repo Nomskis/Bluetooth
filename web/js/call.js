@@ -273,6 +273,8 @@ export class CallEngine extends EventTarget {
           weakConnection: !!data.weakConnection,
           audioMode: data.audioMode ?? null,
         };
+        // Their Wi-Fi shares its radio with Bluetooth earbuds: ask them for half as many packets.
+        this.#packetTime.floorMs = data.radioShared ? 20 : 10;
         this.dispatchEvent(new CustomEvent('remote-media', { detail: { ...this.#remoteMedia } }));
         return;
       default:

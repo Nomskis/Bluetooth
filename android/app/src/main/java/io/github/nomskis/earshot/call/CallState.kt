@@ -31,6 +31,12 @@ data class RemoteMedia(
     val inPocket: Boolean = false,
     /** Their video is paused because the connection can't carry it next to the voice. */
     val weakConnection: Boolean = false,
+    /** The network their media goes over ("wifi", "cellular"), when they say. */
+    val network: String? = null,
+    /** How their uplink is doing ("tight", "starved"); null when fine or not said. */
+    val uplink: String? = null,
+    /** Their Wi-Fi shares its radio with Bluetooth earbuds. */
+    val radioShared: Boolean = false,
 )
 
 /** A contact being rung from this call. [keepsTrying]: unreachable for now, and still ringing again. */

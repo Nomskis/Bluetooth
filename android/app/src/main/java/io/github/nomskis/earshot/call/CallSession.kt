@@ -167,6 +167,14 @@ class CallSession(
     private var startBitrateBps = startFrom?.startBitrateBps
     /** The relay route was tried on this call and didn't connect ([RelayRoute]). */
     private var relayFailed = false
+    /** Lighter video to them while their Wi-Fi uplink starves and it helps. */
+    private val airtime = AirtimeShare()
+
+    /** What we tell them about our side of the route; see [AirtimeShare] and [PacketTime.floor]. */
+    private data class LinkReport(val network: String?, val uplink: String?, val radioShared: Boolean)
+    private var linkReport = LinkReport(null, null, false)
+    private var pendingReport: LinkReport? = null
+    private var pendingReportCount = 0
     private val ringback = Ringback(
         if (profile.mode == AudioMode.HIFI) android.media.AudioManager.STREAM_MUSIC else android.media.AudioManager.STREAM_VOICE_CALL,
     )
@@ -605,10 +613,12 @@ class CallSession(
 
     private fun applyVideoCap(l: Link) {
         val thermal = _state.value.thermal
-        val kbps = ThermalPlan.tighter(
-            ThermalPlan.tighter(radioPlan.videoCapFor(_state.value.callPath), thermal?.maxKbps),
+        val kbps = listOfNotNull(
+            radioPlan.videoCapFor(_state.value.callPath),
+            thermal?.maxKbps,
             l.budget.videoCapBps?.let { it / 1000 },
-        )
+            airtime.capKbps,
+        ).minOrNull()
         engine.capVideoSend(l.pc, kbps, thermal?.scaleDownBy, thermal?.maxFps, active = !l.budget.videoPaused)
     }
 
@@ -635,6 +645,7 @@ class CallSession(
         val entries = report.statsMap.mapValues { (_, s) -> CallStats.Entry(s.type, s.members) }
         followMediaBudget(l, entries)
         if (l.isHealthy) CallStats.availableOutgoingBitrate(entries)?.let(learner::addEstimate)
+        followTheirLink(l, SystemClock.elapsedRealtime())
         followPacketTime(l, entries)
         val squeeze = when {
             l.budget.videoPaused -> LinkQuality.POOR
@@ -642,6 +653,7 @@ class CallSession(
             else -> LinkQuality.GOOD
         }
         val delay = delayTracker.update(entries, playoutMs, playoutMeasured, packetTime.ms).copy(sendSqueeze = squeeze)
+        followLinkReport(delay)
         // Earbuds can connect mid-call; keep the earbud-mic button honest.
         val micAvailable = profile.mode == AudioMode.HIFI && (_state.value.earbudMic || audioController.earbudMicAvailable())
         _state.update { it.copy(delay = delay, earbudMicAvailable = micAvailable) }
@@ -688,6 +700,52 @@ class CallSession(
             _state.update { it.copy(videoPausedForVoice = l.budget.videoPaused) }
             sendMediaState()
         }
+    }
+
+    /**
+     * Tells them about our side of the route when it changes and has held for two
+     * intervals (one lossy report isn't news): our network, how our uplink is doing
+     * (from [MediaBudget] and what they report losing), and whether our Wi-Fi shares
+     * its radio with the earbuds.
+     */
+    private fun followLinkReport(delay: DelayBreakdown) {
+        val path = _state.value.callPath
+        val next = LinkReport(
+            network = when (path) {
+                CallPath.WIFI -> AirtimeShare.WIFI
+                CallPath.CELLULAR -> "cellular"
+                else -> null
+            },
+            uplink = AirtimeShare.uplinkOf(delay.sendSqueeze, delay.sendLossPercent),
+            radioShared = radioPlan.sharedRadio && path != CallPath.CELLULAR,
+        )
+        if (next == linkReport) {
+            pendingReport = null
+            return
+        }
+        if (next == pendingReport) pendingReportCount++ else {
+            pendingReport = next
+            pendingReportCount = 1
+        }
+        if (pendingReportCount < 2) return
+        linkReport = next
+        pendingReport = null
+        sendMediaState()
+    }
+
+    /**
+     * Their side of the route: lighter video from us while their Wi-Fi uplink starves
+     * ([AirtimeShare]), and 20 ms packets at least while either phone's Wi-Fi shares its
+     * radio with Bluetooth earbuds ([PacketTime.floor]).
+     */
+    private fun followTheirLink(l: Link, nowMs: Long) {
+        val theirs = _state.value.remoteMedia
+        if (airtime.update(theirs.network, theirs.uplink, nowMs)) {
+            Log.i(TAG, airtime.capKbps?.let { "Their Wi-Fi uplink is struggling; our video to them capped at $it kbps" } ?: "Lifting the cap on our video to them")
+            applyVideoCap(l)
+        }
+        val ourRadioShared = radioPlan.sharedRadio && _state.value.callPath != CallPath.CELLULAR
+        packetTime.floor = if (ourRadioShared || theirs.radioShared) PacketTime.Step.MEDIUM else PacketTime.Step.SHORT
     }
 
     /**
@@ -838,6 +896,9 @@ class CallSession(
                         data.audioMode,
                         inPocket = data.inPocket == true,
                         weakConnection = data.weakConnection == true,
+                        network = data.network,
+                        uplink = data.uplink,
+                        radioShared = data.radioShared == true,
                     ),
                 )
             }
@@ -1249,6 +1310,9 @@ class CallSession(
                 audioMode = mode,
                 inPocket = (s.cameraPaused && !s.cameraOff).takeIf { it },
                 weakConnection = (s.videoPausedForVoice && !s.sendsNoVideo).takeIf { it },
+                network = linkReport.network,
+                uplink = linkReport.uplink,
+                radioShared = linkReport.radioShared.takeIf { it },
             ),
         )
     }

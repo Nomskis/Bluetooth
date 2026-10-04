@@ -87,6 +87,26 @@ class PacketTimeTest {
     }
 
     @Test
+    fun aRadioSharedWithEarbudsGetsTwentyMillisecondPacketsAtLeast() {
+        tick(0.0, 0.0)
+        packetTime.floor = Step.MEDIUM
+        assertEquals(20, packetTime.ms)
+        // A calm link doesn't take it below the floor...
+        repeat(100) { assertFalse(tick(0.0, 0.0)) }
+        assertEquals(20, packetTime.ms)
+        // ...but a rough one still goes longer.
+        tick(0.06, 0.03)
+        assertTrue(tick(0.06, 0.03))
+        assertEquals(40, packetTime.ms)
+        // Off the shared radio, it comes back down a step at a time once calm.
+        packetTime.floor = Step.SHORT
+        var steps = 0
+        repeat(200) { if (tick(0.0, 0.0)) steps++ }
+        assertEquals(2, steps)
+        assertEquals(10, packetTime.ms)
+    }
+
+    @Test
     fun aNewConnectionsCountersStartAFreshBaseline() {
         tick(0.0, 0.0); tick(0.06, 0.03); tick(0.06, 0.03)
         assertEquals(20, packetTime.ms)

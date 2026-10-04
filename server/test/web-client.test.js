@@ -249,3 +249,25 @@ test('packet time goes into the ptime we ask for', () => {
   assert.match(long, /m=audio[^\n]*\r\na=ptime:40\r\n/);
   assert.equal(long.match(/a=ptime/g).length, 1);
 });
+
+test('packet time: a floor while their radio is shared with earbuds', () => {
+  const packetTime = new PacketTime();
+  let now = 0;
+  const c = { packetsReceived: 0, packetsLost: 0, concealedSamples: 0, totalSamplesReceived: 0 };
+  const tick = () => {
+    now += 2000;
+    c.packetsReceived += 2000 / packetTime.ms;
+    c.totalSamplesReceived += 96000;
+    return packetTime.update({ ...c }, now);
+  };
+  tick();
+  packetTime.floorMs = 20;
+  assert.equal(packetTime.ms, 20);
+  for (let i = 0; i < 100; i++) assert.equal(tick(), false);
+  assert.equal(packetTime.ms, 20);
+  packetTime.floorMs = 10;
+  let changed = false;
+  for (let i = 0; i < 100; i++) changed = tick() || changed;
+  assert.equal(changed, true);
+  assert.equal(packetTime.ms, 10);
+});

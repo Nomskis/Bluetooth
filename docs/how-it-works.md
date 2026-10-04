@@ -208,6 +208,36 @@ against the WebRTC source the app ships with
   leaner, or video pause, to fit. Tap the delay readout for both directions
   (good, fair or poor, with the numbers) and the packet length in use.
 
+## The two phones look after each other's network
+
+Each direction of a call has its own congestion control, and each only sees
+its own direction. Some of what makes a call rough is on the other phone's
+side of the route, where only the other phone can see it, so each side tells
+the other about its half (`network`, `uplink` and `radioShared` in
+`media-state`, sent when they change and have held for two stats intervals):
+
+- **Their Wi-Fi uplink starving: lighter video from us.** Wi-Fi is
+  half-duplex, one shared channel taking turns. The video we send comes down
+  through their access point on the same airtime their phone needs to get its
+  own voice up, so on weak or busy Wi-Fi our downstream can be what starves
+  their upstream. When they report their uplink tight (voice leaner, or
+  packets going missing) or starved (video paused for the voice) on Wi-Fi for
+  a few seconds, our video to them is capped at 800 or 400 kbps. If their
+  uplink gets any better within 45 seconds, the cap stays until it has been
+  fine for a minute; if not, it wasn't our downstream, the cap lifts and
+  isn't tried again for five minutes. Mobile data has separate up and down
+  channels, so it never applies there
+  ([`call/AirtimeShare.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/AirtimeShare.kt)).
+- **A radio shared with earbuds: half as many packets, both ways.** On
+  2.4 GHz Wi-Fi next to Bluetooth audio, every Wi-Fi frame is airtime the
+  earbuds can't use, and the voice's 100 packets a second each way are as many
+  frames as the video's. While either phone is in that spot, both ask for
+  20 ms audio packets at least ([`PacketTime.floor`](../android/app/src/main/java/io/github/nomskis/earshot/call/PacketTime.kt)):
+  10 ms more delay, half the voice's frames, the earbuds get their turns
+  back. The phone on the shared radio can't ask for its own sending to change
+  (the other side decides that), so it says `radioShared` and the other side
+  asks for it.
+
 ## Calls that remember the route
 
 Every call otherwise starts blind: WebRTC guesses 300 kbps and finds the real
