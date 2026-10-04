@@ -67,7 +67,7 @@ class CallInboxTest {
             settings.update { it.copy(serverUrl = server.url("/").toString(), receiveCalls = true) }
             settings.saveContact(Contact("Salma ❤️", SALMA_ADDRESS))
         }
-        inbox = CallInbox(context, settings, OkHttpClient(), isBusy = { busy }, startCall = { room, video -> started += room to video })
+        inbox = CallInbox(context, settings, OkHttpClient(), isBusy = { busy }, startCall = { ring, video -> started += ring.room to video })
         inbox.follow()
         // The phone connects and listens.
         assertTrue(waitFor { fromPhone.peek() != null })
@@ -143,7 +143,9 @@ class CallInboxTest {
         checkNotNull(socket).send("""{"type":"ring-cancelled","ringId":"r-Zk3pQ81wLa","reason":"cancelled"}""")
         assertTrue(waitFor { inbox.ringing.value == null })
         assertNull(notifications.getNotification(CallNotifications.ID_INCOMING))
-        assertTrue(notifications.allNotifications.any { it.extras.getString("android.title") == "Missed call from Salma ❤️" })
+        val missed = notifications.allNotifications.first { it.extras.getString("android.title") == "Missed call from Salma ❤️" }
+        // They proved their address, so they can be rung back from the notification.
+        assertEquals(listOf("Call back"), missed.actions.map { it.title.toString() })
     }
 
     private companion object {

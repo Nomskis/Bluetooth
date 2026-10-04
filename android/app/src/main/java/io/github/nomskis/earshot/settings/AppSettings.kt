@@ -115,6 +115,8 @@ data class AppSettings(
     val gameModeHintDone: Boolean = false,
     /** The "keep calls alive with the screen off" guide was finished or dismissed. */
     val backgroundGuideDone: Boolean = false,
+    /** Went through the phone maker's call switches (lock screen, pop-ups) that Android can't check. */
+    val callSetupDone: Boolean = false,
     /** Extra gain for the other person's voice, 1.0 = unchanged. */
     val voiceVolume: Float = 1f,
     val lastRoom: String = "",

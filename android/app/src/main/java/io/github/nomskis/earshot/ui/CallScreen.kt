@@ -2,7 +2,11 @@ package io.github.nomskis.earshot.ui
 
 import android.os.PowerManager
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -57,6 +61,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -65,6 +70,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.call.CallPhase
@@ -73,6 +79,7 @@ import io.github.nomskis.earshot.call.CallState
 import io.github.nomskis.earshot.call.ChatMessage
 import io.github.nomskis.earshot.call.DelayBreakdown
 import io.github.nomskis.earshot.call.LipSync
+import io.github.nomskis.earshot.calls.OutgoingRing
 import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.ui.theme.Accent
 import io.github.nomskis.earshot.ui.theme.Danger
@@ -280,7 +287,7 @@ internal fun OutputHeldBanner(name: String?, onPlayOutLoud: () -> Unit, modifier
 }
 
 @Composable
-private fun RemotePlaceholder(state: CallState, compact: Boolean) {
+internal fun RemotePlaceholder(state: CallState, compact: Boolean) {
     val context = LocalContext.current
     Column(
         modifier = Modifier
@@ -291,9 +298,10 @@ private fun RemotePlaceholder(state: CallState, compact: Boolean) {
         verticalArrangement = Arrangement.Center,
     ) {
         val peerName = state.remotePeer?.name?.takeIf { it.isNotBlank() }
-        val text = when (state.phase) {
+        val calling = callingText(state)
+        val text = calling ?: when (state.phase) {
             CallPhase.CONNECTING -> state.error ?: "Connecting to the server…"
-            CallPhase.WAITING -> "Waiting for the other person to join\n${state.room}"
+            CallPhase.WAITING -> state.contactName?.let { "Waiting for $it to join" } ?: "Waiting for the other person to join\n${state.room}"
             CallPhase.NEGOTIATING -> "Connecting to ${peerName ?: "the other person"}…"
             CallPhase.RECONNECTING -> "Connection lost. Reconnecting…"
             CallPhase.CONNECTED -> when {
@@ -304,7 +312,11 @@ private fun RemotePlaceholder(state: CallState, compact: Boolean) {
             CallPhase.ENDED -> "Call ended"
             CallPhase.FAILED -> state.error ?: "Call failed"
         }
-        if (state.phase == CallPhase.CONNECTING || state.phase == CallPhase.NEGOTIATING || state.phase == CallPhase.RECONNECTING) {
+        val outgoing = state.outgoing
+        if (calling != null && !compact) {
+            CallingAvatar(state.contactName ?: outgoing?.name.orEmpty(), ringing = outgoing?.status == OutgoingRing.Status.RINGING)
+            Spacer(Modifier.height(24.dp))
+        } else if (state.phase == CallPhase.CONNECTING || state.phase == CallPhase.NEGOTIATING || state.phase == CallPhase.RECONNECTING) {
             CircularProgressIndicator(color = Color.White, modifier = Modifier.size(if (compact) 20.dp else 36.dp))
             Spacer(Modifier.height(16.dp))
         }
@@ -320,13 +332,67 @@ private fun RemotePlaceholder(state: CallState, compact: Boolean) {
                 Text(it, color = Color.White.copy(alpha = 0.8f), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall)
             }
         }
-        if (!compact && state.phase == CallPhase.WAITING) {
+        // A direct call only offers the link once their phone can't be rung.
+        val offerLink = state.phase == CallPhase.WAITING &&
+            (outgoing == null || outgoing.status == OutgoingRing.Status.UNREACHABLE)
+        if (!compact && offerLink) {
             Spacer(Modifier.height(20.dp))
             FilledTonalButton(onClick = { context.shareInvite(state.inviteLink) }) {
                 Icon(Icons.Filled.Share, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("Send invite link")
             }
+        }
+    }
+}
+
+/**
+ * What to say while ringing a contact (calling, ringing, declined...), or null when
+ * this isn't a call to a contact or they've joined.
+ */
+internal fun callingText(state: CallState): String? {
+    val outgoing = state.outgoing ?: return null
+    if (state.remotePeer != null || !state.isActive) return null
+    if (state.phase == CallPhase.CONNECTING && state.error != null) return null
+    val name = outgoing.name
+    return when (outgoing.status) {
+        OutgoingRing.Status.CALLING -> "Calling $name…"
+        OutgoingRing.Status.RINGING -> "Ringing $name…"
+        OutgoingRing.Status.ANSWERED -> "$name answered. Connecting…"
+        OutgoingRing.Status.UNREACHABLE -> if (outgoing.keepsTrying) {
+            "$name's phone can't be reached right now.\nEarshot keeps trying, or send the invite link."
+        } else {
+            "$name's phone can't be reached.\nSend the invite link, or hang up and try later."
+        }
+        OutgoingRing.Status.DECLINED -> "$name declined"
+        OutgoingRing.Status.BUSY -> "$name is on another call"
+        OutgoingRing.Status.NO_ANSWER -> "No answer from $name"
+    }
+}
+
+/** Their initial in a circle, pulsing gently while their phone rings. */
+@Composable
+private fun CallingAvatar(name: String, ringing: Boolean) {
+    val pulse by rememberInfiniteTransition(label = "calling").animateFloat(
+        initialValue = 1f,
+        targetValue = if (ringing) 1.1f else 1f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 900), RepeatMode.Reverse),
+        label = "pulse",
+    )
+    Box(
+        Modifier
+            .size(120.dp)
+            .scale(pulse)
+            .background(Accent.copy(alpha = 0.25f), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.size(96.dp).background(Accent, CircleShape), contentAlignment = Alignment.Center) {
+            Text(
+                name.trim().take(1).uppercase().ifEmpty { "?" },
+                color = Color.Black,
+                fontSize = 42.sp,
+                fontWeight = FontWeight.Bold,
+            )
         }
     }
 }
@@ -343,7 +409,7 @@ internal fun TopBar(state: CallState, route: AudioRoute, boostNotes: List<String
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                state.remotePeer?.name?.takeIf { it.isNotBlank() } ?: state.room,
+                state.remotePeer?.name?.takeIf { it.isNotBlank() } ?: state.contactName ?: state.room,
                 color = Color.White,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,

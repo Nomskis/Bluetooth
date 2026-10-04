@@ -20,6 +20,7 @@ import io.github.nomskis.earshot.MainActivity
 import io.github.nomskis.earshot.R
 import io.github.nomskis.earshot.appGraph
 import io.github.nomskis.earshot.call.CallPhase
+import io.github.nomskis.earshot.calls.OutgoingRing
 import io.github.nomskis.earshot.settings.AudioMode
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collectLatest
@@ -59,7 +60,18 @@ class CallService : LifecycleService() {
                     // times a second (talking cue, delay readout), and re-posting on each
                     // would get the app rate-limited.
                     session.state
-                        .map { NotificationInfo(it.phase, it.remotePeer?.name, it.room, it.audioMode, it.micMuted, it.outputHeld) }
+                        .map {
+                            NotificationInfo(
+                                it.phase,
+                                it.remotePeer?.name ?: it.contactName,
+                                // A direct call's room is a random code; who it's with means more.
+                                it.contactName ?: it.room,
+                                it.audioMode,
+                                it.micMuted,
+                                it.outputHeld,
+                                calling = it.outgoing?.takeIf { o -> o.status == OutgoingRing.Status.CALLING || o.status == OutgoingRing.Status.RINGING }?.name,
+                            )
+                        }
                         .distinctUntilChanged()
                         .collect { info ->
                             getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(info))
@@ -122,6 +134,8 @@ class CallService : LifecycleService() {
         val audioMode: AudioMode,
         val micMuted: Boolean,
         val outputHeld: Boolean,
+        /** Ringing this contact. */
+        val calling: String? = null,
     )
 
     private fun buildNotification(state: NotificationInfo?): Notification {
@@ -137,12 +151,13 @@ class CallService : LifecycleService() {
             Intent(this, CallService::class.java).setAction(ACTION_HANG_UP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val title = when (state?.phase) {
-            CallPhase.CONNECTED -> state.peerName?.takeIf { it.isNotBlank() }
+        val title = when {
+            state?.calling != null -> getString(R.string.notification_calling, state.calling)
+            state?.phase == CallPhase.CONNECTED -> state.peerName?.takeIf { it.isNotBlank() }
                 ?.let { getString(R.string.notification_in_call_with, it) }
                 ?: getString(R.string.notification_in_call)
-            CallPhase.WAITING -> getString(R.string.notification_waiting)
-            CallPhase.RECONNECTING -> getString(R.string.notification_reconnecting)
+            state?.phase == CallPhase.WAITING -> getString(R.string.notification_waiting)
+            state?.phase == CallPhase.RECONNECTING -> getString(R.string.notification_reconnecting)
             else -> getString(R.string.notification_connecting)
         }
         val text = if (state?.outputHeld == true) {

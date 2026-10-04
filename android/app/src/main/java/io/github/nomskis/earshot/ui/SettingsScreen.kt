@@ -130,6 +130,14 @@ fun SettingsScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            Toggle("Receive calls", settings.receiveCalls) { v ->
+                onUpdate { it.copy(receiveCalls = v) }
+            }
+            Hint(
+                "Your phone rings when someone you've had a call with calls you, even with Earshot closed. " +
+                    "It keeps a small connection to your server open, with a quiet \"Ready for calls\" notification. " +
+                    "Off, people can only reach you with a room code or invite link.",
+            )
 
             HorizontalDivider()
             Section("Call audio")

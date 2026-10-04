@@ -25,6 +25,9 @@ import io.github.nomskis.earshot.earbuds.DriverResult
 import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.earbuds.EarbudControl
 import io.github.nomskis.earshot.earbuds.describe
+import io.github.nomskis.earshot.calls.CallBackRequest
+import io.github.nomskis.earshot.calls.Contact
+import io.github.nomskis.earshot.calls.InboxClient
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.DelayRun
 import io.github.nomskis.earshot.settings.InterruptedCall
@@ -393,6 +396,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun startCall(room: String, withVideo: Boolean) = graph.callManager.startCall(room, withVideo)
+
+    /** People you can ring directly, most recent first. */
+    val contacts: StateFlow<List<Contact>> =
+        graph.settings.contacts.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun callContact(contact: Contact, withVideo: Boolean) = graph.callManager.callContact(contact, withVideo)
+
+    fun removeContact(contact: Contact) {
+        viewModelScope.launch { graph.settings.removeContact(contact.address) }
+    }
+
+    /** Whether this phone can be rung right now. */
+    val inboxStatus: StateFlow<InboxClient.State> = graph.callInbox.status
+
+    /** A missed call's "Call back", for the home screen to act on. */
+    val callBack: StateFlow<CallBackRequest?> = graph.callBack.asStateFlow()
+
+    fun consumeCallBack() {
+        graph.callBack.value = null
+    }
 
     fun endCall() = graph.callManager.endCall()
 

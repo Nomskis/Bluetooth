@@ -6,6 +6,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.test.core.app.ApplicationProvider
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -21,6 +23,15 @@ import org.robolectric.annotation.Config
 class AppLaunchTest {
     @get:Rule
     val compose = createAndroidComposeRule<MainActivity>()
+
+    /**
+     * The app's call inbox would otherwise outlive this test and keep following the
+     * settings (shared by every test in this JVM), answering other tests' servers.
+     */
+    @After
+    fun tearDown() {
+        ApplicationProvider.getApplicationContext<EarshotApp>().graph.callInbox.close()
+    }
 
     @Test
     fun launchesAndOpensSettingsAndTheTuner() {

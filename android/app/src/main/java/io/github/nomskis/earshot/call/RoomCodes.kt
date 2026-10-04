@@ -25,6 +25,12 @@ object RoomCodes {
         return "${adjectives[random.nextInt(adjectives.size)]}-${nouns[random.nextInt(nouns.size)]}-$number"
     }
 
+    /** A room for one direct call: nobody's going to type it, so it can be long and unguessable (82 bits). */
+    fun forDirectCall(): String {
+        val alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+        return "call-" + (1..16).map { alphabet[random.nextInt(alphabet.length)] }.joinToString("")
+    }
+
     /** Mirrors the server's validation. Returns null when the code is not usable. */
     fun normalize(input: String): String? {
         val room = input.trim().lowercase().replace(Regex("\\s+"), "-")

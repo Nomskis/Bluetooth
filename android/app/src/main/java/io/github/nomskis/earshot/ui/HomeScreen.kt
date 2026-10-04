@@ -63,6 +63,9 @@ import io.github.nomskis.earshot.R
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.audio.CodecInfo
 import io.github.nomskis.earshot.call.RoomCodes
+import io.github.nomskis.earshot.calls.CallBackRequest
+import io.github.nomskis.earshot.calls.Contact
+import io.github.nomskis.earshot.calls.InboxClient
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.AudioMode
 import io.github.nomskis.earshot.settings.DelayRun
@@ -91,6 +94,13 @@ fun HomeScreen(
     onOpenTuner: () -> Unit,
     interrupted: InterruptedCall? = null,
     onDismissInterrupted: () -> Unit = {},
+    contacts: List<Contact> = emptyList(),
+    onCallContact: (Contact, withVideo: Boolean) -> Unit = { _, _ -> },
+    onRemoveContact: (Contact) -> Unit = {},
+    callBack: CallBackRequest? = null,
+    onConsumeCallBack: () -> Unit = {},
+    /** Whether this phone can be rung; null hides it. */
+    inboxStatus: InboxClient.State? = null,
 ) {
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
@@ -122,21 +132,22 @@ fun HomeScreen(
     val serverBase = ServerUrls.normalizeBase(settings.serverUrl)
     val normalizedRoom = RoomCodes.normalize(room)
 
-    // What the permission prompt is for: the room field, or a call being rejoined.
-    var requested by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    // The call the permission prompt is for (a room, a rejoin or a contact), and whether with video.
+    var requested by remember { mutableStateOf<Pair<Boolean, (Boolean) -> Unit>?>(null) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         val micGranted = result[Manifest.permission.RECORD_AUDIO] ?: context.hasPermission(Manifest.permission.RECORD_AUDIO)
         val cameraGranted = result[Manifest.permission.CAMERA] ?: context.hasPermission(Manifest.permission.CAMERA)
-        val (code, video) = requested ?: return@rememberLauncherForActivityResult
+        val (video, start) = requested ?: return@rememberLauncherForActivityResult
+        requested = null
         if (!micGranted) {
             permissionError = "Earshot needs the microphone for calls."
         } else {
-            onJoin(code, video && cameraGranted)
+            start(video && cameraGranted)
         }
     }
 
-    fun joinRoom(code: String, withVideo: Boolean) {
-        requested = code to withVideo
+    /** Asks for what a call needs, then [start]s it (with video only if the camera was allowed). */
+    fun withPermissions(withVideo: Boolean, start: (withVideo: Boolean) -> Unit) {
         val needed = buildList {
             add(Manifest.permission.RECORD_AUDIO)
             if (withVideo) add(Manifest.permission.CAMERA)
@@ -144,7 +155,23 @@ fun HomeScreen(
             // Earbud game mode talks to the earbuds directly.
             if (settings.autoGameMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) add(Manifest.permission.BLUETOOTH_CONNECT)
         }.filterNot { context.hasPermission(it) }
-        if (needed.isEmpty()) onJoin(code, withVideo) else permissionLauncher.launch(needed.toTypedArray())
+        if (needed.isEmpty()) {
+            start(withVideo)
+        } else {
+            requested = withVideo to start
+            permissionLauncher.launch(needed.toTypedArray())
+        }
+    }
+
+    fun joinRoom(code: String, withVideo: Boolean) = withPermissions(withVideo) { video -> onJoin(code, video) }
+
+    fun callContact(contact: Contact, withVideo: Boolean) = withPermissions(withVideo) { video -> onCallContact(contact, video) }
+
+    // "Call back" on a missed call: ring them now, unless it's stale.
+    LaunchedEffect(callBack) {
+        val request = callBack ?: return@LaunchedEffect
+        onConsumeCallBack()
+        if (request.isFresh(System.currentTimeMillis()) && serverBase != null) callContact(request.contact, request.video)
     }
 
     fun join() {
@@ -205,7 +232,17 @@ fun HomeScreen(
                 }
             }
 
-            // What you do every time first; what explains the setup below it.
+            // What you do every time first; what explains the setup below it. Once you've
+            // called someone, ringing them is the everyday way in.
+            @Composable
+            fun Calls() {
+                ContactsCard(contacts, onCall = ::callContact, onRemove = onRemoveContact)
+                if (settings.receiveCalls && inboxStatus != null) {
+                    CallsReadyCard(inboxStatus, settings.callSetupDone, onSetupDone = { onUpdateSettings { it.copy(callSetupDone = true) } })
+                }
+            }
+            if (serverBase != null && contacts.isNotEmpty()) Calls()
+
             if (askName) {
                 OutlinedTextField(
                     value = settings.displayName,
@@ -273,6 +310,9 @@ fun HomeScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            // Before the first call: how people get onto the call list.
+            if (serverBase != null && contacts.isEmpty()) Calls()
 
             RouteCard(route, settings.audioMode, codec = codec)
 

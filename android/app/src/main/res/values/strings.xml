@@ -11,6 +11,7 @@
     <string name="notification_reconnecting">Reconnecting…</string>
     <string name="notification_in_call">In a call</string>
     <string name="notification_in_call_with">In a call with %1$s</string>
+    <string name="notification_calling">Calling %1$s…</string>
     <string name="notification_hifi">Hi-Fi audio</string>
     <string name="notification_output_held">Earbuds disconnected: their voice is paused until they\'re back. Open to play on the speaker.</string>
     <string name="notification_channel_chat">Chat messages during calls</string>
@@ -23,6 +24,7 @@
     <string name="missed_call_title">Missed call from %1$s</string>
     <string name="missed_call_text">Tap to open Earshot</string>
     <string name="missed_call_busy">They called while you were on another call</string>
+    <string name="call_back">Call back</string>
     <string name="chat_you">You</string>
     <string name="chat_reply">Reply</string>
     <string name="chat_someone">The other person</string>

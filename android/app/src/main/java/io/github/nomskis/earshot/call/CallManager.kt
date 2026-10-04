@@ -13,7 +13,10 @@ import io.github.nomskis.earshot.audio.CodecInfo
 import io.github.nomskis.earshot.audio.DeviceKind
 import io.github.nomskis.earshot.audio.LatencyProbe
 import io.github.nomskis.earshot.audio.LinkConditions
+import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.calls.InboxKeys
+import io.github.nomskis.earshot.calls.IncomingRing
+import io.github.nomskis.earshot.calls.OutgoingRing
 import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.service.CallService
 import io.github.nomskis.earshot.settings.AppSettings
@@ -83,7 +86,19 @@ class CallManager(
     /** A call is being set up but its session doesn't exist yet (main thread only). */
     private var starting = false
 
-    fun startCall(room: String, withVideo: Boolean) {
+    /** On a call, or about to be. */
+    val busy: Boolean get() = _session.value != null || starting
+
+    /** Joins [room] and waits for whoever has the link. */
+    fun startCall(room: String, withVideo: Boolean) = begin(room, withVideo, calling = null, answering = null)
+
+    /** Rings [contact]'s phone and waits for them in a new private room. */
+    fun callContact(contact: Contact, withVideo: Boolean) = begin(RoomCodes.forDirectCall(), withVideo, calling = contact, answering = null)
+
+    /** Takes a call that rang this phone: joins the room the caller is waiting in. */
+    fun answerCall(ring: IncomingRing, withVideo: Boolean) = begin(ring.room, withVideo, calling = null, answering = ring)
+
+    private fun begin(room: String, withVideo: Boolean, calling: Contact?, answering: IncomingRing?) {
         if (_session.value != null || starting) return
         starting = true
         scope.launch {
@@ -96,12 +111,16 @@ class CallManager(
                 starting = false
                 return@launch
             }
-            settings.update { it.copy(lastRoom = room) }
+            // A direct call's room is single-use; the room box keeps the one you typed.
+            if (calling == null && answering == null) settings.update { it.copy(lastRoom = room) }
             val route = routeMonitor.snapshot()
             val profile = AudioProfile.forCall(current, route)
             val radioPlan = radioPlan(current, route)
             // Swapped with the other side during the call, so you can call each other directly next time.
-            val me = Chat.Frame.Contact(current.displayName, InboxKeys.address(settings.inboxKey()))
+            val inboxKey = settings.inboxKey()
+            val me = Chat.Frame.Contact(current.displayName, InboxKeys.address(inboxKey))
+            val outgoing = calling?.let { OutgoingRing(it, current.displayName, inboxKey, withVideo) }
+            calling?.let { settings.saveContact(it.copy(lastCallAtMillis = System.currentTimeMillis())) }
             val session = CallSession(
                 context = appContext,
                 room = room,
@@ -115,6 +134,8 @@ class CallManager(
                 radioPlan = radioPlan,
                 me = me,
                 onContact = { contact -> scope.launch { settings.saveContact(contact) } },
+                outgoing = outgoing,
+                contactName = calling?.name ?: answering?.callerName,
             )
             _lastError.value = null
             _session.value = session

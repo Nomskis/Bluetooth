@@ -209,6 +209,7 @@ sealed interface SignalData {
 object ErrorCodes {
     const val ROOM_FULL = "room-full"
     const val BAD_ROOM = "bad-room"
+    const val BAD_REQUEST = "bad-request"
 }
 
 fun encodeClientMessage(message: ClientMessage): String =

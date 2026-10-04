@@ -37,6 +37,9 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
     val earbudInfo by viewModel.earbuds.collectAsStateWithLifecycle()
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
     val interrupted by viewModel.interruptedCall.collectAsStateWithLifecycle()
+    val contacts by viewModel.contacts.collectAsStateWithLifecycle()
+    val callBack by viewModel.callBack.collectAsStateWithLifecycle()
+    val inboxStatus by viewModel.inboxStatus.collectAsStateWithLifecycle()
     // Each time the app comes to the front outside a call, nudge a sleeping server awake.
     LifecycleStartEffect(session == null) {
         if (session == null) viewModel.wakeServer()
@@ -131,6 +134,12 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 onOpenTuner = { screen = Screen.TUNER },
                 interrupted = interrupted,
                 onDismissInterrupted = viewModel::dismissInterruptedCall,
+                contacts = contacts,
+                onCallContact = viewModel::callContact,
+                onRemoveContact = viewModel::removeContact,
+                callBack = callBack,
+                onConsumeCallBack = viewModel::consumeCallBack,
+                inboxStatus = inboxStatus,
             )
         }
     }

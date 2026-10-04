@@ -140,9 +140,33 @@ Wi-Fi while testing; debug builds allow plain http).
 
 ### 3. Call someone
 
-Pick a room code (or tap the dice), tap **Send invite link**, and join. The
-other person opens the link in their browser, or uses the Android app with the
-same room code.
+The first time, pick a room code (or tap the dice), tap **Send invite link**,
+and join. The other person opens the link in their browser, or uses the
+Android app with the same room code.
+
+If you both have the Android app, that first call saves you to each other's
+**Call** list on the home screen. From then on it works like a phone call:
+
+- Tap the phone or camera button next to their name. Their phone **rings and
+  vibrates** (following its ringer and Do Not Disturb settings), shows the call
+  full screen over the lock screen, and they tap **Accept** or **Decline**.
+  You hear the ringing tone meanwhile.
+- If they decline, are on another call, or don't answer within a minute, you're
+  told and the call ends by itself. If their phone can't be reached (offline,
+  or Earshot was force-stopped), Earshot keeps trying for a minute and offers
+  the invite link instead.
+- A call you miss leaves a notification with **Call back**.
+
+Ringing doesn't use Google's push service: while **Receive calls** is on
+(Settings), the app keeps a small connection to your own server open, with a
+quiet "Ready for calls" notification. The **Ready for calls** card on the home
+screen says whether your phone can be rung right now and walks through the
+switches that make it ring properly: notifications, full-screen calls on
+Android 14+, and on Xiaomi/POCO/Redmi phones "Show on Lock screen" and
+"Display pop-up windows while running in the background". On those phones,
+also work through **Keep calls going with the screen off** (battery saver
+"No restrictions", autostart, lock Earshot in recent apps), or HyperOS may
+stop the connection and calls won't ring.
 
 ## First test, at home
 
@@ -170,14 +194,15 @@ this; it isn't guessing.
 
 ## Status
 
-Early but complete end-to-end: one-to-one video calls, reconnection after
-network switches, browser and Android clients.
+Early but complete end-to-end: one-to-one video and voice calls, ringing
+between Android phones, reconnection after network switches, browser and
+Android clients.
 
 | Tested | How |
 | --- | --- |
-| Server | 44 unit and integration tests, including hosted-TURN credentials and the browser client's voice detector, delay readout, chat and SDP tweaks |
+| Server | 58 unit and integration tests, including ringing (who can ring whom, first answer wins, cancel and timeout), hosted-TURN credentials and the browser client's voice detector, delay readout, chat and SDP tweaks |
 | Browser calls | 12 end-to-end tests: two real Chromium browsers calling each other through the server (video, audio, reloads, dropped connections, room full, camera-less join, 10 ms packets, redundant audio, HD voice, talking cue, text chat across a reload, the open-in-app link, home-screen install) |
-| Android app | 157 tests: protocol and chat against the shared examples, signaling reconnects against a scripted server, audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio, path-steering, heat and lip-sync planning, SDP tweaks, plus Robolectric tests that start the real app and render every screen. Android lint, debug and release builds |
+| Android app | 203 tests: protocol and chat against the shared examples, signaling reconnects against a scripted server, incoming calls end to end against a scripted server (ringing, accept, decline, busy, missed call), the outgoing ring's states, audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio, path-steering, heat and lip-sync planning, SDP tweaks, plus Robolectric tests that start the real app and render every screen. Android lint, debug and release builds |
 | Android on a real phone | **Not yet.** The audio routing and the earbud drivers have to be confirmed on real hardware; the in-app audio check and the delay tuner are there for exactly that. |
 
 ## Trade-offs to know about

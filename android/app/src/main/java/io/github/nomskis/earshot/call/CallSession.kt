@@ -11,6 +11,8 @@ import io.github.nomskis.earshot.audio.RemoteVoiceTap
 import io.github.nomskis.earshot.audio.ReplayPlayer
 import io.github.nomskis.earshot.audio.SmartDuck
 import io.github.nomskis.earshot.calls.Contact
+import io.github.nomskis.earshot.calls.OutgoingRing
+import io.github.nomskis.earshot.calls.Ringback
 import io.github.nomskis.earshot.settings.AudioMode
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.signaling.CandidatePayload
@@ -82,6 +84,10 @@ class CallSession(
     private val me: Chat.Frame.Contact? = null,
     /** Their contact card arrived; save it. Called on the call thread. */
     private val onContact: (Contact) -> Unit = {},
+    /** Set when this call rings a contact (instead of waiting for someone with the link). */
+    private val outgoing: OutgoingRing? = null,
+    /** Who a direct call is with (the contact rung, or who rang us), for the title. */
+    contactName: String? = outgoing?.contact?.name,
 ) {
     private val appContext = context.applicationContext
     private val executor = Executors.newSingleThreadExecutor { Thread(it, "EarshotCall") }
@@ -98,6 +104,7 @@ class CallSession(
             voiceVolume = settings.voiceVolume,
             frontCamera = !settings.startWithBackCamera,
             hasCamera = withVideo,
+            contactName = contactName,
         ),
     )
     val state: StateFlow<CallState> = _state.asStateFlow()
@@ -141,6 +148,12 @@ class CallSession(
     private var stuckJob: Job? = null
     /** Leaves Wi-Fi that's up but losing packets, for mobile data on standby. */
     private val steering = PathSteering()
+    private val ringback = Ringback(
+        if (profile.mode == AudioMode.HIFI) android.media.AudioManager.STREAM_MUSIC else android.media.AudioManager.STREAM_VOICE_CALL,
+    )
+    private var ringTimeoutJob: Job? = null
+    private var ringRetryJob: Job? = null
+    private var gaveUpJob: Job? = null
 
     /** One RTCPeerConnection and everything tied to it. */
     private class Link(val pc: PeerConnection, val session: String, var tracks: SendTracks) {
@@ -190,6 +203,9 @@ class CallSession(
         data class SetOutputHeld(val held: Boolean) : Event
         data object StuckCheck : Event
         data class SetThermal(val plan: ThermalPlan?) : Event
+        data object RingTimeout : Event
+        data object RingRetry : Event
+        data object GiveUp : Event
         data object HangUp : Event
     }
 
@@ -293,6 +309,7 @@ class CallSession(
         if (finished) return
         finished = true
         replayPlayer.stop()
+        ringback.stop()
         smartDuck?.release()
         closeLink()
         lipSyncSink.release()
@@ -417,7 +434,17 @@ class CallSession(
                 engine.setPlaybackMuted(event.held)
                 _state.update { it.copy(outputHeld = event.held) }
             }
-            Event.HangUp -> finish(CallPhase.ENDED)
+            Event.RingTimeout -> outgoing?.let { ring ->
+                ring.timeOut()?.let(signaling::send)
+                onOutgoingChanged()
+            }
+            Event.RingRetry -> if (remote == null) ringContact()
+            // The reason goes to the home screen, which is where you land.
+            Event.GiveUp -> finish(CallPhase.ENDED, outgoing?.outcome)
+            Event.HangUp -> {
+                outgoing?.hangUp()?.let(signaling::send)
+                finish(CallPhase.ENDED)
+            }
         }
     }
 
@@ -584,12 +611,16 @@ class CallSession(
             is ServerMessage.Error -> when (message.code) {
                 ErrorCodes.ROOM_FULL -> finish(CallPhase.FAILED, "This room already has two people in it.")
                 ErrorCodes.BAD_ROOM -> finish(CallPhase.FAILED, "That room code is not valid.")
-                else -> Log.w(TAG, "Server error ${message.code}: ${message.message}")
+                else -> {
+                    Log.w(TAG, "Server error ${message.code}: ${message.message}")
+                    // Right after a ring, an error means this server can't ring phones.
+                    if (message.code == ErrorCodes.BAD_REQUEST && outgoing?.refused() == true) onOutgoingChanged()
+                }
             }
             ServerMessage.Pong -> Unit
-            // Ringing is handled by the inbox connection and the outgoing-ring code.
+            // Incoming rings go to the inbox connection, not to calls.
             is ServerMessage.Listening, is ServerMessage.Incoming, is ServerMessage.RingCancelled -> Unit
-            is ServerMessage.RingStatus, is ServerMessage.RingAnswered -> Unit
+            is ServerMessage.RingStatus, is ServerMessage.RingAnswered -> if (outgoing?.onMessage(message) == true) onOutgoingChanged()
         }
     }
 
@@ -623,10 +654,16 @@ class CallSession(
             closeLink()
             setRemote(null)
             setPhase(CallPhase.WAITING)
+            ringContact()
             return
         }
         if (remote != null && remote?.peerId != peer.peerId) closeLink()
         setRemote(peer)
+        // They arrived while we were reconnecting.
+        if (outgoing != null) {
+            outgoing.onJoined()
+            onOutgoingChanged()
+        }
         ensureNegotiated()
     }
 
@@ -635,6 +672,10 @@ class CallSession(
         // A fresh join always means a fresh connection, even from a known peerId.
         closeLink()
         setRemote(peer)
+        if (outgoing != null) {
+            outgoing.onJoined()
+            onOutgoingChanged()
+        }
         setPhase(CallPhase.NEGOTIATING)
         if (isOfferer()) startSession()
     }
@@ -838,6 +879,56 @@ class CallSession(
         }
     }
 
+    // --- ringing a contact ---------------------------------------------------------------
+
+    /**
+     * Alone in the room: ring them. Again after a reconnect (the server drops a ring along
+     * with the caller's connection), and every few seconds while their phone can't be
+     * reached, so it rings as soon as it's back online.
+     */
+    private fun ringContact() {
+        val ring = outgoing?.ring(room) ?: return
+        signaling.send(ring)
+        if (ringTimeoutJob == null) {
+            ringTimeoutJob = scope.launch {
+                delay(OutgoingRing.TIMEOUT_MS)
+                post(Event.RingTimeout)
+            }
+        }
+        onOutgoingChanged()
+    }
+
+    private fun onOutgoingChanged() {
+        val ring = outgoing ?: return
+        ringRetryJob?.cancel()
+        if (ring.joined) {
+            // They've been here: an ordinary call from now on, even if they drop out and back.
+            ringback.stop()
+            ringTimeoutJob?.cancel()
+            gaveUpJob?.cancel()
+            _state.update { it.copy(outgoing = null) }
+            return
+        }
+        val status = ring.status
+        // Like a phone: the ringing tone once their phone is actually ringing.
+        if (status == OutgoingRing.Status.RINGING) ringback.start() else ringback.stop()
+        if (ring.keepsTrying) {
+            ringRetryJob = scope.launch {
+                delay(RING_RETRY_MS)
+                post(Event.RingRetry)
+            }
+        }
+        _state.update { it.copy(outgoing = OutgoingCall(ring.contact.name, status, keepsTrying = ring.keepsTrying)) }
+        if (ring.gaveUp && gaveUpJob == null) {
+            ringTimeoutJob?.cancel()
+            // Long enough to read why, then the call ends by itself.
+            gaveUpJob = scope.launch {
+                delay(GAVE_UP_LINGER_MS)
+                post(Event.GiveUp)
+            }
+        }
+    }
+
     // --- chat -------------------------------------------------------------------------------
 
     private fun publishChat() {
@@ -1019,5 +1110,8 @@ class CallSession(
         const val STATS_INTERVAL_MS = 2_000L
         /** A drop this soon after marking packets is blamed on the marks. */
         const val MARKING_TRIAL_MS = 15_000L
+        const val GAVE_UP_LINGER_MS = 3_000L
+        /** How often to try again while their phone can't be reached. */
+        const val RING_RETRY_MS = 5_000L
     }
 }

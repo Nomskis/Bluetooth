@@ -15,13 +15,13 @@ import io.github.nomskis.earshot.R
 
 /** The notifications for calls coming in: ringing, missed, and the quiet "ready for calls" one. */
 object CallNotifications {
-    private const val CHANNEL_INCOMING = "incoming_calls"
+    const val CHANNEL_INCOMING = "incoming_calls"
     private const val CHANNEL_MISSED = "missed_calls"
     const val CHANNEL_READY = "ready_for_calls"
 
     const val ID_INCOMING = 10
     const val ID_READY = 11
-    private const val ID_MISSED = 12
+    const val ID_MISSED = 12
 
     fun createChannels(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
@@ -91,7 +91,7 @@ object CallNotifications {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val text = context.getString(if (busy) R.string.missed_call_busy else R.string.missed_call_text)
-        val notification = NotificationCompat.Builder(context, CHANNEL_MISSED)
+        val builder = NotificationCompat.Builder(context, CHANNEL_MISSED)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(context.getString(R.string.missed_call_title, ring.callerName))
             .setContentText(text)
@@ -100,8 +100,17 @@ object CallNotifications {
             .setAutoCancel(true)
             .setWhen(System.currentTimeMillis())
             .setShowWhen(true)
-            .build()
-        notify(context, ID_MISSED, notification)
+        // Only callers who proved their address can be rung back.
+        ring.callerAddress?.let { address ->
+            val callBack = PendingIntent.getActivity(
+                context,
+                REQUEST_CALL_BACK,
+                CallBackActivity.intent(context, ring.callerName, address, ring.video),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            builder.addAction(R.drawable.ic_notification, context.getString(R.string.call_back), callBack)
+        }
+        notify(context, ID_MISSED, builder.build())
     }
 
     /** The foreground notification that keeps Earshot waiting for calls. */
@@ -143,4 +152,5 @@ object CallNotifications {
     private const val REQUEST_DECLINE = 22
     private const val REQUEST_MISSED = 23
     private const val REQUEST_READY = 24
+    private const val REQUEST_CALL_BACK = 25
 }

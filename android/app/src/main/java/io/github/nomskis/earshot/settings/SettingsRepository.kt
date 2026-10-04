@@ -49,6 +49,7 @@ class SettingsRepository(private val context: Context) {
         val mobileDataBackup = booleanPreferencesKey("mobile_data_backup_opt_in")
         val turboDuringCalls = booleanPreferencesKey("turbo_during_calls")
         val backgroundGuideDone = booleanPreferencesKey("background_guide_done")
+        val callSetupDone = booleanPreferencesKey("call_setup_done")
         val gameModeHintDone = booleanPreferencesKey("game_mode_hint_done")
         val voiceVolume = floatPreferencesKey("voice_volume")
         val lastRoom = stringPreferencesKey("last_room")
@@ -152,6 +153,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.mobileDataBackup] = next.mobileDataBackup
             prefs[Keys.turboDuringCalls] = next.turboDuringCalls
             prefs[Keys.backgroundGuideDone] = next.backgroundGuideDone
+            prefs[Keys.callSetupDone] = next.callSetupDone
             prefs[Keys.gameModeHintDone] = next.gameModeHintDone
             prefs[Keys.voiceVolume] = next.voiceVolume
             prefs[Keys.lastRoom] = next.lastRoom
@@ -198,6 +200,7 @@ class SettingsRepository(private val context: Context) {
             mobileDataBackup = this[Keys.mobileDataBackup] ?: defaults.mobileDataBackup,
             turboDuringCalls = this[Keys.turboDuringCalls] ?: defaults.turboDuringCalls,
             backgroundGuideDone = this[Keys.backgroundGuideDone] ?: defaults.backgroundGuideDone,
+            callSetupDone = this[Keys.callSetupDone] ?: defaults.callSetupDone,
             gameModeHintDone = this[Keys.gameModeHintDone] ?: defaults.gameModeHintDone,
             voiceVolume = this[Keys.voiceVolume] ?: defaults.voiceVolume,
             lastRoom = this[Keys.lastRoom] ?: defaults.lastRoom,

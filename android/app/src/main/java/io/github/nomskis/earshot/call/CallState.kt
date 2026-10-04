@@ -1,5 +1,6 @@
 package io.github.nomskis.earshot.call
 
+import io.github.nomskis.earshot.calls.OutgoingRing
 import io.github.nomskis.earshot.settings.AudioMode
 import io.github.nomskis.earshot.signaling.PeerInfo
 
@@ -29,6 +30,9 @@ data class RemoteMedia(
     /** Their camera is paused because their phone is in a pocket. */
     val inPocket: Boolean = false,
 )
+
+/** A contact being rung from this call. [keepsTrying]: unreachable for now, and still ringing again. */
+data class OutgoingCall(val name: String, val status: OutgoingRing.Status, val keepsTrying: Boolean = false)
 
 data class CallState(
     val phase: CallPhase,
@@ -74,6 +78,10 @@ data class CallState(
     val outputHeld: Boolean = false,
     /** Echo cancellation switched on mid-call because the call now plays out loud. */
     val echoGuard: Boolean = false,
+    /** Calling a contact: their name and how it's going, until they've joined. */
+    val outgoing: OutgoingCall? = null,
+    /** Who a direct call is with, for the title while they're not in the room. */
+    val contactName: String? = null,
     /** Text chat with the other person, oldest first. */
     val chat: List<ChatMessage> = emptyList(),
     /** Their latest message, for the bubble and the notification. */

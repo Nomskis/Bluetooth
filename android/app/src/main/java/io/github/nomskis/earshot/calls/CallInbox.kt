@@ -37,8 +37,8 @@ class CallInbox(
     private val http: OkHttpClient,
     /** Already on a call (or starting one)? Then a ring is answered "busy". */
     private val isBusy: () -> Boolean,
-    /** Joins [room] to take an answered call. */
-    private val startCall: (room: String, withVideo: Boolean) -> Unit,
+    /** Joins the caller's room to take an answered call. */
+    private val startCall: (ring: IncomingRing, withVideo: Boolean) -> Unit,
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -147,7 +147,7 @@ class CallInbox(
         val ring = _ringing.value ?: return false
         client?.send(ClientMessage.RingAnswer(ring.ringId, accepted = true))
         stopRinging()
-        startCall(ring.room, withVideo)
+        startCall(ring, withVideo)
         return true
     }
 

@@ -5,6 +5,7 @@ import android.content.Context
 import io.github.nomskis.earshot.audio.AudioRouteMonitor
 import io.github.nomskis.earshot.audio.CodecWatcher
 import io.github.nomskis.earshot.call.CallManager
+import io.github.nomskis.earshot.calls.CallBackRequest
 import io.github.nomskis.earshot.calls.CallInbox
 import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.earbuds.EarbudControl
@@ -42,9 +43,11 @@ class AppGraph(context: Context) {
         context,
         settings,
         http,
-        isBusy = { callManager.session.value != null },
-        startCall = { room, withVideo -> callManager.startCall(room, withVideo) },
+        isBusy = { callManager.busy },
+        startCall = { ring, withVideo -> callManager.answerCall(ring, withVideo) },
     )
+    /** A missed call's "Call back", waiting for the home screen to pick it up. */
+    val callBack = MutableStateFlow<CallBackRequest?>(null)
 }
 
 class EarshotApp : Application() {

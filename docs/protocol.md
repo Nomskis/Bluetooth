@@ -80,6 +80,16 @@ stops counting as reachable within seconds. Listening clients also send a
 `ping` message every minute, which some hosts (Render's free plan) need to see
 to stay awake.
 
+How the Android app uses it: the caller joins a fresh room (`call-` and 16
+random lowercase letters and digits, so nobody can guess it) and rings once
+it's there alone. A ring is lost when the caller's connection drops, so it
+rings again with a new `ringId` after rejoining. While the answer is
+`unreachable` it rings again every 5 s for a minute, so a phone coming back
+online starts ringing straight away; after that the room stays open for the
+invite link. A decline, `busy` or no answer ends the call after a short
+message. If the server answers `ring` with `bad-request` (a server older than
+ringing), the app treats the contact as unreachable.
+
 ## Reconnecting
 
 If a socket closes without `leave`, the server keeps the peer's slot for

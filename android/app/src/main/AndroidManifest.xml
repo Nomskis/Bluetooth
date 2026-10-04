@@ -114,6 +114,15 @@
             android:theme="@style/Theme.Earshot"
             tools:targetApi="27" />
 
+        <!-- A missed call's "Call back" button: hands the call to the home screen. -->
+        <activity
+            android:name=".calls.CallBackActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <receiver
             android:name=".calls.RingActionReceiver"
             android:exported="false" />
