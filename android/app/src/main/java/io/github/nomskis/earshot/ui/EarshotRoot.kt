@@ -194,6 +194,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean) {
                         onBlockContact = viewModel::block,
                         callEnded = callEnded,
                         onCallEndedShown = viewModel::consumeCallEnded,
+                        inCall = activeSession != null,
                     )
                 }
             }
