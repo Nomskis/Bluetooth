@@ -248,7 +248,7 @@ class CallInboxTest {
         assertNull(notifications.getNotification(CallNotifications.ID_INCOMING))
         val missed = notifications.allNotifications.first { it.extras.getString("android.title") == "Missed call from Salma ❤️" }
         // They proved their address, so they can be rung back from the notification.
-        assertEquals(listOf("Call back"), missed.actions.map { it.title.toString() })
+        assertEquals(listOf("Call back", "Message"), missed.actions.map { it.title.toString() })
         // And it's in the history, in red.
         assertTrue(waitFor { runBlocking { settings.callLog.first() }.any { it.missed && it.address == SALMA_ADDRESS } })
     }

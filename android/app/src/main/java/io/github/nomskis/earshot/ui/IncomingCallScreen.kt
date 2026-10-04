@@ -18,19 +18,26 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
@@ -51,7 +58,10 @@ fun IncomingCallScreen(
     onAccept: () -> Unit,
     onAcceptVoiceOnly: () -> Unit,
     onDecline: () -> Unit,
+    /** Declines with this message to them; null when we can't write to them (they didn't prove who they are). */
+    onReply: ((String) -> Unit)? = null,
 ) {
+    var replying by rememberSaveable { mutableStateOf(false) }
     val pulse by rememberInfiniteTransition(label = "ringing").animateFloat(
         initialValue = 1f,
         targetValue = 1.12f,
@@ -106,14 +116,61 @@ fun IncomingCallScreen(
             AnswerButton(Icons.Filled.CallEnd, "Decline", Danger, onDecline)
             AnswerButton(if (ring.video) Icons.Filled.Videocam else Icons.Filled.Call, "Accept", Accent, onAccept)
         }
-        if (ring.video) {
-            Spacer(Modifier.height(16.dp))
-            TextButton(onClick = onAcceptVoiceOnly) {
-                Text("Answer without video", color = Color.White)
+        Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (onReply != null) {
+                TextButton(onClick = { replying = true }) {
+                    Icon(Icons.AutoMirrored.Filled.Message, contentDescription = null, tint = Color.White)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Message", color = Color.White)
+                }
+            }
+            if (ring.video) {
+                TextButton(onClick = onAcceptVoiceOnly) {
+                    Text("Answer without video", color = Color.White)
+                }
             }
         }
     }
+    if (replying && onReply != null) {
+        ReplyWithMessage(onReply = onReply, onDismiss = { replying = false })
+    }
 }
+
+/** The quick answers, or your own words. Picking one declines the call and sends it. */
+@Composable
+private fun ReplyWithMessage(onReply: (String) -> Unit, onDismiss: () -> Unit) {
+    var own by rememberSaveable { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Reply with a message") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                QUICK_REPLIES.forEach { reply ->
+                    TextButton(onClick = { onReply(reply) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(reply, modifier = Modifier.fillMaxWidth())
+                    }
+                }
+                OutlinedTextField(
+                    value = own,
+                    onValueChange = { own = it },
+                    placeholder = { Text("Write your own…") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onReply(own) }, enabled = own.isNotBlank()) { Text("Send") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+internal val QUICK_REPLIES = listOf(
+    "Can't talk now. I'll call you back.",
+    "I'll call you in a few minutes.",
+    "Can you text me?",
+)
 
 @Composable
 private fun AnswerButton(icon: ImageVector, label: String, color: Color, onClick: () -> Unit) {

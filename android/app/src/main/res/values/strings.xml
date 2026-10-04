@@ -25,6 +25,7 @@
     <string name="missed_call_text">Tap to open Earshot</string>
     <string name="missed_call_busy">They called while you were on another call</string>
     <string name="call_back">Call back</string>
+    <string name="message">Message</string>
     <string name="chat_you">You</string>
     <string name="chat_reply">Reply</string>
     <string name="chat_someone">The other person</string>

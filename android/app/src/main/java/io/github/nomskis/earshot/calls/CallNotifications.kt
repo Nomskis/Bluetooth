@@ -12,6 +12,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import io.github.nomskis.earshot.MainActivity
 import io.github.nomskis.earshot.R
+import io.github.nomskis.earshot.messages.MessageNotifications
 
 /** The notifications for calls coming in: ringing, missed, and the quiet "ready for calls" one. */
 object CallNotifications {
@@ -109,6 +110,15 @@ object CallNotifications {
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
             builder.addAction(R.drawable.ic_notification, context.getString(R.string.call_back), callBack)
+            val message = PendingIntent.getActivity(
+                context,
+                REQUEST_MESSAGE,
+                Intent(context, MainActivity::class.java)
+                    .putExtra(MessageNotifications.EXTRA_CONVERSATION, address)
+                    .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            builder.addAction(R.drawable.ic_notification, context.getString(R.string.message), message)
         }
         notify(context, ID_MISSED, builder.build())
     }
@@ -147,6 +157,7 @@ object CallNotifications {
         }
     }
 
+    private const val REQUEST_MESSAGE = 26
     private const val REQUEST_RINGING = 20
     private const val REQUEST_ANSWER = 21
     private const val REQUEST_DECLINE = 22

@@ -52,6 +52,14 @@ class IncomingCallActivity : ComponentActivity() {
                             inbox.decline()
                             finish()
                         },
+                        // Decline with a message, like the phone app's "Reply with message".
+                        onReply = current.callerAddress?.let { address ->
+                            { text: String ->
+                                appGraph.messenger.send(address, text)
+                                inbox.decline()
+                                finish()
+                            }
+                        },
                     )
                 }
             }
