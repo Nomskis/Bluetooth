@@ -174,9 +174,9 @@ network switches, browser and Android clients.
 
 | Tested | How |
 | --- | --- |
-| Server | 33 unit and integration tests, including the browser client's voice detector, delay readout and SDP tweaks |
-| Browser calls | 10 end-to-end tests: two real Chromium browsers calling each other through the server (video, audio, reloads, dropped connections, room full, camera-less join, 10 ms packets, redundant audio, HD voice, talking cue, the open-in-app link), plus unit tests for the browser's voice detector and delay readout |
-| Android app | 127 tests: protocol against the shared examples, signaling reconnects against a scripted server, audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio and lip-sync planning, SDP tweaks, plus Robolectric tests that start the real app and render every screen. Android lint, debug and release builds |
+| Server | 44 unit and integration tests, including hosted-TURN credentials and the browser client's voice detector, delay readout, chat and SDP tweaks |
+| Browser calls | 12 end-to-end tests: two real Chromium browsers calling each other through the server (video, audio, reloads, dropped connections, room full, camera-less join, 10 ms packets, redundant audio, HD voice, talking cue, text chat across a reload, the open-in-app link, home-screen install) |
+| Android app | 157 tests: protocol and chat against the shared examples, signaling reconnects against a scripted server, audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio, path-steering, heat and lip-sync planning, SDP tweaks, plus Robolectric tests that start the real app and render every screen. Android lint, debug and release builds |
 | Android on a real phone | **Not yet.** The audio routing and the earbud drivers have to be confirmed on real hardware; the in-app audio check and the delay tuner are there for exactly that. |
 
 ## Trade-offs to know about
