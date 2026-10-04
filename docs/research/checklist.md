@@ -63,7 +63,9 @@ When something new comes up, it goes on this list first.
 | Resends (NACK, RTX) | ✔️ | WebRTC default |
 | Forward error correction (ULPFEC) | ✔️ | Negotiated by default and used by WebRTC's NACK/FEC hybrid by RTT and loss |
 | FlexFEC | 📞 | In the shipped library (`WebRTC-FlexFEC-03`, `-Advertised`); worth its bandwidth only if call reports show lost video packets, not bandwidth, as what freezes the picture |
-| Keyframe requests and recovery after loss | 🔬 | How fast a frozen picture recovers on a long round trip |
+| Keyframe out first after a freeze (`WebRTC-Pacer-KeyframeFlushing`) | ✅ | A keyframe drops the stale video still queued ahead of it, so a frozen picture recovers sooner on a congested uplink. Off in 6367; upstream launched it and made it the only behaviour |
+| How long a receiver waits before asking for a keyframe | 📞 | 3 s without a decodable frame in 6367 (`kMaxWaitForFrame`); an `rtx-time` of 500 ms in our descriptions would make it 1.5 s, but also re-ask for keyframes sooner while congestion stalls the encoder. Worth it only if call reports show long freezes |
+| Resends sent ahead of the pacing budget (`WebRTC-Pacer-FastRetransmissions`) | ❌ | Still an experiment upstream, never launched; bursts on a link that's already short |
 
 ## 6. Bandwidth and congestion
 
@@ -73,7 +75,7 @@ When something new comes up, it goes on this list first.
 | Start bitrate from the last call (route memory) | ✅ | LinkMemory |
 | Lighter video towards a starving Wi-Fi uplink | ✅ | AirtimeShare |
 | Congestion window pushback (limits queued data) | ✔️ | On by default in 6367 (350 ms) |
-| Loss-based estimate on random, non-congestion loss | 🔬 | Does GoogCC back off needlessly on lossy Wi-Fi? (`WebRTC-Bwe-LossBasedBweV2`) |
+| Loss-based estimate on random, non-congestion loss | ✔️ | 6367 already runs the loss-based estimator v2 by default, which models the loss a link always has rather than backing off on every lost packet |
 
 ## 7. Network and route
 

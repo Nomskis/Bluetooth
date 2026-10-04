@@ -228,6 +228,13 @@ calls between countries over weak Wi-Fi.
   VP8). So a weak link gets temporal layers and libvpx's rate control, and a
   good one keeps the cheaper hardware encoder
   ([`call/WebRtcTuning.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/WebRtcTuning.kt)).
+- **A frozen picture comes back sooner.** It recovers with a keyframe, which
+  the sender's pacer would otherwise queue behind the older frames' packets
+  still waiting to go out: on a congested uplink, video the receiver can no
+  longer use. With `WebRTC-Pacer-KeyframeFlushing` the keyframe's first packet
+  drops that stream's queued packets and resends, so it leaves at once. It's
+  off in the WebRTC the app ships; upstream launched it and has since made it
+  the only behaviour.
 - **Wi-Fi out of power save.** A phone in power save lets the router hold its
   packets and fetches them in bursts. The call holds Android's low-latency
   Wi-Fi lock (screen on, app in front) and the high-performance one, which

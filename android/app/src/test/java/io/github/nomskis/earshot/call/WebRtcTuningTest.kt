@@ -56,6 +56,11 @@ class WebRtcTuningTest {
     }
 
     @Test
+    fun aKeyframeGoesOutAheadOfTheStaleVideoQueuedBeforeIt() {
+        assertTrue(trials().getValue(WebRtcTuning.KEYFRAME_FLUSHING).startsWith("Enabled"))
+    }
+
+    @Test
     fun theJitterBufferHasRoomForALongStall() {
         // At 10 ms packets; WebRTC accepts 20 and up.
         assertTrue(WebRtcTuning.JITTER_BUFFER_MAX_PACKETS * 10 >= 1_000)

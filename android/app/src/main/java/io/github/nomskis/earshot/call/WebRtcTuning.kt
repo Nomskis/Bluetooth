@@ -88,6 +88,16 @@ object WebRtcTuning {
      */
     const val OPUS_CONCEALMENT = "WebRTC-Audio-OpusGeneratePlc"
 
+    /**
+     * A frozen picture comes back with a keyframe, which the sender's pacer would queue behind
+     * the older frames' packets still waiting to go out: on a congested uplink, hundreds of
+     * milliseconds of video the receiver can no longer use. With this trial the first packet of
+     * a keyframe drops that stream's queued packets (and their resends), so the keyframe leaves
+     * at once (PacingController::EnqueuePacket). Off by default in 6367; upstream WebRTC launched
+     * it and has since made it the only behaviour ("Clean up WebRTC-Pacer-KeyframeFlushing trial").
+     */
+    const val KEYFRAME_FLUSHING = "WebRTC-Pacer-KeyframeFlushing"
+
     /** WebRTC field trials: "Name/Value/" pairs, set once when WebRTC starts. */
     val fieldTrials: String = buildString {
         append("WebRTC-Audio-Red-For-Opus/Enabled-$RED_REDUNDANCY/")
@@ -95,5 +105,6 @@ object WebRtcTuning {
         // FieldTrialOptional<int> "resolution_threshold_px", parsed as key:value.
         append("WebRTC-Video-EncoderFallbackSettings/resolution_threshold_px:$SOFTWARE_VIDEO_MAX_PIXELS/")
         append("$OPUS_CONCEALMENT/Enabled/")
+        append("$KEYFRAME_FLUSHING/Enabled/")
     }
 }
