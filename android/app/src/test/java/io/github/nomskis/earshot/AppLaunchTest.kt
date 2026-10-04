@@ -35,7 +35,7 @@ class AppLaunchTest {
 
     @Test
     fun launchesAndOpensSettingsAndTheTuner() {
-        compose.onNodeWithText("Video calls that keep your earbuds in music quality.").assertIsDisplayed()
+        compose.onNodeWithText("Earshot").assertIsDisplayed()
         compose.onNodeWithText("Join call").performScrollTo().assertIsDisplayed()
 
         compose.onNodeWithContentDescription("Settings").performClick()

@@ -2,11 +2,15 @@ package io.github.nomskis.earshot.ui
 
 import android.app.Application
 import android.media.AudioManager
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.audio.DeviceKind
 import io.github.nomskis.earshot.audio.OutputDevice
@@ -136,6 +140,39 @@ class ScreensSmokeTest {
         compose.onNodeWithText("Connect a server first").assertIsDisplayed()
         // No name yet: asked for right there.
         compose.onNodeWithText("Your name").assertIsDisplayed()
+    }
+
+    @Test
+    fun theNameBoxKeepsASpaceWhileYouType() {
+        // Like the real settings store, which trims the name it saves.
+        var stored by mutableStateOf(AppSettings(serverUrl = "https://calls.example.com"))
+        compose.setContent {
+            EarshotTheme {
+                HomeScreen(
+                    settings = stored,
+                    route = route,
+                    error = null,
+                    pendingRoom = null,
+                    onConsumePendingRoom = {},
+                    onDismissError = {},
+                    onUpdateSettings = { change -> stored = change(stored).let { it.copy(displayName = it.displayName.trim()) } },
+                    delayRuns = emptyList(),
+                    estimate = null,
+                    onEstimate = {},
+                    earbuds = EarbudInfo(),
+                    onDetectEarbuds = {},
+                    codec = null,
+                    onJoin = { _, _ -> },
+                    onOpenSettings = {},
+                    onOpenTuner = {},
+                )
+            }
+        }
+        val box = compose.onNodeWithText("Your name")
+        box.performTextInput("Sam ")
+        box.performTextInput("Smith")
+        compose.onNodeWithText("Sam Smith").assertIsDisplayed()
+        assertEquals("Sam Smith", stored.displayName)
     }
 
     @Test
