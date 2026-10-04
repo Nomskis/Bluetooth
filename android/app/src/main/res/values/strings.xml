@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Earshot</string>
-    <string name="hang_up">Hang up</string>
     <string name="mute">Mute</string>
     <string name="unmute">Unmute</string>
     <string name="notification_channel_calls">Ongoing calls</string>
@@ -25,6 +24,7 @@
     <string name="missed_call_text">Tap to open Earshot</string>
     <string name="missed_call_busy">They called while you were on another call</string>
     <string name="call_back">Call back</string>
+    <string name="message">Message</string>
     <string name="chat_you">You</string>
     <string name="chat_reply">Reply</string>
     <string name="chat_someone">The other person</string>

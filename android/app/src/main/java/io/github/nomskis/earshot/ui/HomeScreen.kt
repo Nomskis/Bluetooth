@@ -60,6 +60,7 @@ import androidx.core.content.ContextCompat
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.call.RoomCodes
 import io.github.nomskis.earshot.calls.CallBackRequest
+import io.github.nomskis.earshot.calls.CallRecord
 import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.calls.InboxClient
 import io.github.nomskis.earshot.messages.Conversation
@@ -98,6 +99,9 @@ fun HomeScreen(
     /** Conversations with contacts, by address. */
     conversations: Map<String, Conversation> = emptyMap(),
     onOpenConversation: ((Contact) -> Unit)? = null,
+    /** The call history, newest first. */
+    recentCalls: List<CallRecord> = emptyList(),
+    onRenameContact: ((Contact, String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
@@ -280,7 +284,15 @@ fun HomeScreen(
                     onRemove = onRemoveContact,
                     conversations = conversations,
                     onOpen = onOpenConversation,
+                    onRename = onRenameContact,
                 )
+            }
+
+            if (serverBase != null) {
+                RecentCallsCard(recentCalls, onCallBack = { call ->
+                    val address = call.address ?: return@RecentCallsCard
+                    callContact(contacts.firstOrNull { it.address == address } ?: Contact(call.name, address), call.video)
+                })
             }
 
             // Like a contact's two buttons: a video call or a voice call, either can switch later.

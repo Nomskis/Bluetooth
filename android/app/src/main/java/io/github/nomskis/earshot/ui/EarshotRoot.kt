@@ -158,6 +158,8 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 onUpdate = viewModel::installUpdate,
                 conversations = conversations,
                 onOpenConversation = { contact -> viewModel.openConversation(contact.address) },
+                recentCalls = callLog,
+                onRenameContact = { contact, name -> viewModel.renameContact(contact.address, name) },
             )
         }
     }
