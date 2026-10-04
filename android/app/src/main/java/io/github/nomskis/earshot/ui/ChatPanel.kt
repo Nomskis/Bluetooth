@@ -6,14 +6,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -47,6 +45,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import io.github.nomskis.earshot.call.Chat
 import io.github.nomskis.earshot.call.ChatMessage
+import io.github.nomskis.earshot.settings.QuickReplies
 import io.github.nomskis.earshot.ui.theme.Accent
 
 /** The conversation, quick replies and a text box; replaces the call controls while open. */
@@ -56,6 +55,7 @@ internal fun ChatPanel(
     onSend: (String) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    quickReplies: List<String> = QuickReplies.DEFAULT,
 ) {
     var draft by rememberSaveable { mutableStateOf("") }
     val list = rememberLazyListState()
@@ -78,23 +78,16 @@ internal fun ChatPanel(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Chat", color = Color.White, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.width(8.dp))
             Text(
-                "Encrypted, straight to them",
-                color = Color.White.copy(alpha = 0.6f),
-                style = MaterialTheme.typography.bodySmall,
+                "Chat",
+                color = Color.White,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
             )
             IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close chat", tint = Color.White) }
         }
-        if (messages.isEmpty()) {
-            Text(
-                "Handy when one of you is muted or it's too loud to talk.",
-                color = Color.White.copy(alpha = 0.7f),
-                style = MaterialTheme.typography.bodySmall,
-            )
-        } else {
+        if (messages.isNotEmpty()) {
             LazyColumn(
                 state = list,
                 modifier = Modifier
@@ -106,7 +99,7 @@ internal fun ChatPanel(
             }
         }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(Chat.QUICK_REPLIES) { text ->
+            items(quickReplies) { text ->
                 SuggestionChip(
                     onClick = { onSend(text) },
                     label = { Text(text) },

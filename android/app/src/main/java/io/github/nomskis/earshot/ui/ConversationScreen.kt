@@ -97,7 +97,7 @@ fun ConversationScreen(
             if (messages.isEmpty()) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text(
-                        "Say hi to ${contact.name}. If their phone is offline, your message waits until it's back.",
+                        "Say hi to ${contact.name}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(32.dp),

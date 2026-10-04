@@ -25,6 +25,12 @@ import okhttp3.Request
 class AppUpdater(context: Context, private val http: OkHttpClient) {
     sealed interface State {
         data object Idle : State
+        /** Looking, because you asked (Settings); a check on start stays quiet. */
+        data object Checking : State
+        /** You asked, and this is the newest build. */
+        data class UpToDate(val build: Int) : State
+        /** You asked, and the check didn't get through. */
+        data object CheckFailed : State
         data class Available(val release: AppUpdates.Release) : State
         data class Downloading(val release: AppUpdates.Release, val percent: Int) : State
         /** Android needs "Install unknown apps" allowed for Earshot first. */
@@ -39,9 +45,13 @@ class AppUpdater(context: Context, private val http: OkHttpClient) {
 
     val enabled: Boolean get() = BuildConfig.UPDATE_REPO.isNotBlank()
 
-    /** Looks for a newer build; quietly does nothing when offline or there isn't one. */
-    suspend fun check() {
+    /**
+     * Looks for a newer build. On its own (as the app starts) it stays quiet when offline or
+     * there isn't one; [asked] from Settings, it says so.
+     */
+    suspend fun check(asked: Boolean = false) {
         if (!enabled || _state.value is State.Downloading || _state.value is State.Installing) return
+        if (asked) _state.value = State.Checking
         val release = withContext(Dispatchers.IO) {
             runCatching {
                 val request = Request.Builder()
@@ -52,8 +62,13 @@ class AppUpdater(context: Context, private val http: OkHttpClient) {
                     if (!response.isSuccessful) null else AppUpdates.parse(response.body.string())
                 }
             }.getOrNull()
-        } ?: return
-        if (AppUpdates.isNewer(release, BuildConfig.VERSION_CODE)) _state.value = State.Available(release)
+        }
+        _state.value = when {
+            release != null && AppUpdates.isNewer(release, BuildConfig.VERSION_CODE) -> State.Available(release)
+            !asked -> return
+            release != null -> State.UpToDate(BuildConfig.VERSION_CODE)
+            else -> State.CheckFailed
+        }
     }
 
     /** Downloads the newer build and hands it to Android's installer. */

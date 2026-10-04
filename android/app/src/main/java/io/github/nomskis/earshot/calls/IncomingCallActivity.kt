@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.nomskis.earshot.MainActivity
 import io.github.nomskis.earshot.appGraph
+import io.github.nomskis.earshot.settings.QuickReplies
 import io.github.nomskis.earshot.ui.IncomingCallScreen
 import io.github.nomskis.earshot.ui.theme.EarshotTheme
 
@@ -40,6 +41,7 @@ class IncomingCallActivity : ComponentActivity() {
         setContent {
             EarshotTheme {
                 val ring by inbox.ringing.collectAsStateWithLifecycle()
+                val settings by appGraph.settings.settings.collectAsStateWithLifecycle(null)
                 val current = ring
                 // Cancelled, answered elsewhere, or timed out: nothing left to show.
                 LaunchedEffect(current == null) { if (current == null) finish() }
@@ -60,6 +62,7 @@ class IncomingCallActivity : ComponentActivity() {
                                 finish()
                             }
                         },
+                        quickReplies = settings?.quickReplies ?: QuickReplies.DEFAULT,
                     )
                 }
             }

@@ -131,4 +131,6 @@ data class AppSettings(
     /** Extra gain for the other person's voice, 1.0 = unchanged. */
     val voiceVolume: Float = 1f,
     val lastRoom: String = "",
+    /** What one tap sends in a call's chat or when declining; see [QuickReplies]. */
+    val quickReplies: List<String> = QuickReplies.DEFAULT,
 )

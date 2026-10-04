@@ -36,8 +36,8 @@ import io.github.nomskis.earshot.system.CallReadiness
 import io.github.nomskis.earshot.ui.theme.Accent
 
 /**
- * Whether this phone rings when someone calls, and the switches that make it
- * ring properly (checked again whenever you come back to the app).
+ * The switches that make this phone ring properly (checked again whenever you come back to
+ * the app), or that the server can't be reached. Nothing at all once it's ready.
  */
 @Composable
 fun CallsReadyCard(
@@ -58,6 +58,7 @@ fun CallsReadyCard(
         steps = stepsOverride ?: CallReadiness.current(context)
     }
     val todo = steps.filter { it.done == false || (it.done == null && !setupDone) }
+    if (todo.isEmpty() && (status == InboxClient.State.LISTENING || status == InboxClient.State.CONNECTING)) return
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -77,11 +78,9 @@ fun CallsReadyCard(
                 }
                 Column(Modifier.weight(1f)) {
                     Text(statusTitle(status, todo.isEmpty()), style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        statusDetail(status),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    statusDetail(status)?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
             todo.forEach { step ->
@@ -107,15 +106,14 @@ fun CallsReadyCard(
 }
 
 internal fun statusTitle(status: InboxClient.State, setUp: Boolean): String = when (status) {
-    InboxClient.State.LISTENING -> if (setUp) "Ready for calls" else "Ready for calls, almost"
-    InboxClient.State.CONNECTING -> "Connecting to your server…"
+    InboxClient.State.LISTENING -> if (setUp) "Ready for calls" else "Finish setting up calls"
+    InboxClient.State.CONNECTING -> "Connecting…"
     InboxClient.State.WAITING_TO_RETRY -> "Can't reach your server"
-    InboxClient.State.STOPPED -> "Not waiting for calls"
+    InboxClient.State.STOPPED -> "Not receiving calls"
 }
 
-internal fun statusDetail(status: InboxClient.State): String = when (status) {
-    InboxClient.State.LISTENING -> "Your phone rings when someone calls you on Earshot, even with the app closed."
-    InboxClient.State.CONNECTING -> "A free server can take a minute to wake up."
-    InboxClient.State.WAITING_TO_RETRY -> "Trying again by itself. Calls can't ring this phone until it's back."
-    InboxClient.State.STOPPED -> "Turn on \"Receive calls\" in Settings to be rung."
+internal fun statusDetail(status: InboxClient.State): String? = when (status) {
+    InboxClient.State.LISTENING, InboxClient.State.CONNECTING -> null
+    InboxClient.State.WAITING_TO_RETRY -> "Calls can't ring this phone. Retrying."
+    InboxClient.State.STOPPED -> "Turn on Receive calls in Settings"
 }

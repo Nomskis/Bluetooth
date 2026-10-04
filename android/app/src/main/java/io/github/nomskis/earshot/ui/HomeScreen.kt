@@ -215,11 +215,7 @@ fun HomeScreen(
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Connect a server first", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "Calls are set up through your own Earshot server. Add its address in Settings.",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Button(onClick = onOpenSettings) { Text("Open settings") }
+                        Button(onClick = onOpenSettings) { Text("Settings") }
                     }
                 }
             }
@@ -250,10 +246,6 @@ fun HomeScreen(
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Your call was cut off", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "Android closed Earshot during your call in ${interrupted.room}. If it keeps happening, let Earshot run in the background in your phone's battery settings.",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = { joinRoom(interrupted.room, interrupted.withVideo) }) { Text("Rejoin") }
                             TextButton(onClick = onDismissInterrupted) { Text("Dismiss") }
@@ -271,7 +263,6 @@ fun HomeScreen(
                         onUpdateSettings { it.copy(displayName = next) }
                     },
                     label = { Text("Your name") },
-                    placeholder = { Text("Shown to the other person") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
                     modifier = Modifier.fillMaxWidth(),
@@ -324,11 +315,6 @@ fun HomeScreen(
                         Text("Voice call")
                     }
                 }
-                Text(
-                    "Sends them a link. When they open it, you're in the call together.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
 
             TextButton(onClick = { showCode = !showCode }, enabled = serverBase != null) {
@@ -369,11 +355,7 @@ fun HomeScreen(
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Your earbuds have a game mode", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "${earbuds.earbuds} (${earbuds.family}) can switch to low latency, which typically halves their delay. " +
-                                "Earshot can turn it on for each call and back off afterwards.",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                        Text("About half the delay in calls", style = MaterialTheme.typography.bodyMedium)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = { onUpdateSettings { it.copy(autoGameMode = true, gameModeHintDone = true) } }) {
                                 Text("Use it for calls")
@@ -391,16 +373,12 @@ fun HomeScreen(
 @Composable
 internal fun UpdateCard(update: AppUpdater.State, onUpdate: () -> Unit) {
     val (title, detail, button) = when (update) {
-        is AppUpdater.State.Available -> Triple("Update available", "Build ${update.release.build} is ready. It installs over this one.", "Update")
-        is AppUpdater.State.Downloading -> Triple("Updating…", "Downloading build ${update.release.build}: ${update.percent}%", null)
-        is AppUpdater.State.NeedsPermission -> Triple(
-            "One step first",
-            "Android needs Earshot to be allowed to install apps. Turn on \"Allow from this source\", then come back.",
-            "Open settings",
-        )
-        AppUpdater.State.Installing -> Triple("Updating…", "Android will ask you to confirm the update.", null)
+        is AppUpdater.State.Available -> Triple("Update available", "Build ${update.release.build}", "Update")
+        is AppUpdater.State.Downloading -> Triple("Updating…", "${update.percent}%", null)
+        is AppUpdater.State.NeedsPermission -> Triple("Allow updates", "Allow Earshot to install apps, then come back.", "Allow")
+        AppUpdater.State.Installing -> Triple("Updating…", "Confirm on the next screen", null)
         is AppUpdater.State.Failed -> Triple("Update didn't finish", update.reason, null)
-        AppUpdater.State.Idle -> return
+        AppUpdater.State.Idle, AppUpdater.State.Checking, is AppUpdater.State.UpToDate, AppUpdater.State.CheckFailed -> return
     }
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
         Column(Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -432,10 +410,8 @@ fun AudioModePicker(mode: AudioMode, onChange: (AudioMode) -> Unit) {
         }
         Text(
             when (mode) {
-                AudioMode.HIFI ->
-                    "Music stays in full quality while you hear the call in your earbuds. The phone's own mic picks up your voice."
-                AudioMode.HEADSET ->
-                    "Uses your earbuds' mic, like a normal call. Bluetooth drops to call quality, music included."
+                AudioMode.HIFI -> "Earbuds stay in music quality; the phone's mic hears you"
+                AudioMode.HEADSET -> "Earbuds' mic, in call quality"
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

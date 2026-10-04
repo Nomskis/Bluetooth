@@ -37,6 +37,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CallEnd
@@ -57,6 +58,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -101,6 +103,7 @@ import io.github.nomskis.earshot.call.LinkQuality
 import io.github.nomskis.earshot.call.LipSync
 import io.github.nomskis.earshot.calls.OutgoingRing
 import io.github.nomskis.earshot.earbuds.EarbudBoost
+import io.github.nomskis.earshot.settings.QuickReplies
 import io.github.nomskis.earshot.ui.theme.Accent
 import io.github.nomskis.earshot.ui.theme.Danger
 import kotlin.math.roundToInt
@@ -118,14 +121,16 @@ fun CallScreen(
     onVoiceVolumeSaved: (Float) -> Unit,
     onFlipSaved: (Boolean) -> Unit = {},
     onLeaveScreen: () -> Unit,
+    quickReplies: List<String> = QuickReplies.DEFAULT,
 ) {
-    val state by session.state.collectAsStateWithLifecycle()
+    val live by session.state.collectAsStateWithLifecycle()
+    val state = calmed(live)
     val view = LocalView.current
     DisposableEffect(keepScreenOn) {
         view.keepScreenOn = keepScreenOn
         onDispose { view.keepScreenOn = false }
     }
-    // Back keeps the call running; the notification brings you back.
+    // Back keeps the call running and goes to the rest of the app; the bar at the top comes back here.
     BackHandler(onBack = onLeaveScreen)
 
     // Chat: what's unread, and their latest message as a bubble while it's closed.
@@ -166,19 +171,22 @@ fun CallScreen(
     val ownVideoBig = swapped && showRemoteVideo && showOwnVideo && !chatOpen && !inPictureInPicture
     var area by remember { mutableStateOf(IntSize.Zero) }
 
-    // The buttons get out of the way while you watch, and any tap brings them back.
-    // A voice call, or one still connecting, keeps them up.
+    // Once the call is going the buttons get out of the way, and a tap anywhere brings them back
+    // or puts them away. While it's still connecting they stay up.
     val videoOnScreen = showRemoteVideo || showOwnVideo
     var controlsShown by rememberSaveable(session) { mutableStateOf(true) }
     var sheet by rememberSaveable(session) { mutableStateOf<CallSheet?>(null) }
     val connected = state.phase == CallPhase.CONNECTED
     LaunchedEffect(controlsShown, videoOnScreen, sheet, chatOpen, connected) {
-        if (controlsShown && videoOnScreen && sheet == null && !chatOpen && connected) {
-            delay(CONTROLS_HIDE_MS)
+        if (controlsShown && sheet == null && !chatOpen && connected) {
+            delay(if (videoOnScreen) CONTROLS_HIDE_MS else VOICE_CONTROLS_HIDE_MS)
             controlsShown = false
         }
     }
-    val showControls = controlsShown || !videoOnScreen || !connected
+    val showControls = controlsShown || !connected
+    // When the buttons last appeared: a quick second tap meant for the screen mustn't hang up.
+    var shownAt by remember(session) { mutableLongStateOf(0L) }
+    LaunchedEffect(showControls) { if (showControls) shownAt = SystemClock.uptimeMillis() }
     val unread = (incoming - seenIncoming).coerceAtLeast(0)
 
     // Turning the camera on in a call that started as a voice call may need the permission first.
@@ -223,23 +231,29 @@ fun CallScreen(
 
         if (inPictureInPicture) return@Box
 
-        if (videoOnScreen) {
+        if (connected) {
             // Over the video's own surface, which doesn't take touches.
             Box(
                 Modifier
                     .fillMaxSize()
-                    .pointerInput(Unit) { detectTapGestures { controlsShown = !controlsShown } }
+                    .pointerInput(Unit) {
+                        detectTapGestures {
+                            controlsShown = !controlsShown
+                            if (controlsShown) shownAt = SystemClock.uptimeMillis()
+                        }
+                    }
                     .semantics { contentDescription = if (showControls) "Hide call buttons" else "Show call buttons" },
             )
         }
 
+        // Without video there's nothing to uncover, so who and how long stay up.
         AnimatedVisibility(
-            visible = showControls,
+            visible = showControls || !videoOnScreen,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
-            TopBar(state, onInfo = { sheet = CallSheet.INFO })
+            TopBar(state, onInfo = { sheet = CallSheet.INFO }, onMinimize = onLeaveScreen)
         }
 
         if (showOwnVideo && !chatOpen && area != IntSize.Zero) {
@@ -279,6 +293,7 @@ fun CallScreen(
                 onSend = session::sendChat,
                 onClose = { chatOpen = false },
                 modifier = Modifier.align(Alignment.BottomCenter),
+                quickReplies = quickReplies,
             )
         } else {
             AnimatedVisibility(
@@ -294,7 +309,7 @@ fun CallScreen(
                     onSwitchCamera = session::switchCamera,
                     onSpeaker = { session.setSpeaker(state.speakerOn != true) },
                     onMore = { sheet = CallSheet.MORE },
-                    onHangUp = session::hangUp,
+                    onHangUp = { if (SystemClock.uptimeMillis() - shownAt >= HANG_UP_GUARD_MS) session.hangUp() },
                     unreadChat = unread,
                 )
             }
@@ -330,11 +345,36 @@ fun CallScreen(
     }
 }
 
+/**
+ * The call as it should read: a connection that drops for a moment and comes straight back
+ * (common on mobile data) stays "connected", timer and all. Only one that's gone longer than
+ * [RECONNECT_SHOWN_AFTER_MS] says "Reconnecting".
+ */
+@Composable
+internal fun calmed(state: CallState): CallState {
+    var showReconnecting by remember { mutableStateOf(false) }
+    LaunchedEffect(state.phase) {
+        showReconnecting = false
+        if (state.phase == CallPhase.RECONNECTING) {
+            delay(RECONNECT_SHOWN_AFTER_MS)
+            showReconnecting = true
+        }
+    }
+    val blip = state.phase == CallPhase.RECONNECTING && !showReconnecting && state.connectedAt != null
+    return if (blip) state.copy(phase = CallPhase.CONNECTED) else state
+}
+
+private const val RECONNECT_SHOWN_AFTER_MS = 2_000L
+
 /** The sheets a call can open over the video. */
 internal enum class CallSheet { MORE, INFO }
 
-/** How long the call buttons stay up over video after the last tap. */
+/** How long the call buttons stay up after the last tap: over video, and in a voice call. */
 private const val CONTROLS_HIDE_MS = 4_000L
+private const val VOICE_CONTROLS_HIDE_MS = 6_000L
+
+/** Hang up ignores taps this soon after the buttons appear. */
+private const val HANG_UP_GUARD_MS = 600L
 
 private const val BUBBLE_MS = 6_000L
 
@@ -378,7 +418,7 @@ internal fun OutputHeldBanner(name: String?, onPlayOutLoud: () -> Unit, modifier
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(
-            "Your earbuds disconnected, so ${name?.let { "$it's" } ?: "their"} voice is paused. They can still hear you.",
+            "Earbuds disconnected. ${name?.let { "$it's" } ?: "Their"} voice is paused.",
             color = Color.White,
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.bodyMedium,
@@ -408,12 +448,10 @@ internal fun RemotePlaceholder(state: CallState, compact: Boolean) {
             CallPhase.CONNECTING -> state.error ?: "Connecting to the server…"
             CallPhase.WAITING -> state.contactName?.let { "Waiting for $it to join" } ?: "Waiting for the other person to join\n${state.room}"
             CallPhase.NEGOTIATING -> "Connecting to ${peerName ?: "the other person"}…"
-            CallPhase.RECONNECTING -> "Connection lost. Reconnecting…"
+            CallPhase.RECONNECTING -> "Reconnecting…"
             CallPhase.CONNECTED -> when {
-                state.remoteMedia.inPocket -> "Camera paused: ${peerName?.let { "$it's" } ?: "their"} phone is in a pocket"
-                state.remoteMedia.weakConnection ->
-                    "${peerName?.let { "$it's" } ?: "Their"} video is paused: the connection is too weak for it right now, " +
-                        "so the voice gets through. It comes back by itself."
+                state.remoteMedia.inPocket -> "${peerName?.let { "$it's" } ?: "Their"} camera is paused"
+                state.remoteMedia.weakConnection -> "Video paused: weak connection"
                 // Neither camera on: a voice call, which either side can turn into video.
                 state.remoteMedia.cameraOff && state.cameraOff -> "Voice call"
                 state.remoteMedia.cameraOff -> "${peerName ?: "They"} turned the camera off"
@@ -472,11 +510,7 @@ internal fun callingText(state: CallState): String? {
         OutgoingRing.Status.CALLING -> "Calling $name…"
         OutgoingRing.Status.RINGING -> "Ringing $name…"
         OutgoingRing.Status.ANSWERED -> "$name answered. Connecting…"
-        OutgoingRing.Status.UNREACHABLE -> if (outgoing.keepsTrying) {
-            "$name's phone can't be reached right now.\nEarshot keeps trying, or send the invite link."
-        } else {
-            "$name's phone can't be reached.\nSend the invite link, or hang up and try later."
-        }
+        OutgoingRing.Status.UNREACHABLE -> if (outgoing.keepsTrying) "Can't reach $name. Still trying…" else "Can't reach $name"
         OutgoingRing.Status.DECLINED -> "$name declined"
         OutgoingRing.Status.BUSY -> "$name is on another call"
         OutgoingRing.Status.NO_ANSWER -> "No answer from $name"
@@ -516,7 +550,7 @@ private fun CallingAvatar(name: String, ringing: Boolean) {
  * Tapping it opens the call's details.
  */
 @Composable
-internal fun TopBar(state: CallState, modifier: Modifier = Modifier, onInfo: () -> Unit = {}) {
+internal fun TopBar(state: CallState, modifier: Modifier = Modifier, onInfo: () -> Unit = {}, onMinimize: (() -> Unit)? = null) {
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     LaunchedEffect(state.connectedAt) {
         while (state.connectedAt != null) {
@@ -524,33 +558,43 @@ internal fun TopBar(state: CallState, modifier: Modifier = Modifier, onInfo: () 
             delay(1_000)
         }
     }
-    Column(
-        modifier = modifier
+    Box(
+        modifier
             .fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)))
-            .statusBarsPadding()
-            .clickable(onClickLabel = "Call details", onClick = onInfo)
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .statusBarsPadding(),
     ) {
-        Text(
-            state.remotePeer?.name?.takeIf { it.isNotBlank() } ?: state.contactName ?: state.room,
-            color = Color.White,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-        )
-        Text(callStatus(state, now), color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodyMedium)
-        val badges = buildList {
-            if (state.remoteSpeaking) add("Talking" to true)
-            if (state.remoteMedia.micMuted) add("${state.remotePeer?.name?.takeIf { it.isNotBlank() } ?: "They"} muted" to false)
-            if (state.phase == CallPhase.CONNECTED) weakConnectionLabel(state.delay, null)?.let { add(it to false) }
-            if (!state.signalingOnline && state.phase == CallPhase.CONNECTED) add("Server offline" to false)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClickLabel = "Call details", onClick = onInfo)
+                .padding(horizontal = 56.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                state.remotePeer?.name?.takeIf { it.isNotBlank() } ?: state.contactName ?: state.room,
+                color = Color.White,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
+            Text(callStatus(state, now), color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodyMedium)
+            val badges = buildList {
+                if (state.remoteSpeaking) add("Talking" to true)
+                if (state.remoteMedia.micMuted) add("${state.remotePeer?.name?.takeIf { it.isNotBlank() } ?: "They"} muted" to false)
+                if (state.phase == CallPhase.CONNECTED) weakConnectionLabel(state.delay, null)?.let { add(it to false) }
+                if (!state.signalingOnline && state.phase == CallPhase.CONNECTED) add("Server offline" to false)
+            }
+            if (badges.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    badges.forEach { (text, highlight) -> Badge(text, highlight) }
+                }
+            }
         }
-        if (badges.isNotEmpty()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                badges.forEach { (text, highlight) -> Badge(text, highlight) }
+        if (onMinimize != null) {
+            IconButton(onClick = onMinimize, modifier = Modifier.align(Alignment.TopStart).padding(start = 4.dp, top = 6.dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Minimize", tint = Color.White)
             }
         }
     }
@@ -646,14 +690,11 @@ internal fun CallInfo(state: CallState, route: AudioRoute, boostNotes: List<Stri
             state.radioNote,
             state.routeNote,
             lipSync,
-            "Using your earbuds' mic: they're on the call link, so music sounds like a call until you switch back."
-                .takeIf { state.earbudMic },
-            "Weak connection: your video is paused so your voice gets through. It comes back by itself."
-                .takeIf { state.videoPausedForVoice },
-            "Your phone is overheating, so your video is lighter until it cools down (otherwise Android would switch the camera off)."
-                .takeIf { state.thermal != null },
-            "Playing out loud now, so echo cancellation is on.".takeIf { state.echoGuard },
-            "Your music app pauses instead of dipping, so the music dip is off for this call.".takeIf { state.smartDuckUnsupported },
+            "Using the earbuds' mic (call quality)".takeIf { state.earbudMic },
+            "Weak connection: your video is paused".takeIf { state.videoPausedForVoice },
+            "Phone is hot: lighter video".takeIf { state.thermal != null },
+            "Echo cancellation on (playing out loud)".takeIf { state.echoGuard },
+            "Music dip off: your music app pauses instead".takeIf { state.smartDuckUnsupported },
         )
         notes.forEach { Text(it, color = dim, style = small) }
     }
@@ -779,23 +820,23 @@ internal fun MoreMenu(
             MenuItem(Icons.AutoMirrored.Filled.VolumeUp, if (state.speakerOn) "Speaker off" else "Speaker on", onSpeaker)
         }
         if (!cameraOn && state.hasCamera) {
-            MenuItem(Icons.Filled.Cameraswitch, if (state.frontCamera) "Use the back camera" else "Use the front camera", onSwitchCamera)
+            MenuItem(Icons.Filled.Cameraswitch, "Switch camera", onSwitchCamera)
         }
         if (cameraOn) {
-            MenuItem(Icons.Filled.Flip, if (state.flipped) "Stop mirroring my video" else "Mirror my video", onFlip)
+            MenuItem(Icons.Filled.Flip, if (state.flipped) "Mirror: on" else "Mirror: off", onFlip)
         }
         if (state.canReplay) {
-            MenuItem(Icons.Filled.Replay, if (state.replaying) "Stop replay" else "Replay the last 8 seconds", onReplay)
+            MenuItem(Icons.Filled.Replay, if (state.replaying) "Stop replay" else "Replay last 8 s", onReplay)
         }
         if (state.earbudMicAvailable) {
             MenuItem(
                 Icons.Filled.HeadsetMic,
-                if (state.earbudMic) "Back to Hi-Fi (phone mic)" else "Use the earbuds' mic (call quality)",
+                if (state.earbudMic) "Use phone mic" else "Use earbuds' mic",
                 onEarbudMic,
             )
         }
         Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
-            Text("Their voice: ${(volume * 100).roundToInt()}%", style = MaterialTheme.typography.labelLarge)
+            Text("Volume ${(volume * 100).roundToInt()}%", style = MaterialTheme.typography.labelLarge)
             Slider(
                 value = volume,
                 onValueChange = {

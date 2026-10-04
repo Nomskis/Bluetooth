@@ -23,15 +23,15 @@ object ServerHealth {
         roundTripMs?.let { ms ->
             add(
                 if (ms >= FAR_MS) {
-                    "$ms ms away. A server nearer both of you (Frankfurt for Europe and North Africa) would make calls connect and recover faster."
+                    "$ms ms away. A server nearer you both would be faster."
                 } else {
                     "$ms ms away."
                 },
             )
         }
         when (relay) {
-            true -> add("Relay ready: calls connect even when a network blocks direct calls.")
-            false -> add("No relay: calls between some networks (mobile data, many home routers) can't connect. Adding one is free with Cloudflare; see docs/deploy.md.")
+            true -> add("Relay ready")
+            false -> add("No relay: some networks won't connect")
             null -> Unit
         }
     }

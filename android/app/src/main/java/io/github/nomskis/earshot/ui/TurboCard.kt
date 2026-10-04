@@ -47,9 +47,7 @@ fun TurboCard(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Turbo (advanced)", style = MaterialTheme.typography.titleSmall)
             Text(
-                "Some of the biggest levers (codec choice, the phone's Bluetooth buffer, Bluetooth low-latency mode) " +
-                    "are locked to system apps. Shizuku, a free open-source app, unlocks them without root: you start it " +
-                    "once over Wireless debugging.",
+                "Codec, Bluetooth buffer and low-latency mode, through Shizuku",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

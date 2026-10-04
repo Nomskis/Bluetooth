@@ -131,11 +131,6 @@ fun TunerScreen(
                 .padding(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(
-                "Measures how long your earbuds take to play sound, by sound. Then try settings and keep the fastest.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             RouteCard(route, settings.audioMode, codec = codec)
             if (needsBluetoothPermission) {
                 OutlinedButton(onClick = { bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT) }) {
@@ -193,8 +188,7 @@ fun TunerScreen(
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Find my fastest setup (about a minute)") }
                     Text(
-                        "Tries your setup as it is, your earbuds' game mode where Earshot can switch it, and every codec " +
-                            "with Turbo. Keep the earbud against the mic until it's done.",
+                        "Hold the earbud to the mic until it's done.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -211,7 +205,7 @@ fun TunerScreen(
             OutlinedButton(onClick = {
                 val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
                 clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Earshot delay report", onCopyReport()))
-                android.widget.Toast.makeText(context, "Report copied. Paste it into an issue to help other people with these earbuds.", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(context, "Report copied", android.widget.Toast.LENGTH_LONG).show()
             }) { Text("Copy report") }
 
             Text("What to try", style = MaterialTheme.typography.titleMedium)
@@ -225,8 +219,7 @@ fun TunerScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Does Wi-Fi slow your earbuds?", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "Measures twice: with Wi-Fi quiet, then while the phone sends call-sized traffic to your router " +
-                            "(it stays on your network and is thrown away). Hold the earbud to the mic for about 20 seconds.",
+                        "Hold the earbud to the mic for about 20 seconds.",
                         style = MaterialTheme.typography.bodySmall,
                     )
                     OutlinedButton(onClick = onRadioTest, enabled = !running && !inCall && radioTest.busy == null && wifiBand != null) {
@@ -248,19 +241,14 @@ fun TunerScreen(
                     Text("Call audio path", style = MaterialTheme.typography.titleSmall)
                     LabelledSwitch(
                         "Game audio label",
-                        "Lets phones and earbuds that support it switch Bluetooth to low-latency mode.",
+                        "Lower Bluetooth delay where supported",
                         settings.gameAudioLabel,
                     ) { v -> onUpdateSettings { it.copy(gameAudioLabel = v) } }
                     LabelledSwitch(
                         "Low-latency playback",
-                        "Android's fast audio path. Turn off if you hear crackling.",
+                        "Turn off if you hear crackling",
                         settings.lowLatencyPlayback,
                     ) { v -> onUpdateSettings { it.copy(lowLatencyPlayback = v) } }
-                    Text(
-                        "The measurement uses the same path as calls, so measure with each to compare.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
             }
             Spacer(Modifier.height(24.dp))

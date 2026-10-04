@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.nomskis.earshot.calls.IncomingRing
+import io.github.nomskis.earshot.settings.QuickReplies
 import io.github.nomskis.earshot.ui.theme.Accent
 import io.github.nomskis.earshot.ui.theme.Danger
 
@@ -60,6 +61,7 @@ fun IncomingCallScreen(
     onDecline: () -> Unit,
     /** Declines with this message to them; null when we can't write to them (they didn't prove who they are). */
     onReply: ((String) -> Unit)? = null,
+    quickReplies: List<String> = QuickReplies.DEFAULT,
 ) {
     var replying by rememberSaveable { mutableStateOf(false) }
     val pulse by rememberInfiniteTransition(label = "ringing").animateFloat(
@@ -126,26 +128,26 @@ fun IncomingCallScreen(
             }
             if (ring.video) {
                 TextButton(onClick = onAcceptVoiceOnly) {
-                    Text("Answer without video", color = Color.White)
+                    Text("Voice only", color = Color.White)
                 }
             }
         }
     }
     if (replying && onReply != null) {
-        ReplyWithMessage(onReply = onReply, onDismiss = { replying = false })
+        ReplyWithMessage(quickReplies, onReply = onReply, onDismiss = { replying = false })
     }
 }
 
 /** The quick answers, or your own words. Picking one declines the call and sends it. */
 @Composable
-private fun ReplyWithMessage(onReply: (String) -> Unit, onDismiss: () -> Unit) {
+private fun ReplyWithMessage(quickReplies: List<String>, onReply: (String) -> Unit, onDismiss: () -> Unit) {
     var own by rememberSaveable { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Reply with a message") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                QUICK_REPLIES.forEach { reply ->
+                quickReplies.forEach { reply ->
                     TextButton(onClick = { onReply(reply) }, modifier = Modifier.fillMaxWidth()) {
                         Text(reply, modifier = Modifier.fillMaxWidth())
                     }
@@ -165,12 +167,6 @@ private fun ReplyWithMessage(onReply: (String) -> Unit, onDismiss: () -> Unit) {
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
-
-internal val QUICK_REPLIES = listOf(
-    "Can't talk now. I'll call you back.",
-    "I'll call you in a few minutes.",
-    "Can you text me?",
-)
 
 @Composable
 private fun AnswerButton(icon: ImageVector, label: String, color: Color, onClick: () -> Unit) {

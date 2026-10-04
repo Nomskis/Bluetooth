@@ -66,11 +66,11 @@ this list works with every pair of classic Bluetooth earbuds.
   the phone's radio with Bluetooth, video is kept lighter in both directions;
   optionally the call moves to mobile data, which doesn't share it at all. A
   radio test in the tuner shows what Wi-Fi traffic costs your earbuds.
-- **Survives gym Wi-Fi.** A stalled path is swapped in about a second
-  instead of WebRTC's usual 5–25. Mobile data is never touched while Wi-Fi
-  works, unless you allow it as a backup in Settings: then a stalled Wi-Fi, or
+- **Survives gym Wi-Fi.** Mobile data is never touched while Wi-Fi works,
+  unless you allow it as a backup in Settings: then a stalled path is swapped
+  in about a second instead of WebRTC's usual 5–25, and a stalled Wi-Fi, or
   one that's up but dropping packets, hands the call to mobile data until it
-  recovers.
+  recovers. A drop shorter than two seconds doesn't flash "Reconnecting".
   On 5 GHz Wi-Fi the call's packets are marked for Wi-Fi's priority queue,
   so a crowded network lets them through ahead of everyone's downloads.
 - **Voice first on a weak connection.** On a thin or long-distance link (a
@@ -113,9 +113,13 @@ this list works with every pair of classic Bluetooth earbuds.
   of jumping to the loudspeaker (one tap plays it there), and echo
   cancellation switches on whenever the call plays out loud.
 - **Text chat for loud moments.** Muted, or the gym is too loud? Type, or tap
-  a quick reply ("Can't hear you", "One sec"), also straight from the
-  notification with the phone in your pocket. Messages go phone to phone,
+  a quick reply ("Can't hear you", "One sec", or your own, set in Settings),
+  also straight from the notification with the phone in your pocket. Messages go phone to phone,
   encrypted, and are re-sent if the connection drops.
+- **Like a calling app.** Back (or the arrow) during a call goes to the rest
+  of the app, with a bar at the top back to the call. The call buttons get
+  out of the way after a few seconds, and a tap brings them back; the tap
+  that does can't hang up by accident.
 - **Messages between calls.** Tap a contact for your conversation with them,
   like a messaging app, with their latest message and what's unread on the
   home screen. A message to a phone that's offline waits on your server and
@@ -175,7 +179,8 @@ the last and keeps your settings and contacts. The other person installs the
 same file on theirs. After that, Earshot updates itself: when a newer build is
 out, the home screen offers **Update**, which downloads it and has Android
 install it over the old one (the first time, Android asks you to allow
-Earshot to install apps).
+Earshot to install apps). **Settings › About** shows your build and has
+**Check for updates**.
 
 That's the optimized build, for the smoothest calls. The release also has
 **earshot-debug.apk**: the same app with debugging on, slower, for
@@ -263,7 +268,7 @@ Android clients.
 | --- | --- |
 | Server | 76 unit and integration tests, including messages between contacts (held for a phone that's offline until it confirms them, read receipts), mangled invite links still opening the call, the app-link file, ringing (who can ring whom, first answer wins, cancel and timeout, connecting while it rings), hosted-TURN credentials and the browser client's voice detector, delay readout (which way it's weak), chat, packet-length policy and SDP tweaks |
 | Browser calls | 16 end-to-end tests: two real Chromium browsers calling each other through the server (video, audio, reloads, dropped connections, room full, camera-less join, 10 ms packets, fewer packets next to earbuds, redundant audio, HD voice, talking cue, text chat across a reload, the open-in-app link, home-screen install), three of them over a simulated bad connection, a relay that drops packets (lost voice resent; longer packets asked for and renegotiated in place, both ways round) |
-| Android app | 325 tests: protocol and chat against the shared examples, read receipts and blocking, signaling reconnects against a scripted server, incoming calls end to end against a scripted server (ringing, accept, decline, busy, missed call, calling each other at once, which calls connect while they ring, a caller ringing again after reconnecting), opening invite links, the outgoing ring's states (including a phone that joined while still ringing), audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio, path-steering, voice-first bandwidth sharing, packet length, relay route, heat and lip-sync planning, which way the connection is weak, the bad-Wi-Fi tuning, keeping calls off mobile data next to working Wi-Fi, call history and call reports, SDP tweaks, plus Robolectric tests that start the real app and render every screen. Android lint, debug and release builds |
+| Android app | 333 tests: protocol and chat against the shared examples, read receipts and blocking, the bar back to a call, quick replies, the update button, signaling reconnects against a scripted server, incoming calls end to end against a scripted server (ringing, accept, decline, busy, missed call, calling each other at once, which calls connect while they ring, a caller ringing again after reconnecting), opening invite links, the outgoing ring's states (including a phone that joined while still ringing), audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio, path-steering, voice-first bandwidth sharing, packet length, relay route, heat and lip-sync planning, which way the connection is weak, the bad-Wi-Fi tuning, keeping calls off mobile data next to working Wi-Fi, call history and call reports, SDP tweaks, plus Robolectric tests that start the real app and render every screen. Android lint, debug and release builds |
 | Android on a real phone | **Not yet.** The audio routing and the earbud drivers have to be confirmed on real hardware; the in-app audio check and the delay tuner are there for exactly that. |
 
 ## Trade-offs to know about

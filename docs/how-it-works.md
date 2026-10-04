@@ -118,7 +118,7 @@ are in [research/latency.md](research/latency.md); in short:
 | Lip sync | Their video held back by the Bluetooth delay WebRTC doesn't know about | everything |
 | Earbud game mode | Each brand's own command, on for the call and back after | OPPO/OnePlus/realme, Nothing/CMF, Xiaomi/Redmi, Huawei/Honor, Soundcore, EarFun |
 | Turbo | Android's privileged Bluetooth controls, through Shizuku: for each call, low-latency mode, the codec measured fastest, the shortest buffer; undone after | Android 13+ with Wireless debugging |
-| Fast failover | ICE tuned to swap a stalled path in ~1 s; mobile data on standby if you allow it | everything |
+| Fast failover | With mobile data on standby (if you allow it), ICE tuned to swap a stalled path in ~1 s | everything |
 | Live readout | Mouth-to-ear delay from stats plus the measured app-to-ear figure, and which way the connection is weak | everything |
 
 ## Riding out bad Wi-Fi
@@ -414,10 +414,15 @@ data like any other app would. The call report says which it was ("Mobile
 data: kept off, next to working Wi-Fi", or why it was allowed).
 
 WebRTC's defaults check standby paths every 25 seconds and call a path dead
-after 5 seconds without an answer. Earshot switches when the path in use
-goes 1 second without packets and checks standby paths every 2 seconds.
-With **Mobile data as a backup** switched on (Settings, off by default), it
-also keeps mobile data up next to Wi-Fi during calls. ICE prefers Wi-Fi as
+after 5 seconds without an answer. With **Mobile data backup** switched on
+(Settings, off by default), Earshot keeps mobile data up next to Wi-Fi during
+calls, switches when the path in use goes 1 second without packets, and
+checks the standby path every 2 seconds. On a single network those quick
+timings have nowhere to switch to: on mobile data, round trips of 1.7 s
+happen, and the quick timings can turn each one into "Reconnecting". Those calls
+keep WebRTC's own timings ([`CallTuning.FAST_FAILOVER_WITHOUT_STANDBY`](../android/app/src/main/java/io/github/nomskis/earshot/call/CallTuning.kt)
+is off), and the call screen only says "Reconnecting" once a drop has lasted
+two seconds. ICE prefers Wi-Fi as
 the cheaper network, moves to mobile data when Wi-Fi stalls, and comes back
 when it recovers; until then mobile data only carries connection checks.
 

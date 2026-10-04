@@ -78,6 +78,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         graph.settings.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val session: StateFlow<CallSession?> = graph.callManager.session
+
+    private val _callMinimized = MutableStateFlow(false)
+    /** The call carries on while the rest of the app is on screen, with a bar back to it. */
+    val callMinimized: StateFlow<Boolean> = _callMinimized.asStateFlow()
+
+    fun minimizeCall() {
+        if (session.value != null) _callMinimized.value = true
+    }
+
+    fun showCall() {
+        _callMinimized.value = false
+    }
+
+    init {
+        // Each call opens on the call screen.
+        viewModelScope.launch { session.collect { if (it == null) _callMinimized.value = false } }
+    }
     val lastError: StateFlow<String?> = graph.callManager.lastError
     val earbudBoost: StateFlow<EarbudBoost.Status?> = graph.callManager.earbudBoost.status
     val turboBoost: StateFlow<TurboBoost.Status?> = graph.callManager.turboBoost?.status ?: MutableStateFlow(null)
@@ -123,6 +140,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** A call button in a conversation: back home, which rings them (asking for permissions first). */
     fun callFromConversation(contact: Contact, video: Boolean) {
+        if (session.value != null) return showCall()
         openConversation(null)
         graph.callBack.value = CallBackRequest(contact, video, System.currentTimeMillis())
     }
@@ -134,6 +152,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun checkForUpdate() {
         viewModelScope.launch { graph.updater.check() }
     }
+
+    /** "Check for updates" in Settings. */
+    fun checkForUpdateNow() {
+        viewModelScope.launch { graph.updater.check(asked = true) }
+    }
+
+    /** Whether this build updates itself (the published one does; test builds don't). */
+    val updatesEnabled: Boolean get() = graph.updater.enabled
 
     fun installUpdate() {
         when (val state = graph.updater.state.value) {
@@ -464,13 +490,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { graph.settings.update(transform) }
     }
 
-    fun startCall(room: String, withVideo: Boolean) = graph.callManager.startCall(room, withVideo)
+    /** One call at a time: during a call, a call button goes back to it. */
+    fun startCall(room: String, withVideo: Boolean) {
+        if (session.value != null) return showCall()
+        graph.callManager.startCall(room, withVideo)
+    }
 
     /** People you can ring directly, most recent first. */
     val contacts: StateFlow<List<Contact>> =
         graph.settings.contacts.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    fun callContact(contact: Contact, withVideo: Boolean) = graph.callManager.callContact(contact, withVideo)
+    fun callContact(contact: Contact, withVideo: Boolean) {
+        if (session.value != null) return showCall()
+        graph.callManager.callContact(contact, withVideo)
+    }
 
     fun removeContact(contact: Contact) {
         viewModelScope.launch { graph.settings.removeContact(contact.address) }

@@ -16,20 +16,23 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.ui.platform.LocalContext
-import io.github.nomskis.earshot.calls.CallRecord
-import io.github.nomskis.earshot.calls.Contact
-import io.github.nomskis.earshot.signaling.ServerHealth
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -44,16 +47,22 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.nomskis.earshot.BuildConfig
-import io.github.nomskis.earshot.earbuds.EarbudDrivers
+import io.github.nomskis.earshot.calls.CallRecord
+import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.EchoCancellation
 import io.github.nomskis.earshot.settings.MicSource
+import io.github.nomskis.earshot.settings.QuickReplies
 import io.github.nomskis.earshot.settings.VideoQuality
+import io.github.nomskis.earshot.signaling.ServerHealth
 import io.github.nomskis.earshot.ui.theme.Accent
+import io.github.nomskis.earshot.update.AppUpdater
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,11 +78,17 @@ fun SettingsScreen(
     /** People you blocked; the section only shows when there are some. */
     blocked: List<Contact> = emptyList(),
     onUnblock: (Contact) -> Unit = {},
+    /** Newer builds: null when this build doesn't update itself. */
+    update: AppUpdater.State? = null,
+    onCheckForUpdate: () -> Unit = {},
+    onInstallUpdate: () -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
     var serverUrl by rememberSaveable { mutableStateOf(settings.serverUrl) }
     var displayName by rememberSaveable { mutableStateOf(settings.displayName) }
+    // The server and earbud fine-tuning most people never need (open until a server is set).
+    var advanced by rememberSaveable { mutableStateOf(settings.serverUrl.isBlank()) }
 
     fun saveText() = onUpdate { it.copy(serverUrl = serverUrl, displayName = displayName) }
 
@@ -98,42 +113,6 @@ fun SettingsScreen(
                 .padding(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Section("Server")
-            OutlinedTextField(
-                value = serverUrl,
-                onValueChange = {
-                    serverUrl = it
-                    onUpdate { s -> s.copy(serverUrl = it) }
-                },
-                label = { Text("Server address") },
-                placeholder = { Text("https://calls.example.com") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(onClick = { onCheckServer(serverUrl) }) { Text("Test connection") }
-                Spacer(Modifier.width(12.dp))
-                when (serverCheck) {
-                    ServerCheck.Idle -> Unit
-                    ServerCheck.Checking -> Text("Checking…", style = MaterialTheme.typography.bodySmall)
-                    is ServerCheck.Ok -> {
-                        Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Accent)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Server is reachable", style = MaterialTheme.typography.bodySmall)
-                    }
-                    is ServerCheck.Failed -> {
-                        Icon(Icons.Filled.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                        Spacer(Modifier.width(6.dp))
-                        Text(serverCheck.reason, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-            (serverCheck as? ServerCheck.Ok)?.let { ok ->
-                ServerHealth.notes(ok.roundTripMs, ok.relay).forEach { Hint(it) }
-            }
-            Hint("Run your own server (see docs/deploy.md). The invite links you send point at this address.")
-
             OutlinedTextField(
                 value = displayName,
                 onValueChange = {
@@ -144,15 +123,38 @@ fun SettingsScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Toggle("Receive calls", settings.receiveCalls) { v ->
-                onUpdate { it.copy(receiveCalls = v) }
+            Toggle("Receive calls", settings.receiveCalls) { v -> onUpdate { it.copy(receiveCalls = v) } }
+
+            HorizontalDivider()
+            Section("Calls")
+            AudioModePicker(settings.audioMode) { mode -> onUpdate { it.copy(audioMode = mode) } }
+            Toggle("Noise suppression", settings.noiseSuppression) { v -> onUpdate { it.copy(noiseSuppression = v) } }
+            Toggle("Automatic mic volume", settings.autoGainControl) { v -> onUpdate { it.copy(autoGainControl = v) } }
+            Toggle("Route through relay", settings.relayRoute, "Can help calls abroad") { v -> onUpdate { it.copy(relayRoute = v) } }
+            Toggle("Mobile data backup", settings.mobileDataBackup, "When Wi-Fi stalls. Uses data") { v ->
+                onUpdate { it.copy(mobileDataBackup = v) }
             }
-            Hint(
-                "Your phone rings when someone you've had a call with calls you, even with Earshot closed. " +
-                    "It keeps a small connection to your server open, with a quiet \"Ready for calls\" notification. " +
-                    "Off, people can only reach you with a room code or invite link.",
+            Toggle("Keep screen on", settings.keepScreenOn) { v -> onUpdate { it.copy(keepScreenOn = v) } }
+            Toggle("Screen off in pocket", settings.pocketGuard) { v -> onUpdate { it.copy(pocketGuard = v) } }
+
+            HorizontalDivider()
+            Section("Video")
+            Choice(
+                label = "Quality",
+                selected = settings.videoQuality,
+                options = VideoQuality.entries,
+                describe = { "${it.height}p, ${it.fps} fps" },
+                onSelect = { value -> onUpdate { it.copy(videoQuality = value) } },
             )
+            Toggle("Start with back camera", settings.startWithBackCamera) { v -> onUpdate { it.copy(startWithBackCamera = v) } }
+            Toggle("Mirror my video", settings.flip) { v -> onUpdate { it.copy(flip = v) } }
+
+            HorizontalDivider()
+            Section("Quick replies")
+            QuickRepliesEditor(settings.quickReplies) { replies -> onUpdate { it.copy(quickReplies = replies) } }
+
             if (blocked.isNotEmpty()) {
+                HorizontalDivider()
                 Section("Blocked")
                 blocked.forEach { person ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -160,138 +162,13 @@ fun SettingsScreen(
                         TextButton(onClick = { onUnblock(person) }) { Text("Unblock") }
                     }
                 }
-                Hint("Their calls don't ring and their messages don't arrive. Unblocking puts them back in your contacts.")
             }
 
             HorizontalDivider()
-            Section("Call audio")
-            AudioModePicker(settings.audioMode) { mode -> onUpdate { it.copy(audioMode = mode) } }
-
-            Choice(
-                label = "Microphone (Hi-Fi mode)",
-                selected = settings.micSource,
-                options = MicSource.entries,
-                describe = {
-                    when (it) {
-                        MicSource.MIC -> "Phone mic (recommended)"
-                        MicSource.CAMCORDER -> "Camera mic"
-                        MicSource.VOICE_RECOGNITION -> "Speech-tuned mic"
-                        MicSource.UNPROCESSED -> "Raw mic"
-                        MicSource.VOICE_COMMUNICATION -> "Call-tuned mic (experimental)"
-                    }
-                },
-                onSelect = { value -> onUpdate { it.copy(micSource = value) } },
-            )
-            Hint("Every option uses the phone's own microphone. If your voice sounds off, try another; phones differ.")
-
-            Choice(
-                label = "Echo cancellation",
-                selected = settings.echoCancellation,
-                options = EchoCancellation.entries,
-                describe = {
-                    when (it) {
-                        EchoCancellation.AUTO -> "Automatic (off with earbuds)"
-                        EchoCancellation.ON -> "Always on"
-                        EchoCancellation.OFF -> "Off"
-                    }
-                },
-                onSelect = { value -> onUpdate { it.copy(echoCancellation = value) } },
-            )
-            Toggle("Game audio label (lower Bluetooth delay where supported)", settings.gameAudioLabel) { v ->
-                onUpdate { it.copy(gameAudioLabel = v) }
-            }
-            Toggle("Low-latency playback", settings.lowLatencyPlayback) { v -> onUpdate { it.copy(lowLatencyPlayback = v) } }
-            Toggle("Show when they start talking (head-start cue)", settings.headStartCue) { v ->
-                onUpdate { it.copy(headStartCue = v) }
-            }
-            Toggle("Dip my music while they talk", settings.smartDuck) { v -> onUpdate { it.copy(smartDuck = v) } }
-            Toggle("Turn on my earbuds' game mode during calls", settings.autoGameMode) { v ->
-                onUpdate { it.copy(autoGameMode = v) }
-            }
-            Hint(
-                "For earbuds whose game mode Earshot knows how to switch (" +
-                    EarbudDrivers.familyNames.joinToString(", ") +
-                    "). It goes back to how it was when the call ends. Needs the Nearby devices permission.",
-            )
-            Toggle("Use Turbo during calls (when Shizuku is set up)", settings.turboDuringCalls) { v ->
-                onUpdate { it.copy(turboDuringCalls = v) }
-            }
-            Hint("Low-latency Bluetooth, the shortest buffer, and the codec the delay tuner measured fastest, for each call. Your music codec comes back afterwards.")
-            OutlinedButton(onClick = onOpenTuner) { Text("Open delay tuner") }
-            Toggle("Noise suppression", settings.noiseSuppression) { v -> onUpdate { it.copy(noiseSuppression = v) } }
-            Toggle("Automatic mic volume", settings.autoGainControl) { v -> onUpdate { it.copy(autoGainControl = v) } }
-            Hint("Changes apply to your next call.")
-
-            HorizontalDivider()
-            Section("Video")
-            Choice(
-                label = "Video quality",
-                selected = settings.videoQuality,
-                options = VideoQuality.entries,
-                describe = { "${it.height}p, ${it.fps} fps" },
-                onSelect = { value -> onUpdate { it.copy(videoQuality = value) } },
-            )
-            Toggle("Keep their lips in time with Bluetooth audio", settings.lipSync) { v -> onUpdate { it.copy(lipSync = v) } }
-            Hint(
-                "Earbuds on the music link play sound later than calls expect, so video runs ahead of the voice. " +
-                    "This holds video back by the difference; measure your earbuds in the delay tuner for the best match.",
-            )
-            Toggle("Start with the back camera", settings.startWithBackCamera) { v ->
-                onUpdate { it.copy(startWithBackCamera = v) }
-            }
-            Toggle("Flip", settings.flip) { v -> onUpdate { it.copy(flip = v) } }
-            Hint("Mirrors your video left to right. You and the other person see the same picture. There's a Flip button during calls too.")
-            Toggle("Keep the screen on during calls", settings.keepScreenOn) { v -> onUpdate { it.copy(keepScreenOn = v) } }
-            Toggle("Screen off in your pocket", settings.pocketGuard) { v -> onUpdate { it.copy(pocketGuard = v) } }
-            Hint(
-                "Uses the proximity sensor, like a phone call, so a pocket can't mute or hang up; never while video is on " +
-                    "the screen. The camera pauses too, so the other side sees \"phone in pocket\" instead of a black picture, " +
-                    "and the Wi-Fi airtime goes back to your earbuds. Off by default: on many phones a hand near the top of " +
-                    "the screen sets the sensor off.",
-            )
-
-            HorizontalDivider()
-            Section("Sharing the radio with Bluetooth")
-            Hint(
-                "Phones run 2.4 GHz Wi-Fi and Bluetooth on the same radio, taking turns. A video call over " +
-                    "2.4 GHz Wi-Fi takes turns away from your earbuds, which can make them stutter or lag.",
-            )
-            Toggle("Lighter video on 2.4 GHz Wi-Fi", settings.bluetoothFriendlyVideo) { v ->
-                onUpdate { it.copy(bluetoothFriendlyVideo = v) }
-            }
-            Toggle("Use mobile data instead of 2.4 GHz Wi-Fi", settings.mobileDataOn24GHz) { v ->
-                onUpdate { it.copy(mobileDataOn24GHz = v) }
-            }
-            Hint("Mobile data doesn't share the radio at all. Uses your data plan; falls back to Wi-Fi if mobile data fails.")
-            Toggle("Mobile data as a backup during calls", settings.mobileDataBackup) { v ->
-                onUpdate { it.copy(mobileDataBackup = v) }
-            }
-            Hint(
-                "Off by default: while you're on Wi-Fi, calls don't use mobile data at all. On, mobile data stays ready next to Wi-Fi, " +
-                    "and the call moves onto it when Wi-Fi stalls or keeps dropping packets, then back. That uses your data plan: " +
-                    "a video call on mobile data takes roughly 0.5 to 1.5 GB an hour.",
-            )
-
-            HorizontalDivider()
-            Section("Calls abroad")
-            Toggle("Route calls through the relay", settings.relayRoute) { v ->
-                onUpdate { it.copy(relayRoute = v) }
-            }
-            Hint(
-                "For calls between countries that stutter even on decent internet. Both phones send the call through your " +
-                    "server's TURN relay instead of directly; with Cloudflare's relay, the stretch between the two countries " +
-                    "can then run over Cloudflare's own network instead of the busy public internet. Try a call each way and " +
-                    "compare the delay readout. Needs a relay on your server (see docs/deploy.md); if it doesn't connect, the " +
-                    "call goes direct by itself. The other phone follows your choice.",
-            )
-
-            Section("Call reports")
+            Section("Last call")
             val quality = lastCall?.quality
             if (lastCall != null && quality != null) {
-                Text(
-                    "Last call with ${lastCall.name}: ${quality.verdict.name.lowercase()}",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                Text("${lastCall.name}: ${quality.verdict.name.lowercase()}", style = MaterialTheme.typography.bodyMedium)
                 Text(
                     quality.report(lastCall.durationSeconds),
                     style = MaterialTheme.typography.bodySmall,
@@ -302,16 +179,198 @@ fun SettingsScreen(
                     clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Earshot call report", quality.report(lastCall.durationSeconds)))
                 }) { Text("Copy report") }
             } else {
-                Text("After a call, how the connection held up shows here.", style = MaterialTheme.typography.bodyMedium)
+                Hint("No calls yet")
             }
-            Hint("What the connection did during the call: the route, delay, what was lost and repaired, video freezes. Send it along if a call went badly.")
+
+            HorizontalDivider()
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { advanced = !advanced },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Advanced", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                Icon(if (advanced) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown, contentDescription = null)
+            }
+            if (advanced) {
+                Section("Server")
+                OutlinedTextField(
+                    value = serverUrl,
+                    onValueChange = {
+                        serverUrl = it
+                        onUpdate { s -> s.copy(serverUrl = it) }
+                    },
+                    label = { Text("Server address") },
+                    placeholder = { Text("https://calls.example.com") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(onClick = { onCheckServer(serverUrl) }) { Text("Test") }
+                    Spacer(Modifier.width(12.dp))
+                    when (serverCheck) {
+                        ServerCheck.Idle -> Unit
+                        ServerCheck.Checking -> Text("Checking…", style = MaterialTheme.typography.bodySmall)
+                        is ServerCheck.Ok -> {
+                            Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Accent)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Reachable", style = MaterialTheme.typography.bodySmall)
+                        }
+                        is ServerCheck.Failed -> {
+                            Icon(Icons.Filled.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.width(6.dp))
+                            Text(serverCheck.reason, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+                (serverCheck as? ServerCheck.Ok)?.let { ok ->
+                    ServerHealth.notes(ok.roundTripMs, ok.relay).forEach { Hint(it) }
+                }
+
+                Section("Audio")
+                Choice(
+                    label = "Hi-Fi microphone",
+                    selected = settings.micSource,
+                    options = MicSource.entries,
+                    describe = {
+                        when (it) {
+                            MicSource.MIC -> "Phone mic"
+                            MicSource.CAMCORDER -> "Camera mic"
+                            MicSource.VOICE_RECOGNITION -> "Speech mic"
+                            MicSource.UNPROCESSED -> "Raw mic"
+                            MicSource.VOICE_COMMUNICATION -> "Call mic"
+                        }
+                    },
+                    onSelect = { value -> onUpdate { it.copy(micSource = value) } },
+                )
+                Choice(
+                    label = "Echo cancellation",
+                    selected = settings.echoCancellation,
+                    options = EchoCancellation.entries,
+                    describe = {
+                        when (it) {
+                            EchoCancellation.AUTO -> "Automatic"
+                            EchoCancellation.ON -> "Always on"
+                            EchoCancellation.OFF -> "Off"
+                        }
+                    },
+                    onSelect = { value -> onUpdate { it.copy(echoCancellation = value) } },
+                )
+
+                Section("Earbuds")
+                Toggle("Game audio label", settings.gameAudioLabel, "Lower Bluetooth delay where supported") { v -> onUpdate { it.copy(gameAudioLabel = v) } }
+                Toggle("Low-latency playback", settings.lowLatencyPlayback) { v -> onUpdate { it.copy(lowLatencyPlayback = v) } }
+                Toggle("Talking cue", settings.headStartCue, "Glow when they start talking") { v -> onUpdate { it.copy(headStartCue = v) } }
+                Toggle("Dip music while they talk", settings.smartDuck) { v -> onUpdate { it.copy(smartDuck = v) } }
+                Toggle("Earbud game mode in calls", settings.autoGameMode) { v -> onUpdate { it.copy(autoGameMode = v) } }
+                Toggle("Turbo in calls", settings.turboDuringCalls, "Needs Shizuku") { v -> onUpdate { it.copy(turboDuringCalls = v) } }
+                Toggle("Lip sync", settings.lipSync, "Delay video to match the earbuds") { v -> onUpdate { it.copy(lipSync = v) } }
+                Toggle("Lighter video on 2.4 GHz Wi-Fi", settings.bluetoothFriendlyVideo) { v -> onUpdate { it.copy(bluetoothFriendlyVideo = v) } }
+                Toggle("Mobile data instead of 2.4 GHz Wi-Fi", settings.mobileDataOn24GHz) { v -> onUpdate { it.copy(mobileDataOn24GHz = v) } }
+                OutlinedButton(onClick = onOpenTuner) { Text("Delay tuner") }
+            }
 
             HorizontalDivider()
             Section("About")
-            Text("Earshot ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
-            Hint("Free and open source under the Apache 2.0 license.")
+            Text("Earshot ${BuildConfig.VERSION_NAME}, build ${BuildConfig.VERSION_CODE}", style = MaterialTheme.typography.bodyMedium)
+            if (update != null) UpdateRow(update, onCheckForUpdate, onInstallUpdate)
         }
     }
+}
+
+/** "Check for updates", and how that went. */
+@Composable
+private fun UpdateRow(update: AppUpdater.State, onCheck: () -> Unit, onInstall: () -> Unit) {
+    when (update) {
+        is AppUpdater.State.Available -> {
+            Text("Build ${update.release.build} available", style = MaterialTheme.typography.bodyMedium)
+            Button(onClick = onInstall) { Text("Update") }
+        }
+        is AppUpdater.State.Downloading -> {
+            Text("Downloading… ${update.percent}%", style = MaterialTheme.typography.bodyMedium)
+            LinearProgressIndicator(progress = { update.percent / 100f }, modifier = Modifier.fillMaxWidth())
+        }
+        is AppUpdater.State.NeedsPermission -> {
+            Hint("Allow Earshot to install apps, then come back.")
+            Button(onClick = onInstall) { Text("Allow") }
+        }
+        AppUpdater.State.Installing -> Hint("Installing…")
+        AppUpdater.State.Checking -> Hint("Checking…")
+        else -> {
+            when (update) {
+                is AppUpdater.State.UpToDate -> Hint("Up to date")
+                AppUpdater.State.CheckFailed -> Hint("Couldn't check. Try again later.")
+                is AppUpdater.State.Failed -> Hint(update.reason)
+                else -> Unit
+            }
+            OutlinedButton(onClick = onCheck) { Text("Check for updates") }
+        }
+    }
+}
+
+/** The quick replies, each editable or removable, and room for more. */
+@Composable
+private fun QuickRepliesEditor(replies: List<String>, onChange: (List<String>) -> Unit) {
+    // Which one is being edited: its index, or replies.size for a new one.
+    var editing by remember { mutableStateOf<Int?>(null) }
+    replies.forEachIndexed { i, reply ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                reply,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClickLabel = "Edit") { editing = i }
+                    .padding(vertical = 6.dp),
+            )
+            IconButton(onClick = { onChange(replies.filterIndexed { j, _ -> j != i }) }) {
+                Icon(Icons.Filled.Close, contentDescription = "Remove $reply")
+            }
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (replies.size < QuickReplies.MAX) {
+            OutlinedButton(onClick = { editing = replies.size }) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text("Add")
+            }
+        }
+        if (replies != QuickReplies.DEFAULT) TextButton(onClick = { onChange(QuickReplies.DEFAULT) }) { Text("Reset") }
+    }
+    editing?.let { index ->
+        QuickReplyDialog(
+            initial = replies.getOrNull(index).orEmpty(),
+            onDone = { text ->
+                editing = null
+                if (text != null) {
+                    onChange(if (index < replies.size) replies.mapIndexed { j, r -> if (j == index) text else r } else replies + text)
+                }
+            },
+        )
+    }
+}
+
+/** One quick reply to write or change. Null when cancelled. */
+@Composable
+private fun QuickReplyDialog(initial: String, onDone: (String?) -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = { onDone(null) },
+        title = { Text(if (initial.isEmpty()) "New quick reply" else "Edit quick reply") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it.take(QuickReplies.MAX_LENGTH) },
+                singleLine = true,
+            )
+        },
+        confirmButton = { TextButton(onClick = { onDone(text.trim()) }, enabled = text.isNotBlank()) { Text("Save") } },
+        dismissButton = { TextButton(onClick = { onDone(null) }) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -324,15 +383,19 @@ private fun Hint(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
+/** A switch with its name, and a few words under it when the name alone doesn't say enough. */
 @Composable
-private fun Toggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun Toggle(label: String, checked: Boolean, detail: String? = null, onChange: (Boolean) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
             .clickable { onChange(!checked) },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+            detail?.let { Hint(it) }
+        }
         Switch(checked = checked, onCheckedChange = onChange)
     }
 }

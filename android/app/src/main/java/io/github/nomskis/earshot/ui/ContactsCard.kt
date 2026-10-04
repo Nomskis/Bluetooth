@@ -70,14 +70,13 @@ fun ContactsCard(
     ) {
         Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                "Call",
+                "Contacts",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
             if (contacts.isEmpty()) {
                 Text(
-                    "Tap Invite someone and send them the link. After your first call you're saved here on both " +
-                        "phones, and either of you can ring the other like a normal call.",
+                    "Invite someone below. After your first call, they're saved here.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -115,7 +114,7 @@ private fun ContactRow(
         AlertDialog(
             onDismissRequest = { blocking = false },
             title = { Text("Block ${contact.name}?") },
-            text = { Text("Their calls won't ring and their messages won't arrive. They aren't told. You can unblock them in Settings.") },
+            text = { Text("Their calls and messages won't reach you. They aren't told.") },
             confirmButton = {
                 TextButton(onClick = {
                     blocking = false
@@ -198,7 +197,7 @@ private fun ContactRow(
                     )
                 }
                 DropdownMenuItem(
-                    text = { Text("Remove from Earshot") },
+                    text = { Text("Remove") },
                     onClick = {
                         menu = false
                         onRemove(contact)

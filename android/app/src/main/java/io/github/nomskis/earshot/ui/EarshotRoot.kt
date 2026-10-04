@@ -1,6 +1,10 @@
 package io.github.nomskis.earshot.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -18,7 +22,7 @@ private enum class Screen { HOME, SETTINGS, TUNER }
 
 /** Picks the screen: an active call always wins, otherwise home, settings or the delay tuner. */
 @Composable
-fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCallScreen: () -> Unit) {
+fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val session by viewModel.session.collectAsStateWithLifecycle()
     val route by viewModel.route.collectAsStateWithLifecycle()
@@ -54,12 +58,14 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
     val update by viewModel.update.collectAsStateWithLifecycle()
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
     val openConversation by viewModel.openConversation.collectAsStateWithLifecycle()
+    val callMinimized by viewModel.callMinimized.collectAsStateWithLifecycle()
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         val current = settings ?: return@Surface Box(Modifier.fillMaxSize())
         val activeSession = session
-        when {
-            activeSession != null -> CallScreen(
+        // During a call the rest of the app stays usable, with a bar at the top back to the call.
+        if (activeSession != null && (!callMinimized || inPictureInPicture)) {
+            CallScreen(
                 session = activeSession,
                 route = route,
                 keepScreenOn = current.keepScreenOn,
@@ -69,107 +75,123 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 turboNote = turboBoost?.text,
                 onVoiceVolumeSaved = { v -> viewModel.updateSettings { it.copy(voiceVolume = v) } },
                 onFlipSaved = { on -> viewModel.updateSettings { it.copy(flip = on) } },
-                onLeaveScreen = onLeaveCallScreen,
+                onLeaveScreen = viewModel::minimizeCall,
+                quickReplies = current.quickReplies,
             )
-            openConversation != null && contacts.any { it.address == openConversation } -> {
-                val contact = contacts.first { it.address == openConversation }
-                // Read as they come only while it's really on screen, not with the app in the background.
-                LifecycleStartEffect(contact.address) {
-                    viewModel.conversationOnScreen(contact.address)
-                    onStopOrDispose { viewModel.conversationOnScreen(null) }
-                }
-                ConversationScreen(
-                    contact = contact,
-                    conversation = conversations[contact.address],
-                    onSend = { text -> viewModel.sendMessage(contact.address, text) },
-                    onCall = { video -> viewModel.callFromConversation(contact, video) },
-                    onBack = { viewModel.openConversation(null) },
-                )
+            return@Surface
+        }
+        Column(Modifier.fillMaxSize()) {
+            if (activeSession != null) {
+                val callState by activeSession.state.collectAsStateWithLifecycle()
+                OngoingCallBar(calmed(callState), onClick = viewModel::showCall)
             }
-            screen == Screen.SETTINGS -> SettingsScreen(
-                settings = current,
-                serverCheck = serverCheck,
-                onUpdate = viewModel::updateSettings,
-                onCheckServer = viewModel::checkServer,
-                onOpenTuner = { screen = Screen.TUNER },
-                onBack = {
-                    viewModel.resetServerCheck()
-                    screen = Screen.HOME
-                },
-                lastCall = callLog.firstOrNull { it.quality != null },
-                blocked = blocked,
-                onUnblock = { person -> viewModel.unblock(person.address) },
-            )
-            screen == Screen.TUNER -> TunerScreen(
-                settings = current,
-                route = route,
-                runs = delayRuns,
-                sonar = sonar,
-                codec = codec,
-                onCodecPermissionGranted = viewModel::startCodecWatcher,
-                wifiBand = remember(route) { viewModel.wifiBand() },
-                inCall = false,
-                onMeasure = viewModel::measureDelay,
-                optimizer = optimizer,
-                onFindFastest = viewModel::findFastestSetup,
-                onCopyReport = { viewModel.report(route) },
-                onClearRuns = viewModel::clearDelayRuns,
-                onUpdateSettings = viewModel::updateSettings,
-                earbuds = {
-                    val earbuds by viewModel.earbuds.collectAsStateWithLifecycle()
-                    EarbudCard(
-                        info = earbuds,
-                        autoGameMode = current.autoGameMode,
-                        onDetect = viewModel::detectEarbuds,
-                        onSwitch = viewModel::setEarbudGameMode,
-                        onAutoGameMode = { v -> viewModel.updateSettings { it.copy(autoGameMode = v) } },
+            // The bar has the status bar's space; the screens under it don't need it again.
+            Box(Modifier.weight(1f).then(if (activeSession != null) Modifier.consumeWindowInsets(WindowInsets.statusBars) else Modifier)) {
+                when {
+                    openConversation != null && contacts.any { it.address == openConversation } -> {
+                        val contact = contacts.first { it.address == openConversation }
+                        // Read as they come only while it's really on screen, not with the app in the background.
+                        LifecycleStartEffect(contact.address) {
+                            viewModel.conversationOnScreen(contact.address)
+                            onStopOrDispose { viewModel.conversationOnScreen(null) }
+                        }
+                        ConversationScreen(
+                            contact = contact,
+                            conversation = conversations[contact.address],
+                            onSend = { text -> viewModel.sendMessage(contact.address, text) },
+                            onCall = { video -> viewModel.callFromConversation(contact, video) },
+                            onBack = { viewModel.openConversation(null) },
+                        )
+                    }
+                    screen == Screen.SETTINGS -> SettingsScreen(
+                        settings = current,
+                        serverCheck = serverCheck,
+                        onUpdate = viewModel::updateSettings,
+                        onCheckServer = viewModel::checkServer,
+                        onOpenTuner = { screen = Screen.TUNER },
+                        onBack = {
+                            viewModel.resetServerCheck()
+                            screen = Screen.HOME
+                        },
+                        lastCall = callLog.firstOrNull { it.quality != null },
+                        blocked = blocked,
+                        onUnblock = { person -> viewModel.unblock(person.address) },
+                        update = update.takeIf { viewModel.updatesEnabled },
+                        onCheckForUpdate = viewModel::checkForUpdateNow,
+                        onInstallUpdate = viewModel::installUpdate,
                     )
-                },
-                radioTest = radioTest,
-                onRadioTest = viewModel::runRadioTest,
-                turbo = {
-                    val turboStatus by viewModel.turboStatus.collectAsStateWithLifecycle()
-                    TurboCard(
-                        status = turboStatus,
-                        info = turboInfo,
-                        onRefresh = viewModel::refreshTurbo,
-                        onRequestPermission = viewModel::requestTurboPermission,
-                        onLoadDiagnostics = viewModel::loadTurboDiagnostics,
-                        onEnableLowLatency = viewModel::turboEnableLowLatency,
-                        onShortestBuffer = viewModel::turboShortestBuffer,
-                        onSweepCodecs = viewModel::turboSweepCodecs,
+                    screen == Screen.TUNER -> TunerScreen(
+                        settings = current,
+                        route = route,
+                        runs = delayRuns,
+                        sonar = sonar,
+                        codec = codec,
+                        onCodecPermissionGranted = viewModel::startCodecWatcher,
+                        wifiBand = remember(route) { viewModel.wifiBand() },
+                        inCall = activeSession != null,
+                        onMeasure = viewModel::measureDelay,
+                        optimizer = optimizer,
+                        onFindFastest = viewModel::findFastestSetup,
+                        onCopyReport = { viewModel.report(route) },
+                        onClearRuns = viewModel::clearDelayRuns,
+                        onUpdateSettings = viewModel::updateSettings,
+                        earbuds = {
+                            val earbuds by viewModel.earbuds.collectAsStateWithLifecycle()
+                            EarbudCard(
+                                info = earbuds,
+                                autoGameMode = current.autoGameMode,
+                                onDetect = viewModel::detectEarbuds,
+                                onSwitch = viewModel::setEarbudGameMode,
+                                onAutoGameMode = { v -> viewModel.updateSettings { it.copy(autoGameMode = v) } },
+                            )
+                        },
+                        radioTest = radioTest,
+                        onRadioTest = viewModel::runRadioTest,
+                        turbo = {
+                            val turboStatus by viewModel.turboStatus.collectAsStateWithLifecycle()
+                            TurboCard(
+                                status = turboStatus,
+                                info = turboInfo,
+                                onRefresh = viewModel::refreshTurbo,
+                                onRequestPermission = viewModel::requestTurboPermission,
+                                onLoadDiagnostics = viewModel::loadTurboDiagnostics,
+                                onEnableLowLatency = viewModel::turboEnableLowLatency,
+                                onShortestBuffer = viewModel::turboShortestBuffer,
+                                onSweepCodecs = viewModel::turboSweepCodecs,
+                            )
+                        },
+                        onBack = { screen = Screen.HOME },
                     )
-                },
-                onBack = { screen = Screen.HOME },
-            )
-            else -> HomeScreen(
-                settings = current,
-                route = route,
-                error = error,
-                pendingRoom = pendingRoom,
-                onConsumePendingRoom = viewModel::consumePendingRoom,
-                onDismissError = viewModel::clearError,
-                onUpdateSettings = viewModel::updateSettings,
-                earbuds = earbudInfo,
-                onDetectEarbuds = viewModel::detectEarbuds,
-                onJoin = viewModel::startCall,
-                onOpenSettings = { screen = Screen.SETTINGS },
-                interrupted = interrupted,
-                onDismissInterrupted = viewModel::dismissInterruptedCall,
-                contacts = contacts,
-                onCallContact = viewModel::callContact,
-                onRemoveContact = viewModel::removeContact,
-                callBack = callBack,
-                onConsumeCallBack = viewModel::consumeCallBack,
-                inboxStatus = inboxStatus,
-                update = update,
-                onUpdate = viewModel::installUpdate,
-                conversations = conversations,
-                onOpenConversation = { contact -> viewModel.openConversation(contact.address) },
-                recentCalls = callLog,
-                onRenameContact = { contact, name -> viewModel.renameContact(contact.address, name) },
-                onBlockContact = viewModel::block,
-            )
+                    else -> HomeScreen(
+                        settings = current,
+                        route = route,
+                        error = error,
+                        pendingRoom = pendingRoom,
+                        onConsumePendingRoom = viewModel::consumePendingRoom,
+                        onDismissError = viewModel::clearError,
+                        onUpdateSettings = viewModel::updateSettings,
+                        earbuds = earbudInfo,
+                        onDetectEarbuds = viewModel::detectEarbuds,
+                        onJoin = viewModel::startCall,
+                        onOpenSettings = { screen = Screen.SETTINGS },
+                        interrupted = interrupted,
+                        onDismissInterrupted = viewModel::dismissInterruptedCall,
+                        contacts = contacts,
+                        onCallContact = viewModel::callContact,
+                        onRemoveContact = viewModel::removeContact,
+                        callBack = callBack,
+                        onConsumeCallBack = viewModel::consumeCallBack,
+                        inboxStatus = inboxStatus,
+                        update = update,
+                        onUpdate = viewModel::installUpdate,
+                        conversations = conversations,
+                        onOpenConversation = { contact -> viewModel.openConversation(contact.address) },
+                        recentCalls = callLog,
+                        onRenameContact = { contact, name -> viewModel.renameContact(contact.address, name) },
+                        onBlockContact = viewModel::block,
+                    )
+                }
+            }
         }
     }
 }

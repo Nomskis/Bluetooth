@@ -3,6 +3,7 @@ package io.github.nomskis.earshot
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -39,7 +40,9 @@ class AppLaunchTest {
         compose.onNodeWithText("Invite someone").performScrollTo().assertIsDisplayed()
 
         compose.onNodeWithContentDescription("Settings").performClick()
-        compose.onNodeWithText("Open delay tuner").performScrollTo().performClick()
+        // Under Advanced, which starts open while no server is set.
+        if (compose.onAllNodesWithText("Delay tuner").fetchSemanticsNodes().isEmpty()) compose.onNodeWithText("Advanced").performScrollTo().performClick()
+        compose.onNodeWithText("Delay tuner").performScrollTo().performClick()
         compose.onNodeWithText("Delay tuner").assertIsDisplayed()
         compose.onNodeWithText("Find my fastest setup (about a minute)").performScrollTo().assertIsDisplayed()
     }

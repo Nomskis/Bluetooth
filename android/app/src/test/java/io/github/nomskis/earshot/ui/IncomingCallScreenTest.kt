@@ -35,7 +35,7 @@ class IncomingCallScreenTest {
         compose.onNodeWithText("Salma").assertIsDisplayed()
         compose.onNodeWithText("Earshot video call").assertIsDisplayed()
         compose.onNodeWithContentDescription("Accept").performClick()
-        compose.onNodeWithText("Answer without video").performClick()
+        compose.onNodeWithText("Voice only").performClick()
         compose.onNodeWithContentDescription("Decline").performClick()
         assertEquals(listOf("accept", "voice", "decline"), taps)
     }
@@ -46,6 +46,6 @@ class IncomingCallScreenTest {
             EarshotTheme { IncomingCallScreen(ring.copy(video = false), onAccept = {}, onAcceptVoiceOnly = {}, onDecline = {}) }
         }
         compose.onNodeWithText("Earshot voice call").assertIsDisplayed()
-        compose.onNodeWithText("Answer without video").assertDoesNotExist()
+        compose.onNodeWithText("Voice only").assertDoesNotExist()
     }
 }
