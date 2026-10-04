@@ -127,6 +127,14 @@ against the WebRTC source the app ships with
   concealed. That adds bytes, not packets, and on Wi-Fi each packet's airtime
   costs more than its size: about 100 kbps more at HD voice. Opus's own
   in-band FEC stays on underneath.
+- **Voice that fits the connection.** WebRTC sends audio at a fixed bitrate
+  whatever its bandwidth estimate says, and HD voice with its copies is about
+  250 kbps. When the estimate (`availableOutgoingBitrate`) says that doesn't
+  fit with room for some video, the voice steps down to 32, then 20 kbps Opus
+  (still clear speech) through the sender's `maxBitrateBps`, and steps back up
+  once there's room. Stepping up is a probe: a step that doesn't hold makes
+  the next try wait longer
+  ([`call/AudioBudget.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/AudioBudget.kt)).
 - **A jitter buffer sized for spikes.** WebRTC sizes the audio buffer to
   absorb 95% of the delay spikes it has seen; Earshot asks for 97%
   (`WebRTC-Audio-NetEqDelayManagerConfig/quantile:0.97/`), so a jittery

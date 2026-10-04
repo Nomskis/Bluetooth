@@ -164,6 +164,12 @@ class CallSession(
         var chatChannel: DataChannel? = null
         /** When priority marks were switched on for this connection; 0 = not marked. */
         var markedAt = 0L
+        /** Keeps our voice inside what this connection can carry. */
+        val audioBudget = AudioBudget()
+        /** Last stats sample's cumulative bytes sent, for rates. */
+        var audioBytes: Double? = null
+        var videoBytes: Double? = null
+        var bytesAt = 0L
 
         val isHealthy: Boolean
             get() = pc.iceConnectionState().let {
@@ -570,12 +576,30 @@ class CallSession(
         // Earbuds can connect mid-call; keep the earbud-mic button honest.
         val micAvailable = profile.mode == AudioMode.HIFI && (_state.value.earbudMic || audioController.earbudMicAvailable())
         _state.update { it.copy(delay = delay, earbudMicAvailable = micAvailable) }
+        followAudioBudget(l, entries)
         steer(l, entries)
         val path = RadioPlan.pathFor(CallStats.selectedNetworkType(entries)) ?: return
         if (path == _state.value.callPath) return
         Log.i(TAG, "Media now flows over $path")
         _state.update { it.copy(callPath = path, radioNote = radioNote(radioPlan, path)) }
         applyVideoCap(l)
+    }
+
+    /** Leaner voice when the connection can't carry HD voice with its copies, and back. */
+    private fun followAudioBudget(l: Link, entries: Map<String, CallStats.Entry>) {
+        val now = SystemClock.elapsedRealtime()
+        val audio = CallStats.outboundBytes(entries, "audio")
+        val video = CallStats.outboundBytes(entries, "video")
+        val seconds = (now - l.bytesAt) / 1000.0
+        val audioBps = if (audio != null && l.audioBytes != null && l.bytesAt > 0 && seconds > 0) (audio - l.audioBytes!!) * 8 / seconds else null
+        val sendingVideo = video != null && l.videoBytes != null && video > l.videoBytes!!
+        l.audioBytes = audio
+        l.videoBytes = video
+        l.bytesAt = now
+        if (l.audioBudget.update(CallStats.availableOutgoingBitrate(entries), audioBps, sendingVideo, now)) {
+            Log.i(TAG, "Voice now ${l.audioBudget.capBps?.let { "capped at ${it / 1000} kbps" } ?: "at full quality"} for this connection")
+            engine.capAudioSend(l.pc, l.audioBudget.capBps)
+        }
     }
 
     private fun watchStats(l: Link) {

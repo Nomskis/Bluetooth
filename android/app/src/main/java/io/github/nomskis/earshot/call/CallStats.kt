@@ -36,6 +36,17 @@ object CallStats {
         return received to lost
     }
 
+    /** WebRTC's estimate of what we can send, bits per second (RTCIceCandidatePairStats.availableOutgoingBitrate). */
+    fun availableOutgoingBitrate(report: Map<String, Entry>): Double? =
+        number(selectedPair(report)?.members?.get("availableOutgoingBitrate"))
+
+    /** Cumulative bytes we've sent of [kind] ("audio" or "video"), payload and headers (RTCOutboundRtpStreamStats). */
+    fun outboundBytes(report: Map<String, Entry>, kind: String): Double? {
+        val streams = report.values.filter { it.type == "outbound-rtp" && it.members["kind"] == kind }
+        if (streams.isEmpty()) return null
+        return streams.sumOf { (number(it.members["bytesSent"]) ?: 0.0) + (number(it.members["headerBytesSent"]) ?: 0.0) }
+    }
+
     /** True when the connection in use goes through a TURN relay (either end's candidate is "relay"). */
     fun relayed(report: Map<String, Entry>): Boolean? {
         val pair = selectedPair(report) ?: return null

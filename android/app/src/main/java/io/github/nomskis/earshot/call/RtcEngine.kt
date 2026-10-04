@@ -285,6 +285,18 @@ class RtcEngine(
         }
     }
 
+    /** Caps the Opus bitrate of our voice ([bps] null = as negotiated). Takes effect without renegotiating. */
+    fun capAudioSend(pc: PeerConnection, bps: Int?) {
+        for (sender in pc.senders) {
+            val kind = runCatching { sender.track()?.kind() }.getOrNull()
+            if (kind != MediaStreamTrack.AUDIO_TRACK_KIND) continue
+            val parameters = sender.parameters
+            if (parameters.encodings.isEmpty() || parameters.encodings.all { it.maxBitrateBps == bps }) continue
+            parameters.encodings.forEach { it.maxBitrateBps = bps }
+            if (!sender.setParameters(parameters)) Log.w(TAG, "Could not cap audio at $bps bps")
+        }
+    }
+
     /**
      * Temporal layers for our video when it's VP8 (see [WebRtcTuning.VIDEO_SCALABILITY_MODE]).
      * Called once the call is connected, when the codec is settled; its own setParameters
