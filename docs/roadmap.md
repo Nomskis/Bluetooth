@@ -23,10 +23,10 @@ Roughly in order. Each item stands on its own; pick any.
 - **Headset mode to Hi-Fi mid-call.** Hi-Fi calls can now borrow the earbud
   mic and come back; a call started in headset mode still can't move to
   Hi-Fi without rebuilding the audio device module.
-- **Connection quality at a glance.** The delay readout already breaks down
-  network time, packet loss and whether the call is direct or relayed; a
-  simple good/poor indicator and the negotiated codec and bitrate would round
-  it off.
+- **Codec and bitrate in the readout.** The delay readout already says
+  which way the connection is weak, the loss each way, whether the call is
+  direct or relayed and the audio packet length; the negotiated video codec
+  and the bitrates in use would round it off.
 - **A private release key.** The latest release carries an optimized,
   non-debuggable APK signed with the shared debug key, so builds install over
   each other; signing with a key kept in the repository's secrets would stop
@@ -38,6 +38,17 @@ Roughly in order. Each item stands on its own; pick any.
   nothing).
 - **App links** so `https://<server>/r/<room>` opens the Android app when it's
   installed (`earshot://join/<room>` already works).
+
+- **Try the relay route by itself.** The relay route (Calls abroad) is a
+  switch to compare by hand. WebRTC prunes a relayed path while a direct one
+  works on the same network, so the two can't be measured side by side; a
+  call that stays weak could instead try the relay for a minute, compare loss
+  and delay, and keep the better one.
+- **Confirm the bad-connection features on a real long-distance call.**
+  Voice first, longer packets and resends are tested against WebRTC's own
+  code and a simulated lossy link; a real call between two countries on weak
+  Wi-Fi or mobile data, with the readout's numbers noted, would tune the
+  thresholds.
 
 ## Later
 

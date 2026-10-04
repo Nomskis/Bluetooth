@@ -29,6 +29,14 @@ data class RemoteMedia(
     val audioMode: String? = null,
     /** Their camera is paused because their phone is in a pocket. */
     val inPocket: Boolean = false,
+    /** Their video is paused because the connection can't carry it next to the voice. */
+    val weakConnection: Boolean = false,
+    /** The network their media goes over ("wifi", "cellular"), when they say. */
+    val network: String? = null,
+    /** How their uplink is doing ("tight", "starved"); null when fine or not said. */
+    val uplink: String? = null,
+    /** Their Wi-Fi shares its radio with Bluetooth earbuds. */
+    val radioShared: Boolean = false,
 )
 
 /** A contact being rung from this call. [keepsTrying]: unreachable for now, and still ringing again. */
@@ -62,6 +70,8 @@ data class CallState(
     val callPath: CallPath? = null,
     /** What Earshot is doing to keep the shared radio free for the earbuds, if anything. */
     val radioNote: String? = null,
+    /** How the call is routed when that's been chosen for it: through the relay, or direct after the relay failed. */
+    val routeNote: String? = null,
     /** How far her video is held back to match the Bluetooth audio delay; null when not. */
     val lipSync: LipSync.Plan? = null,
     /** Where her voice spends its time on the way to your ear, once stats arrive. */
@@ -70,6 +80,8 @@ data class CallState(
     val earbudMic: Boolean = false,
     /** The earbuds can carry a call, so the earbud mic can be switched on. */
     val earbudMicAvailable: Boolean = false,
+    /** Our video is paused because the connection can't carry it next to the voice ([MediaBudget]). */
+    val videoPausedForVoice: Boolean = false,
     /** Outgoing video lightened because the phone is warm; null when it isn't. */
     val thermal: ThermalPlan? = null,
     /** Shown when connecting takes long: what's probably wrong. */

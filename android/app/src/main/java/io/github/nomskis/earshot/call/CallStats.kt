@@ -36,6 +36,37 @@ object CallStats {
         return received to lost
     }
 
+    /** Cumulative (concealedSamples, totalSamplesReceived) for her audio. */
+    fun audioConcealment(report: Map<String, Entry>): Pair<Double, Double>? {
+        val inbound = report.values.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "audio" } ?: return null
+        val concealed = number(inbound.members["concealedSamples"]) ?: return null
+        val total = number(inbound.members["totalSamplesReceived"]) ?: return null
+        return concealed to total
+    }
+
+    /**
+     * Share of our packets lost on the way to her, 0..1, from her side's last receiver
+     * report (RTCRemoteInboundRtpStreamStats.fractionLost): audio, or video when there's
+     * no report on the audio yet.
+     */
+    fun sendLossFraction(report: Map<String, Entry>): Double? {
+        val remote = report.values.filter { it.type == "remote-inbound-rtp" }
+        return listOf("audio", "video").firstNotNullOfOrNull { kind ->
+            remote.firstOrNull { it.members["kind"] == kind }?.let { number(it.members["fractionLost"]) }
+        }
+    }
+
+    /** Cumulative counters for her audio, for [PacketTime]; null until all are reported. */
+    fun inboundAudioCounters(report: Map<String, Entry>): PacketTime.Counters? {
+        val inbound = report.values.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "audio" } ?: return null
+        return PacketTime.Counters(
+            packetsReceived = number(inbound.members["packetsReceived"]) ?: return null,
+            packetsLost = number(inbound.members["packetsLost"]) ?: return null,
+            concealedSamples = number(inbound.members["concealedSamples"]) ?: return null,
+            totalSamples = number(inbound.members["totalSamplesReceived"]) ?: return null,
+        )
+    }
+
     /** WebRTC's estimate of what we can send, bits per second (RTCIceCandidatePairStats.availableOutgoingBitrate). */
     fun availableOutgoingBitrate(report: Map<String, Entry>): Double? =
         number(selectedPair(report)?.members?.get("availableOutgoingBitrate"))
@@ -45,6 +76,13 @@ object CallStats {
         val streams = report.values.filter { it.type == "outbound-rtp" && it.members["kind"] == kind }
         if (streams.isEmpty()) return null
         return streams.sumOf { (number(it.members["bytesSent"]) ?: 0.0) + (number(it.members["headerBytesSent"]) ?: 0.0) }
+    }
+
+    /** Cumulative packets we've sent of [kind] ("audio" or "video"), resends included (RTCOutboundRtpStreamStats). */
+    fun outboundPackets(report: Map<String, Entry>, kind: String): Double? {
+        val streams = report.values.filter { it.type == "outbound-rtp" && it.members["kind"] == kind }
+        if (streams.isEmpty()) return null
+        return streams.sumOf { number(it.members["packetsSent"]) ?: 0.0 }
     }
 
     /** True when the connection in use goes through a TURN relay (either end's candidate is "relay"). */

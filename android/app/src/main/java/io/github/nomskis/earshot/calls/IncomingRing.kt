@@ -9,4 +9,6 @@ data class IncomingRing(
     /** Their inbox address, when they proved it; lets you call back. */
     val callerAddress: String?,
     val video: Boolean,
+    /** The caller's app lets this phone connect while it rings (only done for a saved contact). */
+    val preconnect: Boolean = false,
 )

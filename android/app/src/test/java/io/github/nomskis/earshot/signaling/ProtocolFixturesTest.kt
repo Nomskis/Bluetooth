@@ -66,6 +66,13 @@ class ProtocolFixturesTest {
         assertEquals(SignalData.MediaState(micMuted = true, cameraOff = false, audioMode = null), media.data)
         val pocket = decodeServerMessage(File(fixtures, "server/signal-media-state-pocket.json").readText()) as ServerMessage.Signal
         assertEquals(SignalData.MediaState(micMuted = false, cameraOff = true, audioMode = "hifi", inPocket = true), pocket.data)
+        val weak = decodeServerMessage(File(fixtures, "server/signal-media-state-weak.json").readText()) as ServerMessage.Signal
+        assertEquals(SignalData.MediaState(micMuted = false, cameraOff = true, audioMode = "hifi", weakConnection = true), weak.data)
+        val link = decodeServerMessage(File(fixtures, "server/signal-media-state-link.json").readText()) as ServerMessage.Signal
+        assertEquals(
+            SignalData.MediaState(micMuted = false, cameraOff = false, audioMode = "hifi", network = "wifi", uplink = "starved", radioShared = true),
+            link.data,
+        )
     }
 
     @Test
@@ -74,6 +81,7 @@ class ProtocolFixturesTest {
         assertEquals("calm-otter-4821", incoming.room)
         assertEquals(Caller("Salma", "1D8ANuTJStR4AyHh0kwUw6"), incoming.from)
         assertTrue(incoming.video)
+        assertTrue(incoming.preconnect)
         val status = decodeServerMessage(File(fixtures, "server/ring-status.json").readText()) as ServerMessage.RingStatus
         assertEquals("ringing", status.status)
         val cancelled = decodeServerMessage(File(fixtures, "server/ring-cancelled.json").readText()) as ServerMessage.RingCancelled
@@ -89,6 +97,16 @@ class ProtocolFixturesTest {
         val text = """{"type":"signal","from":"abcdefgh","data":{"kind":"request-offer","session":null}}"""
         val message = decodeServerMessage(text) as ServerMessage.Signal
         assertEquals(SignalData.RequestOffer(null), message.data)
+    }
+
+    @Test
+    fun aRequestToRenegotiateInPlaceSaysSo() {
+        val text = File(fixtures, "client/signal-request-offer-renegotiate.json").readText()
+        val request = ProtocolJson.decodeFromString(ClientMessage.serializer(), text) as ClientMessage.Signal
+        assertEquals(SignalData.RequestOffer("s-3HkLtQnPb", iceRestart = false), request.data)
+        // Without the field it's the old meaning: restart ICE.
+        val plain = encodeClientMessage(ClientMessage.Signal("abcdefgh", SignalData.RequestOffer("s-1")))
+        assertEquals("""{"type":"signal","to":"abcdefgh","data":{"kind":"request-offer","session":"s-1"}}""", plain)
     }
 
     @Test

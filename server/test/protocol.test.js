@@ -26,6 +26,15 @@ describe('protocol', () => {
     }
   });
 
+  it('passes on a ring that may connect ahead of the answer, and only a real true', () => {
+    const raw = fs.readFileSync(path.join(fixturesDir, 'client', 'ring.json'), 'utf8');
+    assert.equal(parseClientMessage(raw).preconnect, true);
+    const ring = { ...JSON.parse(raw), preconnect: 'yes' };
+    assert.equal(parseClientMessage(JSON.stringify(ring)).preconnect, false);
+    delete ring.preconnect;
+    assert.equal(parseClientMessage(JSON.stringify(ring)).preconnect, false);
+  });
+
   it('normalizes room codes', () => {
     assert.equal(normalizeRoom('  Blue-Otter-42 '), 'blue-otter-42');
     for (const bad of ['', 'ab', '-abc', 'abc-', 'has space', 'ä-room', 'x'.repeat(65)]) {

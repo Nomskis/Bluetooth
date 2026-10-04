@@ -169,6 +169,38 @@ test('both sides send 10 ms audio packets for lower delay', async ({ browser }) 
   await b.context.close();
 });
 
+test('a phone whose radio is shared with earbuds gets half as many packets', async ({ browser }) => {
+  const room = uniqueRoom('shared');
+  const a = await joinAs(browser, room, 'A');
+  const b = await joinAs(browser, room, 'B');
+  await expectRemoteVideo(a.page);
+  await expectRemoteVideo(b.page);
+  const packetsPerSecond = (page) =>
+    page.evaluate(async () => {
+      const sent = async () => {
+        let n = 0;
+        (await window.earshot.engine.getStats())?.forEach((s) => {
+          if (s.type === 'outbound-rtp' && s.kind === 'audio') n = s.packetsSent;
+        });
+        return n;
+      };
+      const before = await sent();
+      await new Promise((r) => setTimeout(r, 2000));
+      return ((await sent()) - before) / 2;
+    });
+  expect(await packetsPerSecond(a.page)).toBeGreaterThan(85);
+  // A says what the Android app says on 2.4 GHz Wi-Fi next to Bluetooth audio.
+  await a.page.evaluate(() => {
+    const to = window.earshot.engine.remotePeer.peerId;
+    window.earshot.signaling.send({ type: 'signal', to, data: { kind: 'media-state', micMuted: false, cameraOff: false, radioShared: true } });
+  });
+  await expect.poll(() => b.page.evaluate(() => window.earshot.engine.packetTimeMs)).toBe(20);
+  // B asks for 20 ms packets, renegotiating in place: A now sends about 50 a second.
+  await expect.poll(() => packetsPerSecond(a.page), { timeout: 20_000 }).toBeLessThan(65);
+  await a.context.close();
+  await b.context.close();
+});
+
 test('both sides negotiate redundant audio (RED) so lost packets are repaired instantly', async ({ browser }) => {
   const room = uniqueRoom('red');
   const a = await joinAs(browser, room, 'A');

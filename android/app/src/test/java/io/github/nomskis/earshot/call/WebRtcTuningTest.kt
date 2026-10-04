@@ -1,6 +1,7 @@
 package io.github.nomskis.earshot.call
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,6 +31,28 @@ class WebRtcTuningTest {
         val config = trials().getValue("WebRTC-Audio-NetEqDelayManagerConfig")
         val quantile = config.removePrefix("quantile:").toDouble()
         assertTrue(quantile > 0.95 && quantile < 1.0)
+    }
+
+    @Test
+    fun smallVideoIsEncodedInSoftwareSoTemporalLayersWorkWhateverTheCodec() {
+        // video_encoder_software_fallback_wrapper.cc: ParseFieldTrial({resolution_threshold_px},
+        // "WebRTC-Video-EncoderFallbackSettings"); unlike the VP8-only trial, any codec switches.
+        val config = trials().getValue("WebRTC-Video-EncoderFallbackSettings")
+        val (key, value) = config.split(':')
+        assertEquals("resolution_threshold_px", key)
+        val maxPixels = value.toInt()
+        // 360p and below in software, 540p and up in hardware; above WebRTC's 320x180 floor.
+        assertTrue(640 * 360 <= maxPixels && 960 * 540 > maxPixels)
+        assertTrue(maxPixels > 320 * 180)
+        // It takes precedence over the VP8-only trial, which would only confuse; it isn't set.
+        assertFalse(trials().containsKey("WebRTC-VP8-Forced-Fallback-Encoder-v2"))
+    }
+
+    @Test
+    fun gapsAreConcealedByOpusItself() {
+        // audio_decoder_opus.cc: field_trial::IsEnabled("WebRTC-Audio-OpusGeneratePlc"), which
+        // only looks for a value starting with "Enabled".
+        assertTrue(trials().getValue(WebRtcTuning.OPUS_CONCEALMENT).startsWith("Enabled"))
     }
 
     @Test

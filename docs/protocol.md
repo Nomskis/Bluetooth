@@ -25,7 +25,13 @@ format has to update the examples and keep both sides passing.
   tab).
 - `client`: `{ "platform": "android" | "web" | ..., "version": "0.1.0", "capabilities": ["hifi-audio", "chat"] }`.
   `chat` means the client has text chat (below); clients show the chat only
-  when the other side lists it.
+  when the other side lists it. `renegotiate` means it answers
+  `request-offer` with `iceRestart: false` by renegotiating in place.
+  `relay-route` means this side wants the call through the TURN relay at
+  both ends; the other side relays too (relay-only ICE) when it has a relay,
+  and goes direct if that doesn't connect within 12 s. `ringing` means this
+  peer joined while its phone is still ringing (see "Connecting while it
+  rings" below).
 
 ## Server → client
 
@@ -60,14 +66,14 @@ channel during a call (see `contact` below).
 | Client → server | Fields | Meaning |
 | --- | --- | --- |
 | `listen` | `inbox` | Deliver rings for this key's address to this socket. Several devices may listen on one address. |
-| `ring` | `to`, `ringId`, `room`, `name?`, `video?`, `inbox?` | Ring an address. `ringId` is chosen by the caller (8 to 64 URL-safe characters). `inbox` is the caller's own key, which proves its address to the callee. |
+| `ring` | `to`, `ringId`, `room`, `name?`, `video?`, `inbox?`, `preconnect?` | Ring an address. `ringId` is chosen by the caller (8 to 64 URL-safe characters). `inbox` is the caller's own key, which proves its address to the callee. `preconnect: true`: the callee may connect while it rings (below). |
 | `ring-cancel` | `ringId` | The caller gave up. Closing the socket does the same. |
 | `ring-answer` | `ringId`, `accepted`, `reason?` (`declined`, `busy`) | From a device listening on the rung address. The first answer wins. |
 
 | Server → client | Fields | Meaning |
 | --- | --- | --- |
 | `listening` | `address` | Rings for this address will come here. |
-| `incoming` | `ringId`, `room`, `from: { name, address }`, `video` | Someone is ringing. `address` is null if the caller didn't prove one. |
+| `incoming` | `ringId`, `room`, `from: { name, address }`, `video`, `preconnect?` | Someone is ringing. `address` is null if the caller didn't prove one. `preconnect` is passed on from the ring, only when true. |
 | `ring-status` | `ringId`, `status` (`ringing`, `unreachable`), `devices?` | To the caller, straight after `ring`. |
 | `ring-cancelled` | `ringId`, `reason` (`cancelled`, `timeout`, `answered-elsewhere`) | To listening devices: stop ringing. |
 | `ring-answered` | `ringId`, `accepted`, `reason?` (`declined`, `busy`, `no-answer`) | To the caller. |
@@ -89,6 +95,47 @@ online starts ringing straight away; after that the room stays open for the
 invite link. A decline, `busy` or no answer ends the call after a short
 message. If the server answers `ring` with `bad-request` (a server older than
 ringing), the app treats the contact as unreachable.
+
+### Connecting while it rings
+
+Setting a call up takes several trips: the callee's socket to the server, the
+offer and answer through it, the connectivity checks, the encryption
+handshake. Over a slow route (a call abroad) that's seconds of "Connecting…"
+after the callee has already said hello. So the callee's phone may do all of
+it while it rings, and only switch the sound on when it's answered:
+
+- The caller says it can take this with `preconnect: true` on its `ring`; the
+  server passes it on in `incoming`. An older caller doesn't, and an older
+  server drops it, and the call works as before.
+- The callee (the Android app: only for a caller saved as a contact, since
+  connecting shows the caller the phone's network addresses before anyone
+  answers) joins `room` straight away with `ringing` in its
+  `client.capabilities` and negotiates as usual. It sends no audio or video
+  and plays nothing (the microphone doesn't even start), and it leaves the
+  phone's audio mode, the music and the camera alone. Its `media-state`
+  carries `ringing: true`.
+- The caller, seeing a peer join with `ringing` while its ring is unanswered,
+  keeps ringing (ringback tone, "Ringing…") and sends nothing either, but
+  answers the offer, so the connection comes up.
+- Accepting sends `ring-answer` as always; the callee then starts its
+  microphone, playback and camera on the connection that's already up (in
+  headset mode it first waits, up to 1.5 s, for Bluetooth earbuds' call link)
+  and sends a `media-state` without `ringing`. The caller starts sending on
+  that `media-state`, or on the callee's voice arriving (a ringing phone sends
+  none), whichever comes first. `ring-answered` alone only shows "answered,
+  connecting": the callee may be answering on a fresh connection instead.
+- Declining, the caller hanging up and the timeout end the ring as always;
+  the callee's early connection then leaves the room. Answering with
+  something the connection wasn't made for (voice only on a video call, or a
+  changed audio mode) leaves it too, and joins afresh. A peer's `ringing`
+  only counts while the ring is unanswered: once answered, or once the peer
+  has been in the call, its join is just a join.
+- The server ends a ring with the caller's socket, so a caller that rejoins
+  while the callee's early connection is still there rings again. The callee
+  takes an `incoming` for the room that's ringing, from the same proven
+  address, as the same call: it keeps ringing (and its early connection)
+  under the new `ringId` and ignores the old ring's cancel. A ring for the
+  room of the call it's already on is answered `accepted: true`.
 
 When two people ring each other at once, each phone gets an `incoming` from
 the person it's ringing. Both settle it the same way, by comparing the two
@@ -119,12 +166,32 @@ a `4000` close.
 | `offer` | `session`, `sdp` | the offerer |
 | `answer` | `session`, `sdp` | the answerer |
 | `candidate` | `session`, `candidate: { candidate, sdpMid, sdpMLineIndex, usernameFragment? }` | both |
-| `request-offer` | `session` (may be null) | the answerer, when it needs a fresh offer |
-| `media-state` | `micMuted`, `cameraOff`, `audioMode?` (`hifi`, `headset`, `standard`), `inPocket?` | both, after connecting and on every change |
+| `request-offer` | `session` (may be null), `iceRestart?` | the answerer, when it needs a fresh offer |
+| `media-state` | `micMuted`, `cameraOff`, `audioMode?` (`hifi`, `headset`, `standard`), `inPocket?`, `weakConnection?`, `network?`, `uplink?`, `radioShared?`, `ringing?` | both, after connecting and on every change |
 
 `inPocket: true` (with `cameraOff: true`) means the camera paused itself
 because the phone's proximity sensor is covered, a pocket usually; show that
-rather than "camera off".
+rather than "camera off". `weakConnection: true` (with `cameraOff: true`)
+means the camera is on but the sender paused its video because the
+connection can't carry it next to the voice; it resumes by itself.
+
+`network` (`wifi`, `cellular`), `uplink` (`tight`, `starved`; absent when
+fine) and `radioShared` describe the sender's half of the route, so the other
+side can help: lighter video towards a starving Wi-Fi uplink, and at least
+20 ms audio packets towards a phone whose 2.4 GHz Wi-Fi shares its radio
+with Bluetooth earbuds (see how-it-works.md). Clients send them when they
+change.
+
+`ringing: true` means the sender's phone is still ringing (it connected
+early, see Ringing); a `media-state` without it from such a peer means it was
+answered.
+
+`request-offer` with `iceRestart: false` means the connection is fine and
+the answerer only wants to change what it asks for (the audio packet length,
+on a rough link): the offerer renegotiates on the same session without
+restarting ICE, and ignores the request while it's mid-negotiation (the
+answerer asks again). Answerers only send it to peers whose `client.capabilities`
+list `renegotiate`; older offerers would restart ICE instead.
 
 Ignore kinds you don't know; newer clients may send more.
 
@@ -149,7 +216,9 @@ implement the same algorithm:
 - **Recovering.** If ICE reports `disconnected` for 4 s, or `failed`, the
   offerer sends an ICE-restart offer on the same session; the answerer sends
   `request-offer` with its session id. If an offer gets no answer within
-  10 s, the offerer starts a new session.
+  10 s, the offerer starts a new session, unless the connection is still
+  working (a renegotiation whose answer got lost): then it sends the offer
+  again.
 - **Media.** The offerer always offers to receive audio and video, even if it
   sends no camera itself, so the other side can still send video.
 - **Chat.** Both sides create the chat data channel on every new

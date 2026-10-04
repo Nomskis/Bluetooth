@@ -1,0 +1,9 @@
+{
+  "type": "signal",
+  "to": "z9y8x7w6v5u4t3s2",
+  "data": {
+    "kind": "request-offer",
+    "session": "s-3HkLtQnPb",
+    "iceRestart": false
+  }
+}

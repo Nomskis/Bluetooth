@@ -246,49 +246,57 @@ class RtcEngine(
         return old
     }
 
+    /** What a connection was made with that every later configuration of it has to repeat. */
+    private data class Fixed(val mobileDataNextToWifi: Boolean, val relayOnly: Boolean)
+
     /**
-     * Whether each connection may gather on mobile data next to Wi-Fi. WebRTC fixes this
-     * when the connection is made (setConfiguration refuses to change it), so every later
-     * configuration for the same connection repeats it.
+     * Per connection: whether it may gather on mobile data next to Wi-Fi (WebRTC fixes that
+     * when the connection is made; setConfiguration refuses to change it), and whether it
+     * only uses the relay.
      */
-    private val mobileDataAllowed = WeakHashMap<PeerConnection, Boolean>()
+    private val fixed = WeakHashMap<PeerConnection, Fixed>()
 
     /**
      * [mobileDataNextToWifi] false keeps the call off mobile data while a cheaper network
      * (working Wi-Fi) is up; with mobile data as the only network it's used as usual.
+     * [relayOnly] sends everything through the TURN relay ([RelayRoute]).
      */
     fun createPeerConnection(
         iceServers: List<IceServerConfig>,
         observer: PeerConnection.Observer,
         preferCellular: Boolean = false,
         mobileDataNextToWifi: Boolean = true,
-    ): PeerConnection? =
-        factory.createPeerConnection(rtcConfiguration(iceServers, preferCellular, mobileDataNextToWifi), observer)
-            ?.also { mobileDataAllowed[it] = mobileDataNextToWifi }
+        relayOnly: Boolean = false,
+    ): PeerConnection? {
+        val options = Fixed(mobileDataNextToWifi, relayOnly)
+        return factory.createPeerConnection(rtcConfiguration(iceServers, preferCellular, options), observer)
+            ?.also { fixed[it] = options }
+    }
 
     /**
      * Tells ICE to prefer (or stop preferring) candidate pairs on mobile data.
      * A preference, not a rule: if mobile data fails, the call stays on Wi-Fi.
      */
     fun setPreferCellular(pc: PeerConnection, iceServers: List<IceServerConfig>, prefer: Boolean) {
-        if (!pc.setConfiguration(rtcConfiguration(iceServers, prefer, mobileDataAllowed[pc] ?: true))) {
+        if (!pc.setConfiguration(rtcConfiguration(iceServers, prefer, fixed[pc] ?: Fixed(true, false)))) {
             Log.w(TAG, "Could not change the network preference")
         }
     }
 
     /** Fresh STUN/TURN servers (TURN credentials expire) for the connection's next ICE restart. */
     fun updateIceServers(pc: PeerConnection, iceServers: List<IceServerConfig>, preferCellular: Boolean) {
-        if (!pc.setConfiguration(rtcConfiguration(iceServers, preferCellular, mobileDataAllowed[pc] ?: true))) {
+        if (!pc.setConfiguration(rtcConfiguration(iceServers, preferCellular, fixed[pc] ?: Fixed(true, false)))) {
             Log.w(TAG, "Could not update the ICE servers")
         }
     }
 
     /**
      * Caps the video we send ([kbps] null = no cap), and optionally sends fewer
-     * pixels ([scaleDownBy]) and frames ([maxFps]). Takes effect without
-     * renegotiating.
+     * pixels ([scaleDownBy]) and frames ([maxFps]); [active] false stops sending
+     * it altogether (the camera keeps running, so it's back at once). Takes
+     * effect without renegotiating.
      */
-    fun capVideoSend(pc: PeerConnection, kbps: Int?, scaleDownBy: Double? = null, maxFps: Int? = null) {
+    fun capVideoSend(pc: PeerConnection, kbps: Int?, scaleDownBy: Double? = null, maxFps: Int? = null, active: Boolean = true) {
         for (sender in pc.senders) {
             val kind = runCatching { sender.track()?.kind() }.getOrNull()
             if (kind != MediaStreamTrack.VIDEO_TRACK_KIND) continue
@@ -297,8 +305,9 @@ class RtcEngine(
                 it.maxBitrateBps = kbps?.let { k -> k * 1000 }
                 it.scaleResolutionDownBy = scaleDownBy
                 it.maxFramerate = maxFps
+                it.active = active
             }
-            if (!sender.setParameters(parameters)) Log.w(TAG, "Could not cap video at $kbps kbps")
+            if (!sender.setParameters(parameters)) Log.w(TAG, "Could not cap video at $kbps kbps (active: $active)")
         }
     }
 
@@ -311,6 +320,22 @@ class RtcEngine(
             if (parameters.encodings.isEmpty() || parameters.encodings.all { it.maxBitrateBps == bps }) continue
             parameters.encodings.forEach { it.maxBitrateBps = bps }
             if (!sender.setParameters(parameters)) Log.w(TAG, "Could not cap audio at $bps bps")
+        }
+    }
+
+    /**
+     * Sends our voice or not. Off, WebRTC doesn't start the audio stream at all, so it doesn't
+     * even prepare the microphone (with [audioConstraints]' InitAudioRecordingOnSend off);
+     * on, it starts the stream, the recorder with it. Kept across other parameter changes.
+     */
+    fun setAudioSending(pc: PeerConnection, active: Boolean) {
+        for (sender in pc.senders) {
+            val kind = runCatching { sender.track()?.kind() }.getOrNull()
+            if (kind != MediaStreamTrack.AUDIO_TRACK_KIND) continue
+            val parameters = sender.parameters
+            if (parameters.encodings.isEmpty() || parameters.encodings.all { it.active == active }) continue
+            parameters.encodings.forEach { it.active = active }
+            if (!sender.setParameters(parameters)) Log.w(TAG, "Could not ${if (active) "start" else "hold"} our voice")
         }
     }
 
@@ -357,7 +382,7 @@ class RtcEngine(
     private fun rtcConfiguration(
         iceServers: List<IceServerConfig>,
         preferCellular: Boolean,
-        mobileDataNextToWifi: Boolean,
+        fixed: Fixed,
     ): PeerConnection.RTCConfiguration {
         val servers = iceServers.map { config ->
             val builder = PeerConnection.IceServer.builder(config.urls)
@@ -374,8 +399,10 @@ class RtcEngine(
             keyType = PeerConnection.KeyType.ECDSA
             // Lets setPacketPriority's marks reach the sockets; without it they're ignored.
             enableDscp = true
+            // Only relayed candidates: the call goes through the TURN server's network.
+            if (fixed.relayOnly) iceTransportsType = PeerConnection.IceTransportsType.RELAY
             // LOW_COST: no candidates on mobile data while a cheaper network (Wi-Fi) is up.
-            candidateNetworkPolicy = if (mobileDataNextToWifi) {
+            candidateNetworkPolicy = if (fixed.mobileDataNextToWifi) {
                 PeerConnection.CandidateNetworkPolicy.ALL
             } else {
                 PeerConnection.CandidateNetworkPolicy.LOW_COST
@@ -504,6 +531,12 @@ class RtcEngine(
             mandatory += MediaConstraints.KeyValuePair("googNoiseSuppression", profile.softwareNoiseSuppression.toString())
             mandatory += MediaConstraints.KeyValuePair("googAutoGainControl", profile.softwareAutoGain.toString())
             mandatory += MediaConstraints.KeyValuePair("googHighpassFilter", "true")
+            // WebRTC otherwise prepares the microphone (creates Android's AudioRecord) as soon as a
+            // connection may send, and never frees one it didn't start. Off, it's prepared when the
+            // audio stream starts, a moment later in the same step, and not at all while a call
+            // rings and holds its voice ([setAudioSending]). sdk/media_constraints.cc maps this to
+            // AudioOptions.init_recording_on_send, which WebRtcVoiceSendChannel::SetSend checks.
+            mandatory += MediaConstraints.KeyValuePair("InitAudioRecordingOnSend", "false")
         }
     }
 }

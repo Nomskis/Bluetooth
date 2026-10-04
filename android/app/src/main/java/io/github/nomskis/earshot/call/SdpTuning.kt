@@ -7,10 +7,11 @@ package io.github.nomskis.earshot.call
 object SdpTuning {
 
     /**
-     * Asks the other side to send audio packets of [ms] (a=ptime, replacing any
-     * already there; see [WebRtcTuning.AUDIO_PACKET_MS] for why 20).
+     * Asks the other side to send audio packets of [ms] (a=ptime, which WebRTC
+     * senders take from the description they receive as Opus's frame length).
+     * 20 ms to start with, longer or shorter as the link turns out: see [PacketTime].
      */
-    fun preferAudioPacketTime(sdp: String, ms: Int = WebRtcTuning.AUDIO_PACKET_MS): String {
+    fun askForPacketTime(sdp: String, ms: Int): String {
         val out = StringBuilder(sdp.length + 16)
         var inAudio = false
         val lines = sdp.split("\r\n")
@@ -75,8 +76,7 @@ object SdpTuning {
      * WebRTC encoders use it as their target. Same as web/js/sdp.js.
      */
     fun preferHdVoice(sdp: String, bitrate: Int = HD_VOICE_BITRATE): String {
-        val pt = Regex("^a=rtpmap:(\\d+) opus/48000", setOf(RegexOption.MULTILINE, RegexOption.IGNORE_CASE))
-            .find(sdp)?.groupValues?.get(1) ?: return sdp
+        val pt = opusPayloadType(sdp) ?: return sdp
         val lines = sdp.split("\r\n").toMutableList()
         val prefix = "a=fmtp:$pt "
         val fmtp = lines.indexOfFirst { it.startsWith(prefix) }
@@ -92,22 +92,27 @@ object SdpTuning {
     }
 
     /**
-     * Lets lost voice packets be resent (RTCP NACK for Opus, a=rtcp-fb:<pt> nack). WebRTC
-     * supports it but doesn't offer it for audio; with it in the description we send, the
-     * other side keeps its recent packets and resends any we ask for, and the jitter
-     * buffer only asks when a resend can still arrive before the gap would be played.
-     * It catches the longer bursts that the redundant copies can't.
+     * Lets the other side's receiver ask for lost voice packets again (generic
+     * NACK on the Opus line, RFC 4585). WebRTC switches audio NACK on from the
+     * description it receives: the side reading this keeps 5 s of sent packets,
+     * and its own receiver starts asking for the ones RED couldn't repair. Only
+     * packets a resend can still bring in before they're due to play are asked
+     * for (NetEq's NackTracker), so it never adds delay. On a long, lossy link
+     * the jitter buffer is deep anyway, and that's the time a resend needs.
+     * Same as web/js/sdp.js.
      */
-    fun enableAudioNack(sdp: String): String {
-        val pt = Regex("^a=rtpmap:(\\d+) opus/48000", setOf(RegexOption.MULTILINE, RegexOption.IGNORE_CASE))
-            .find(sdp)?.groupValues?.get(1) ?: return sdp
+    fun requestAudioResends(sdp: String): String {
+        val pt = opusPayloadType(sdp) ?: return sdp
         val nack = "a=rtcp-fb:$pt nack"
         val lines = sdp.split("\r\n").toMutableList()
-        if (lines.any { it == nack }) return sdp
-        val rtpmap = lines.indexOfFirst { it.startsWith("a=rtpmap:$pt ") }
-        lines.add(rtpmap + 1, nack)
+        if (nack in lines) return sdp
+        val last = lines.indexOfLast { it.startsWith("a=rtpmap:$pt ") || it.startsWith("a=rtcp-fb:$pt ") || it.startsWith("a=fmtp:$pt ") }
+        lines.add(last + 1, nack)
         return lines.joinToString("\r\n")
     }
+
+    private fun opusPayloadType(sdp: String): String? =
+        Regex("^a=rtpmap:(\\d+) opus/48000", setOf(RegexOption.MULTILINE, RegexOption.IGNORE_CASE)).find(sdp)?.groupValues?.get(1)
 
     /** The codec name of the first payload type on the audio line, e.g. "red" or "opus". */
     fun firstAudioCodec(sdp: String?): String? {

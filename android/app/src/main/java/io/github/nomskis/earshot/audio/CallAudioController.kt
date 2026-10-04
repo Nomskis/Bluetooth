@@ -2,6 +2,7 @@ package io.github.nomskis.earshot.audio
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.IntentFilter
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
@@ -16,12 +17,15 @@ import android.util.Log
  */
 @SuppressLint("InlinedApi") // Newer device-type constants are plain ints, safe to compare on any version.
 class CallAudioController(context: Context) {
-    private val audioManager = context.applicationContext.getSystemService(AudioManager::class.java)
+    private val appContext = context.applicationContext
+    private val audioManager = appContext.getSystemService(AudioManager::class.java)
 
     private var active = false
     private var previousMode = AudioManager.MODE_NORMAL
     private var previousSpeakerphone = false
     private var startedSco = false
+    /** The device [begin] routed the call to (Android 12+). */
+    private var chosen: AudioDeviceInfo? = null
 
     fun begin(profile: AudioProfile) {
         if (!profile.useCallMode || active) return
@@ -33,16 +37,36 @@ class CallAudioController(context: Context) {
             val device = pickCommunicationDevice(audioManager.availableCommunicationDevices)
             if (device != null && !audioManager.setCommunicationDevice(device)) {
                 Log.w(TAG, "Could not route the call to ${device.productName}")
+            } else {
+                chosen = device
             }
         } else {
             beginLegacyRouting()
         }
     }
 
+    /**
+     * The call was routed to Bluetooth earbuds' call link (SCO) and it isn't up yet. Android
+     * starts it in the background and, until then, plays the call on the earpiece and records
+     * from the phone's mic; that takes up to a second or two.
+     */
+    @Suppress("DEPRECATION")
+    fun awaitingBluetoothRoute(): Boolean = when {
+        !active -> false
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+            chosen?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO &&
+                audioManager.communicationDevice?.type != AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+        // A sticky broadcast: registering for it with no receiver returns the current state.
+        else -> startedSco && appContext.registerReceiver(null, IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED))
+            ?.getIntExtra(AudioManager.EXTRA_SCO_AUDIO_STATE, AudioManager.SCO_AUDIO_STATE_DISCONNECTED) !=
+            AudioManager.SCO_AUDIO_STATE_CONNECTED
+    }
+
     fun end() {
         endEarbudMic()
         if (!active) return
         active = false
+        chosen = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             audioManager.clearCommunicationDevice()
         } else {

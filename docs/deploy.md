@@ -46,18 +46,17 @@ docker compose --profile https up -d
   afterwards takes about a minute. The Android app wakes it in the background
   whenever you open the app, so it's usually up by the time you've picked a
   room; the browser side wakes it by loading the invite page.
-
-  **Pick the region nearest both callers.** The blueprint doesn't set one, so
-  Render uses Oregon. The call itself never goes through the server, but every
-  step of setting one up (and of ringing, and of reconnecting) makes a round
-  trip to it: from Europe or North Africa that's about 170 ms each way to
-  Oregon against about 40 to Frankfurt. To use Frankfurt, add `region:
-  frankfurt` under the service in `render.yaml` *before* the first deploy.
-  Render can't move a service that already exists: create a new one instead
-  (New › Web Service, this repository, Docker, region Frankfurt, free plan),
-  put its address into Settings on both phones, then delete the old one
-  (free hours are shared between services). Contacts keep working, since
-  they don't depend on the server's address.
+  The included `render.yaml` puts the service in Frankfurt. The call itself
+  never goes through the server, but every step of setting one up (and of
+  ringing, and of reconnecting) makes a round trip to it: from Europe or North
+  Africa that's about 40 ms to Frankfurt against about 170 ms each way to
+  Oregon, Render's default. For people elsewhere, change `region` before
+  creating the service. Render can't move a service that already exists:
+  create a new one instead (New › Blueprint with this repository, or New ›
+  Web Service, this repository, Docker, the region you want, free plan), put
+  its address into Settings on both phones, then delete the old one (free
+  hours are shared between services). Contacts keep working, since they
+  don't depend on the server's address.
 - **Fly.io:** install `flyctl`, then in the repository run
   `fly launch --copy-config --no-deploy` and `fly deploy`. The included
   [`fly.toml`](../fly.toml) keeps one small machine running so calls connect
@@ -136,6 +135,12 @@ docker compose --profile https --profile turn up -d
 Open UDP/TCP 3478 and UDP 49160–49200 in your firewall. The server hands each
 peer time-limited TURN credentials derived from `TURN_SECRET` (coturn's
 `use-auth-secret` scheme), so the secret itself never leaves the server.
+
+For calls between countries, a hosted relay can do more than get through
+blocked networks: with **Route calls through the relay** on (Settings, "Calls
+abroad"), both phones send the call through it, and Cloudflare can carry the
+stretch between the two countries over its own network. See
+[how-it-works.md](how-it-works.md#calls-abroad-through-the-relays-network).
 
 A relay with fixed credentials works too: set `TURN_URLS`, `TURN_USERNAME`
 and `TURN_CREDENTIAL`. A relay never sees the call's content: WebRTC media is encrypted end to end

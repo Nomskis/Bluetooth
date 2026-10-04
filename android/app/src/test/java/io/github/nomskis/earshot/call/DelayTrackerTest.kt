@@ -43,6 +43,47 @@ class DelayTrackerTest {
     }
 
     @Test
+    fun saysWhichWayTheConnectionIsWeak() {
+        val fine = DelayBreakdown(30, networkMs = 40, jitterBufferMs = 60, playoutMs = 200, playoutMeasured = false, lossPercent = 1.0, sendLossPercent = 0.5)
+        assertEquals(LinkQuality.GOOD, fine.fromThem)
+        assertEquals(LinkQuality.GOOD, fine.toThem)
+        // Their uplink struggling: loss on what reaches us, or audio that had to be made up.
+        assertEquals(LinkQuality.FAIR, fine.copy(lossPercent = 3.0).fromThem)
+        assertEquals(LinkQuality.POOR, fine.copy(concealedPercent = 4.0).fromThem)
+        assertEquals(LinkQuality.GOOD, fine.copy(concealedPercent = 4.0).toThem)
+        // Ours: what their side reports back, or how much we had to squeeze.
+        assertEquals(LinkQuality.POOR, fine.copy(sendLossPercent = 10.0).toThem)
+        assertEquals(LinkQuality.FAIR, fine.copy(sendSqueeze = LinkQuality.FAIR).toThem)
+        assertEquals(LinkQuality.POOR, fine.copy(sendSqueeze = LinkQuality.POOR).toThem)
+        assertEquals(LinkQuality.GOOD, fine.copy(sendLossPercent = 10.0).fromThem)
+        assertEquals(true, fine.copy(sendLossPercent = 10.0).weakConnection)
+        // A long, slow path is both ways.
+        assertEquals(LinkQuality.POOR, fine.copy(networkMs = 320).fromThem)
+        assertEquals(LinkQuality.POOR, fine.copy(networkMs = 320).toThem)
+        // Nothing known yet.
+        val unknown = DelayBreakdown(30, networkMs = null, jitterBufferMs = null, playoutMs = null, playoutMeasured = false)
+        assertNull(unknown.fromThem)
+        assertNull(unknown.toThem)
+    }
+
+    @Test
+    fun readsConcealmentAndWhatTheirSideReportsBack() {
+        val tracker = DelayTracker()
+        val report = { concealed: Long, total: Long ->
+            mapOf(
+                "I" to CallStats.Entry("inbound-rtp", mapOf("kind" to "audio", "concealedSamples" to BigInteger.valueOf(concealed), "totalSamplesReceived" to BigInteger.valueOf(total))),
+                "R" to CallStats.Entry("remote-inbound-rtp", mapOf("kind" to "audio", "fractionLost" to 0.04)),
+            )
+        }
+        assertNull(tracker.update(report(0, 96_000), null, false).concealedPercent) // no interval yet
+        val next = tracker.update(report(1_920, 192_000), null, false, packetMs = 20)
+        assertEquals(2.0, next.concealedPercent!!, 1e-9)
+        assertEquals(4.0, next.sendLossPercent!!, 1e-9)
+        assertEquals(20, next.packetMs)
+        assertEquals(DelayBreakdown.SENDER_ESTIMATE_MS + 10, next.senderMs)
+    }
+
+    @Test
     fun saysWhetherTheConnectionIsRelayed() {
         val direct = report(0.05, 10.0, 500) +
             ("L" to CallStats.Entry("local-candidate", mapOf("candidateType" to "srflx")))

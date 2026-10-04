@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
 import { ChatLog, MAX_CHAT_LENGTH, parseChat } from '../../web/js/chat.js';
-import { DelayTracker, SENDER_ESTIMATE_MS, isWeak, relayed } from '../../web/js/delay.js';
-import { opusMaxAverageBitrate, preferHdVoice } from '../../web/js/sdp.js';
+import { DelayTracker, SENDER_ESTIMATE_MS, fromThem, isWeak, relayed, toThem, weakLabel } from '../../web/js/delay.js';
+import { opusHasNack, opusMaxAverageBitrate, preferHdVoice, preferLowLatencyAudio, requestAudioResends } from '../../web/js/sdp.js';
+import { CALM_MS, PacketTime, SETTLE_MS, inboundAudioCounters } from '../../web/js/ptime.js';
 import { VoiceActivityDetector, rms } from '../../web/js/voice.js';
 
 test('voice detector: quick to start, slow to stop', () => {
@@ -45,6 +46,19 @@ test('HD voice sets maxaveragebitrate on the Opus line only', () => {
   assert.equal(preferHdVoice(tuned), tuned);
   assert.equal(opusMaxAverageBitrate(tuned), 48000);
   assert.equal(opusMaxAverageBitrate(sdp), null);
+});
+
+test('resends of lost voice are asked for on the Opus line only', () => {
+  const sdp = ['m=audio 9 UDP/TLS/RTP/SAVPF 63 111', 'a=rtpmap:63 red/48000/2', 'a=fmtp:63 111/111', 'a=rtpmap:111 opus/48000/2', 'a=rtcp-fb:111 transport-cc', 'a=fmtp:111 minptime=10;useinbandfec=1', ''].join('\r\n');
+  const tuned = requestAudioResends(sdp);
+  const lines = tuned.split('\r\n');
+  assert.equal(lines.indexOf('a=rtcp-fb:111 nack'), lines.indexOf('a=fmtp:111 minptime=10;useinbandfec=1') + 1);
+  assert.equal(lines.filter((l) => l.startsWith('a=rtcp-fb:63')).length, 0);
+  assert.equal(tuned.replace('a=rtcp-fb:111 nack\r\n', ''), sdp);
+  assert.equal(requestAudioResends(tuned), tuned);
+  assert.equal(opusHasNack(tuned), true);
+  assert.equal(opusHasNack(sdp), false);
+  assert.equal(requestAudioResends('v=0\r\n'), 'v=0\r\n');
 });
 
 test('delay tracker reports recent packet loss', () => {
@@ -154,4 +168,106 @@ test('weak connection: loss, network delay or jitter past the thresholds', () =>
   assert.equal(isWeak({ ...fine, networkMs: 350 }), true);
   assert.equal(isWeak({ ...fine, jitterBufferMs: 300 }), true);
   assert.equal(isWeak({ lossPercent: null, networkMs: null, jitterBufferMs: null }), false);
+});
+
+test('weak connection: which way it is weak', () => {
+  const fine = { lossPercent: 1, networkMs: 40, jitterBufferMs: 60, sendLossPercent: 0.5 };
+  assert.equal(fromThem(fine), 'good');
+  assert.equal(toThem(fine), 'good');
+  assert.equal(fromThem({ ...fine, concealedPercent: 4 }), 'poor');
+  assert.equal(fromThem({ ...fine, lossPercent: 3 }), 'fair');
+  assert.equal(toThem({ ...fine, sendLossPercent: 10 }), 'poor');
+  assert.equal(weakLabel(fine, 'Sam'), null);
+  assert.equal(weakLabel({ ...fine, lossPercent: 12 }, 'Sam'), 'Weak connection from Sam');
+  assert.equal(weakLabel({ ...fine, sendLossPercent: 12 }, ''), 'Weak connection to them');
+  assert.equal(weakLabel({ ...fine, networkMs: 400 }, 'Sam'), 'Weak connection');
+  assert.equal(fromThem({}), null);
+});
+
+test('delay tracker reads concealment, their side\'s loss report and our packet length', () => {
+  const tracker = new DelayTracker();
+  const report = (concealed, total) => [
+    { type: 'inbound-rtp', kind: 'audio', concealedSamples: concealed, totalSamplesReceived: total },
+    { type: 'remote-inbound-rtp', kind: 'audio', fractionLost: 0.04 },
+  ];
+  assert.equal(tracker.update(report(0, 96000), null).concealedPercent, null);
+  const next = tracker.update(report(1920, 192000), null, 20);
+  assert.equal(next.concealedPercent, 2);
+  assert.equal(next.sendLossPercent, 4);
+  assert.equal(next.senderMs, SENDER_ESTIMATE_MS + 10);
+});
+
+test('packet time: gaps the redundant copies cannot cover ask for longer packets, a calm minute shorter again', () => {
+  const packetTime = new PacketTime();
+  let now = 0;
+  const c = { packetsReceived: 0, packetsLost: 0, concealedSamples: 0, totalSamplesReceived: 0 };
+  const tick = (loss, concealment) => {
+    now += 2000;
+    const packets = 2000 / packetTime.ms;
+    c.packetsLost += packets * loss;
+    c.packetsReceived += packets * (1 - loss);
+    c.totalSamplesReceived += 96000;
+    c.concealedSamples += 96000 * concealment;
+    return packetTime.update({ ...c }, now);
+  };
+  assert.equal(packetTime.ms, 10);
+  tick(0, 0);
+  // Loss the copies repair, or concealment without loss, changes nothing.
+  for (let i = 0; i < 20; i++) assert.equal(tick(0.08, 0), false);
+  for (let i = 0; i < 20; i++) assert.equal(tick(0, 0.05), false);
+  assert.equal(tick(0.06, 0.03), false); // one rough interval could be a blip
+  assert.equal(tick(0.06, 0.03), true);
+  assert.equal(packetTime.ms, 20);
+  const changedAt = now;
+  while (!tick(0.06, 0.03));
+  assert.equal(packetTime.ms, 40);
+  assert.ok(now - changedAt >= SETTLE_MS);
+  for (let i = 0; i < 20; i++) assert.equal(tick(0.2, 0.1), false);
+  const calmFrom = now;
+  while (!tick(0, 0));
+  assert.equal(packetTime.ms, 20);
+  assert.ok(now - calmFrom >= CALM_MS);
+  // A new connection's counters start a fresh baseline.
+  Object.assign(c, { packetsReceived: 0, packetsLost: 0, concealedSamples: 0, totalSamplesReceived: 0 });
+  assert.equal(tick(0, 0), false);
+});
+
+test('packet time: the counters come from the inbound audio stats', () => {
+  const stats = [
+    { type: 'inbound-rtp', kind: 'video', packetsReceived: 5 },
+    { type: 'inbound-rtp', kind: 'audio', packetsReceived: 950, packetsLost: 50, concealedSamples: 4800, totalSamplesReceived: 480000 },
+  ];
+  assert.deepEqual(inboundAudioCounters(stats), { packetsReceived: 950, packetsLost: 50, concealedSamples: 4800, totalSamplesReceived: 480000 });
+  assert.equal(inboundAudioCounters([{ type: 'inbound-rtp', kind: 'audio', packetsReceived: 1 }]), null);
+  assert.equal(inboundAudioCounters([]), null);
+});
+
+test('packet time goes into the ptime we ask for', () => {
+  const sdp = ['m=audio 9 UDP/TLS/RTP/SAVPF 111', 'a=rtpmap:111 opus/48000/2', 'a=ptime:20', 'm=video 9 UDP/TLS/RTP/SAVPF 96', ''].join('\r\n');
+  assert.match(preferLowLatencyAudio(sdp), /m=audio[^\n]*\r\na=ptime:10\r\n/);
+  const long = preferLowLatencyAudio(sdp, 40);
+  assert.match(long, /m=audio[^\n]*\r\na=ptime:40\r\n/);
+  assert.equal(long.match(/a=ptime/g).length, 1);
+});
+
+test('packet time: a floor while their radio is shared with earbuds', () => {
+  const packetTime = new PacketTime();
+  let now = 0;
+  const c = { packetsReceived: 0, packetsLost: 0, concealedSamples: 0, totalSamplesReceived: 0 };
+  const tick = () => {
+    now += 2000;
+    c.packetsReceived += 2000 / packetTime.ms;
+    c.totalSamplesReceived += 96000;
+    return packetTime.update({ ...c }, now);
+  };
+  tick();
+  packetTime.floorMs = 20;
+  assert.equal(packetTime.ms, 20);
+  for (let i = 0; i < 100; i++) assert.equal(tick(), false);
+  assert.equal(packetTime.ms, 20);
+  packetTime.floorMs = 10;
+  let changed = false;
+  for (let i = 0; i < 100; i++) changed = tick() || changed;
+  assert.equal(changed, true);
+  assert.equal(packetTime.ms, 10);
 });

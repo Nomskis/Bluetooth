@@ -69,9 +69,10 @@ export class Inbox {
     const timer = this.#timers.setTimeout(() => this.#expire(msg.ringId), this.#ringTimeoutMs);
     timer.unref?.();
     this.#rings.set(msg.ringId, { caller: conn, to: msg.to, room: msg.room, timer });
-    for (const device of devices) {
-      device.send({ type: 'incoming', ringId: msg.ringId, room: msg.room, from, video: msg.video });
-    }
+    const incoming = { type: 'incoming', ringId: msg.ringId, room: msg.room, from, video: msg.video };
+    // The ringing device may connect ahead of the answer; only said when the caller's app can take it.
+    if (msg.preconnect) incoming.preconnect = true;
+    for (const device of devices) device.send(incoming);
     conn.send({ type: 'ring-status', ringId: msg.ringId, status: 'ringing', devices: devices.length });
   }
 

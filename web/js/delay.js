@@ -20,9 +20,46 @@ function selectedPair(stats) {
   return null;
 }
 
-/** Loss, network delay or jitter bad enough to stutter or lag. Same thresholds as DelayBreakdown.kt. */
+/**
+ * How well their voice gets to us: 'good', 'fair' or 'poor', null until
+ * known. On a call between two countries this is mostly their uplink. Same
+ * thresholds as DelayBreakdown.kt.
+ */
+export function fromThem(d) {
+  if (d.lossPercent == null && d.concealedPercent == null && d.jitterBufferMs == null && d.networkMs == null) return null;
+  const loss = d.lossPercent ?? 0;
+  const concealed = d.concealedPercent ?? 0;
+  const buffer = d.jitterBufferMs ?? 0;
+  const network = d.networkMs ?? 0;
+  if (loss >= 8 || concealed >= 3 || buffer >= 250 || network >= 300) return 'poor';
+  if (loss >= 2 || concealed >= 0.5 || buffer >= 120 || network >= 150) return 'fair';
+  return 'good';
+}
+
+/** How well our voice gets to them, from what their side reports back. */
+export function toThem(d) {
+  if (d.sendLossPercent == null && d.networkMs == null) return null;
+  const loss = d.sendLossPercent ?? 0;
+  const network = d.networkMs ?? 0;
+  if (loss >= 8 || network >= 300) return 'poor';
+  if (loss >= 2 || network >= 150) return 'fair';
+  return 'good';
+}
+
+/** Loss, network delay or jitter, either way, bad enough to stutter or lag. */
 export function isWeak(d) {
-  return (d.lossPercent ?? 0) >= 8 || (d.networkMs ?? 0) >= 300 || (d.jitterBufferMs ?? 0) >= 250;
+  return fromThem(d) === 'poor' || toThem(d) === 'poor';
+}
+
+/** "Weak connection from Sam", "to Sam", or just "Weak connection" both ways; null when it isn't. */
+export function weakLabel(d, name) {
+  const from = fromThem(d) === 'poor';
+  const to = toThem(d) === 'poor';
+  const who = name || 'them';
+  if (from && to) return 'Weak connection';
+  if (from) return `Weak connection from ${who}`;
+  if (to) return `Weak connection to ${who}`;
+  return null;
 }
 
 /** True when the connection in use goes through a TURN relay; null until known. */
@@ -47,9 +84,17 @@ export class DelayTracker {
   #lastReceived = null;
   #lastLost = null;
   #lossPercent = null;
+  #lastConcealed = null;
+  #lastSamples = null;
+  #concealedPercent = null;
 
-  /** stats: an iterable of stats objects (RTCStatsReport values). outputMs: the device's output latency, if known. */
-  update(stats, outputMs) {
+  /**
+   * stats: an iterable of stats objects (RTCStatsReport values). outputMs: the
+   * device's output latency, if known. packetMs: the audio packet length we
+   * ask them for (longer on a rough link, see ptime.js).
+   */
+  update(stats, outputMs, packetMs = 10) {
+    const senderMs = SENDER_ESTIMATE_MS - 10 + packetMs;
     const list = [...stats];
     const pair = selectedPair(list);
     const rtt = pair?.currentRoundTripTime;
@@ -75,16 +120,32 @@ export class DelayTracker {
       this.#lastReceived = received;
       this.#lastLost = lost;
     }
+    const concealed = inbound?.concealedSamples;
+    const samples = inbound?.totalSamplesReceived;
+    if (typeof concealed === 'number' && typeof samples === 'number') {
+      if (this.#lastSamples !== null && samples > this.#lastSamples && concealed >= this.#lastConcealed) {
+        this.#concealedPercent = ((concealed - this.#lastConcealed) / (samples - this.#lastSamples)) * 100;
+      }
+      this.#lastConcealed = concealed;
+      this.#lastSamples = samples;
+    }
+    // Their side's last receiver report on what we send: audio, or video until audio has one.
+    const remote = ['audio', 'video']
+      .map((kind) => list.find((s) => s.type === 'remote-inbound-rtp' && s.kind === kind)?.fractionLost)
+      .find((f) => typeof f === 'number');
     const networkMs = typeof rtt === 'number' ? Math.round((rtt * 1000) / 2) : null;
     const parts = {
-      senderMs: SENDER_ESTIMATE_MS,
+      senderMs,
+      packetMs,
       networkMs,
       jitterBufferMs: this.#jitterMs,
       outputMs: outputMs ?? null,
       lossPercent: this.#lossPercent,
       relayed: relayed(list),
+      concealedPercent: this.#concealedPercent,
+      sendLossPercent: typeof remote === 'number' ? remote * 100 : null,
     };
     const known = networkMs !== null && this.#jitterMs !== null && parts.outputMs !== null;
-    return { ...parts, totalMs: known ? SENDER_ESTIMATE_MS + networkMs + this.#jitterMs + parts.outputMs : null };
+    return { ...parts, totalMs: known ? senderMs + networkMs + this.#jitterMs + parts.outputMs : null };
   }
 }

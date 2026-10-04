@@ -1,6 +1,7 @@
 package io.github.nomskis.earshot.calls
 
 import io.github.nomskis.earshot.call.Ids
+import io.github.nomskis.earshot.signaling.Capabilities
 import io.github.nomskis.earshot.signaling.ClientMessage
 import io.github.nomskis.earshot.signaling.ServerMessage
 
@@ -77,7 +78,8 @@ class OutgoingRing(
         if (expired || (status != Status.CALLING && status != Status.RINGING && status != Status.UNREACHABLE)) return null
         val id = newRingId()
         ringId = id
-        return ClientMessage.Ring(to = contact.address, ringId = id, room = room, name = myName, video = video, inbox = myInboxKey)
+        // Their phone may connect while it rings: CallSession keeps such a peer ringing until it's answered.
+        return ClientMessage.Ring(to = contact.address, ringId = id, room = room, name = myName, video = video, inbox = myInboxKey, preconnect = true)
     }
 
     /** Applies a server message; true when the status changed. */
@@ -110,6 +112,14 @@ class OutgoingRing(
         expired = true
         return true
     }
+
+    /**
+     * Someone joined with these [capabilities]: are they a phone of theirs that connected while it
+     * still rings ([Capabilities.RINGING])? Then the call waits for the answer before anything
+     * flows. Once answered, or once they've been in the call, a join is just a join.
+     */
+    fun stillRinging(capabilities: List<String>): Boolean =
+        Capabilities.RINGING in capabilities && !joined && status != Status.ANSWERED
 
     /** They're in the room: the call is on. */
     fun onJoined() {

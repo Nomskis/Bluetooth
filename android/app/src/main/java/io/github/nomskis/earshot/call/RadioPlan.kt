@@ -31,6 +31,11 @@ data class RadioPlan(
      * could take airtime from the earbuds.
      */
     val priorityMarking: Boolean = true,
+    /**
+     * The phone's Wi-Fi is on 2.4 GHz next to Bluetooth audio, sharing one radio,
+     * whatever the settings make of it. Fewer packets help there ([PacketTime.floor]).
+     */
+    val sharedRadio: Boolean = false,
 ) {
     /** The cap to apply right now, given where media is actually flowing. */
     fun videoCapFor(path: CallPath?): Int? = if (path == CallPath.CELLULAR) null else wifiVideoCapKbps
@@ -52,6 +57,7 @@ data class RadioPlan(
                 preferCellular = settings.mobileDataOn24GHz,
                 wifiVideoCapKbps = if (settings.bluetoothFriendlyVideo) VIDEO_CAP_KBPS else null,
                 priorityMarking = false,
+                sharedRadio = true,
             )
         }
 

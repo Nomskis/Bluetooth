@@ -1,6 +1,6 @@
-import { CallEngine, randomId } from './call.js';
+import { CallEngine, RENEGOTIATE_CAPABILITY, randomId } from './call.js';
 import { CHAT_CAPABILITY, QUICK_REPLIES } from './chat.js';
-import { DelayTracker, isWeak } from './delay.js';
+import { DelayTracker, isWeak, weakLabel } from './delay.js';
 import { generateRoomCode, normalizeRoom } from './rooms.js';
 import { SignalingClient } from './signaling.js';
 import { RemoteVoiceWatcher } from './voice.js';
@@ -215,7 +215,7 @@ function startCall(room, name, stream) {
     room,
     peerId: tabPeerId(),
     name,
-    client: { platform: 'web', version: VERSION, capabilities: [CHAT_CAPABILITY] },
+    client: { platform: 'web', version: VERSION, capabilities: [CHAT_CAPABILITY, RENEGOTIATE_CAPABILITY] },
   });
   engine = new CallEngine(signaling, stream);
 
@@ -259,7 +259,7 @@ async function updateDelay() {
   }
   const stats = await engine.getStats();
   if (!stats) return;
-  const d = delayTracker.update(stats.values(), voice.outputLatencyMs);
+  const d = delayTracker.update(stats.values(), voice.outputLatencyMs, engine.packetTimeMs);
   window.earshot.delay = d;
   if (d.totalMs === null) {
     ui.delay.hidden = true;
@@ -267,8 +267,10 @@ async function updateDelay() {
   }
   ui.delay.hidden = false;
   ui.delay.classList.toggle('weak', isWeak(d));
-  ui.delay.textContent = (isWeak(d) ? 'Weak connection · ' : '') + (delayOpen
-    ? `Their phone ≈ ${d.senderMs} ms · network ${d.networkMs} ms${d.relayed ? ' via relay' : d.relayed === false ? ' direct' : ''}${d.lossPercent ? ` (${d.lossPercent.toFixed(1)}% lost)` : ''} · buffer ${d.jitterBufferMs} ms · your device ${d.outputMs} ms`
+  const weak = weakLabel(d, engine.remotePeer?.name);
+  const packets = d.packetMs > 10 ? `, ${d.packetMs} ms packets for a rough link` : '';
+  ui.delay.textContent = (weak ? `${weak} · ` : '') + (delayOpen
+    ? `Their phone ≈ ${d.senderMs} ms${packets} · network ${d.networkMs} ms${d.relayed ? ' via relay' : d.relayed === false ? ' direct' : ''}${d.lossPercent ? ` (${d.lossPercent.toFixed(1)}% lost)` : ''} · buffer ${d.jitterBufferMs} ms · your device ${d.outputMs} ms`
     : `≈ ${d.totalMs} ms from their mouth to your ears`);
 }
 
@@ -330,6 +332,7 @@ function renderBadges(media) {
   };
   if (media.micMuted) add('Muted');
   if (media.inPocket) add('Phone in pocket');
+  else if (media.weakConnection) add('Video paused: weak connection');
   else if (media.cameraOff) add('Camera off');
   if (media.audioMode === 'hifi') add('Hi-Fi audio', 'hifi');
 }

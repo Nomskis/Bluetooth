@@ -37,7 +37,7 @@ data class CallQuality(
     /** WebRTC's estimate of what we could send, kbps. */
     val availableKbpsMin: Int? = null,
     val availableKbpsAvg: Int? = null,
-    /** Share of the call our voice spent stepped down by [AudioBudget]. */
+    /** Share of the call our voice spent stepped down by [MediaBudget]. */
     val voiceReducedPercent: Int? = null,
     val reconnects: Int = 0,
 ) {

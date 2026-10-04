@@ -103,7 +103,7 @@ are in [research/latency.md](research/latency.md); in short:
 | What | How | Works with |
 | --- | --- | --- |
 | Shorter network path | Redundant audio (RED) preferred, a jitter buffer that shrinks quickly (`audioJitterBufferFastAccelerate`) | everything |
-| Ride out bad Wi-Fi | 20 ms packets that repeat the 3 before them, resends of lost audio, a jitter buffer sized for spikes, VP9 with temporal layers, Wi-Fi kept out of power save (see below) | everything |
+| Ride out bad Wi-Fi | Each audio packet repeats the 3 before it, packets that start at 20 ms and follow the link (40 ms while gaps outrun the copies, 10 ms once it's calm), lost voice asked for again (NACK), what's still lost made up by Opus itself, voice first when bandwidth is short, a jitter buffer sized for spiky networks, VP9 with temporal layers (encoded in software on a weak link), Wi-Fi kept out of power save (see below) | everything |
 | Fast playback path | `PERFORMANCE_MODE_LOW_LATENCY` with a self-adjusting buffer (`setUseLowLatency`), game-audio label | everything; low-latency Bluetooth where the phone supports it |
 | Measure it | The sonar meter in the delay tuner: chirps through an earbud held to the mic, matched filter, calibrated against the phone speaker | everything |
 | See them talk first | A voice detector on their decoded audio, 100–250 ms ahead of your ears: the call screen glows, music dips (`AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`), 8-second replay | everything |
@@ -112,7 +112,7 @@ are in [research/latency.md](research/latency.md); in short:
 | Earbud game mode | Each brand's own command, on for the call and back after | OPPO/OnePlus/realme, Nothing/CMF, Xiaomi/Redmi, Huawei/Honor, Soundcore, EarFun |
 | Turbo | Android's privileged Bluetooth controls, through Shizuku: for each call, low-latency mode, the codec measured fastest, the shortest buffer; undone after | Android 13+ with Wireless debugging |
 | Fast failover | ICE tuned to swap a stalled path in ~1 s; mobile data on standby if you allow it | everything |
-| Live readout | Mouth-to-ear delay from stats plus the measured app-to-ear figure | everything |
+| Live readout | Mouth-to-ear delay from stats plus the measured app-to-ear figure, and which way the connection is weak | everything |
 
 ## Riding out bad Wi-Fi
 
@@ -123,35 +123,87 @@ ships with ([`call/WebRtcTuning.kt`](../android/app/src/main/java/io/github/noms
 [research/long-distance.md](research/long-distance.md) has the reasoning for
 calls between countries over weak Wi-Fi.
 
-- **20 ms audio packets**, WebRTC's usual size (`a=ptime:20`). Half the
-  packets of 10 ms means less contention for airtime on weak Wi-Fi and half
-  the header overhead, the same redundant copies cover twice the loss, and
-  Opus codes 20 ms frames more efficiently. It costs about 10 ms of delay.
 - **Audio repeats itself.** With RED, every packet also carries the 3 before
-  it (`WebRTC-Audio-Red-For-Opus/Enabled-3/`; WebRTC's default is 1), so up to
-  60 ms of consecutive loss is repaired exactly instead of concealed. That
-  adds bytes, not packets: about 100 kbps more at HD voice. Opus's own in-band
-  FEC stays on underneath.
-- **Lost audio is resent when there's time.** The descriptions we send turn
-  on NACK for Opus (`a=rtcp-fb:111 nack`), which WebRTC supports but doesn't
-  offer for audio. The jitter buffer asks for a missing packet only when a
-  resend can still arrive before the gap would be played, so it catches the
-  longer bursts the copies can't, without adding delay.
-- **Voice that fits the connection.** WebRTC sends audio at a fixed bitrate
-  whatever its bandwidth estimate says, and HD voice with its copies is about
-  220 kbps. When the estimate (`availableOutgoingBitrate`) says that doesn't
-  fit with room for some video, the voice steps down to 32, then 20 kbps Opus
-  (still clear speech) through the sender's `maxBitrateBps`, and steps back up
-  once there's room. Stepping up is a probe: a step that doesn't hold makes
-  the next try wait longer
-  ([`call/AudioBudget.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/AudioBudget.kt)).
+  it (`WebRTC-Audio-Red-For-Opus/Enabled-3/`; WebRTC's default is 1), so up
+  to 60 ms of consecutive loss is repaired exactly instead of concealed at
+  20 ms packets (30 at 10 ms, 120 at 40). That adds bytes, not packets, and
+  on Wi-Fi each packet's airtime costs more than its size: about 100 kbps more
+  at HD voice. Opus's own in-band FEC stays on underneath.
+- **Lost voice is asked for again.** Both clients put `a=rtcp-fb:<opus> nack`
+  in the descriptions they send. WebRTC switches audio NACK on from the
+  description it receives
+  ([`pc/channel.cc`](https://webrtc.googlesource.com/src/+/refs/branch-heads/6367/pc/channel.cc),
+  `SetReceiveNackEnabled(SenderNackEnabled())`), so each sender keeps 5 s of
+  packets and each receiver asks for the ones RED couldn't repair. NetEq only
+  asks for a packet a resend can still bring in before it's due to play, so
+  this never adds delay; it rescues the longer gaps on links where the jitter
+  buffer is deep anyway, which is exactly a long-distance call over weak Wi-Fi
+  or mobile data. The browser tests check it over a simulated lossy link
+  (`e2e/lossy-link.js`): with a sixth of the voice packets dropped, the
+  receiver asks and the sender resends.
+- **What can't be repaired, Opus fills in itself.** Voice that RED, FEC and
+  resends all missed has to be made up. NetEq's default is its own generic
+  Expand; `WebRTC-Audio-OpusGeneratePlc/Enabled/` makes it ask the Opus
+  decoder for Opus's own concealment, which knows the voice it was just
+  decoding. Measured on WebRTC 6367's own NetEq and Opus code over simulated
+  loss, jitter and Wi-Fi stalls, it sounded better in 31 of 32 conditions
+  (+0.11 wideband PESQ on average, up to +0.22 on the worst links) and never
+  worse through stalls ([research/concealment.md](research/concealment.md)).
+  The Android app only: browsers don't take field trials.
+- **Voice first, then video.** WebRTC splits its bandwidth estimate between
+  voice and video itself, but it only counts the voice's codec bitrate, not
+  RED's copies (`audio_send_stream.cc` registers the codec rate with the
+  allocator). HD voice with its copies is about 220 kbps on the wire at 20 ms
+  packets and WebRTC reserves about 100, so video is handed ~120 kbps that
+  aren't there.
+  On a fast connection that's noise; under about 1.2 Mbps (a weak uplink in
+  another country, say) the call sends more than the connection carries all
+  the time, a standing queue that turns into delay and then loss, for the
+  voice too. So every two seconds, from the estimate
+  (`availableOutgoingBitrate`) and what the voice really sends
+  ([`call/MediaBudget.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/MediaBudget.kt)):
+  - video is capped at what the voice really leaves (`maxBitrateBps`), while
+    the estimate is under 1.5 Mbps;
+  - the voice steps down to 32, then 20 kbps Opus (still clear speech) when
+    the estimate can't carry it with room for some video, since WebRTC sends
+    audio at a fixed bitrate whatever its estimate says;
+  - video pauses (`active = false` on its encoding; the camera keeps running)
+    when even the leanest voice would leave it under 60 kbps, so the voice
+    gets through. The other side is told (`weakConnection` in `media-state`)
+    and says why instead of showing a frozen picture.
+
+  Coming back is a probe: video resumes after 20 s, and the voice steps back
+  up the same way; one that doesn't hold makes the next try wait twice as
+  long, up to almost three minutes.
+- **Packets that follow the link.** A call starts at WebRTC's usual 20 ms
+  packets (`a=ptime:20`): half the packets of 10 ms means less contention for
+  airtime on weak Wi-Fi and half the header overhead, the same three copies
+  repair 60 ms of loss, and Opus codes 20 ms frames more efficiently, for
+  about 10 ms more delay than 10 ms packets
+  ([research/long-distance.md](research/long-distance.md)). From then on each
+  side watches the voice it receives: when packets go missing *and* audio
+  still has to be concealed after RED, Opus FEC and resends have done what
+  they can, it asks the other side for 40 ms packets (`a=ptime`, which WebRTC
+  senders take as Opus's frame length), so the same copies cover 120 ms at
+  half the packet rate, for 20 ms more delay. After a calm minute it asks for
+  a step shorter, down to 10 ms on a link that's fine, where the 10 ms saved
+  costs nothing; a step down that doesn't hold makes the next wait twice as
+  long
+  ([`call/PacketTime.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/PacketTime.kt),
+  [`web/js/ptime.js`](../web/js/ptime.js)). What we ask for travels in our
+  description, so the offering side renegotiates in place, without
+  restarting ICE, and the answering side asks it to (`request-offer` with
+  `iceRestart: false`). The browser tests run it over a simulated link that
+  loses 100 ms of voice every second, both ways round. Each call starts from
+  the packet length that held on the last call with that person
+  ([LinkMemory](#calls-that-remember-the-route)).
 - **A jitter buffer sized for spikes.** WebRTC sizes the audio buffer to
   absorb 95% of the delay spikes it has seen; Earshot asks for 97%
   (`WebRTC-Audio-NetEqDelayManagerConfig/quantile:0.97/`), so a jittery
   network causes fewer dropouts. On a steady network the two are the same;
   the extra delay only appears while the network is that bad. The buffer can
-  hold 2 seconds (`audioJitterBufferMaxPackets` 100), so a long stall in a
-  crowded router's queue doesn't overflow it.
+  hold 100 packets (`audioJitterBufferMaxPackets`), 2 seconds at 20 ms
+  packets, so a long stall in a crowded router's queue doesn't overflow it.
 - **VP9 video.** VP9 needs roughly a third fewer bits than VP8 for the same
   picture, which is what a slow home upload needs most; VP8 and H.264 stay as
   fallbacks. WebRTC lowers the resolution by itself if a phone can't keep up
@@ -160,19 +212,143 @@ calls between countries over weak Wi-Fi.
   temporal layers (`scalabilityMode` L1T3): half the frames are referenced by
   nothing and a quarter by one other, so a loss usually costs one frame
   instead of stalling the picture until it's resent or a new keyframe
-  arrives. Hardware encoders ignore it. WebRTC already keeps the frame rate
-  and lowers resolution when bandwidth drops (`MAINTAIN_FRAMERATE`), so
-  motion stays smooth.
+  arrives. WebRTC already keeps the frame rate and lowers resolution when
+  bandwidth drops (`MAINTAIN_FRAMERATE`), so motion stays smooth.
+- **Software encoding when the link is weak.** Android's WebRTC uses the
+  phone's hardware encoder whenever there is one, with software only as a
+  fallback for errors (`sdk/android/src/jni/video_encoder_fallback.cc` passes
+  `prefer_temporal_support=false`). Hardware encoders make no temporal
+  layers, so on most phones the line above did nothing, and their rate
+  control is at its worst at low bitrates. WebRTC only scales the camera down
+  to 360p or less when bandwidth is short, and each resolution change
+  re-initialises the encoder; with
+  `WebRTC-Video-EncoderFallbackSettings/resolution_threshold_px:230400/` set,
+  the fallback wrapper then switches to libvpx below that size, for VP9 and
+  VP8 alike (the older `WebRTC-VP8-Forced-Fallback-Encoder-v2` only switches
+  VP8). So a weak link gets temporal layers and libvpx's rate control, and a
+  good one keeps the cheaper hardware encoder
+  ([`call/WebRtcTuning.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/WebRtcTuning.kt)).
 - **Wi-Fi out of power save.** A phone in power save lets the router hold its
   packets and fetches them in bursts. The call holds Android's low-latency
   Wi-Fi lock (screen on, app in front) and the high-performance one, which
   also covers the screen being off on Android 10 to 13. From Android 14 there
   is no way for an app to do that with the screen off.
 - **Fast failover** (above), and mobile data on standby if you allow it.
+- **Which way it's weak.** On a call between two countries the weak part is
+  usually one person's uplink, so the call screen says which direction
+  struggles: "Weak connection from Sam" when their voice reaches you with
+  loss or gaps that had to be filled in, "to Sam" when their side reports
+  your packets going missing (RTCP `fractionLost`) or your voice had to get
+  leaner, or video pause, to fit. Tap the delay readout for both directions
+  (good, fair or poor, with the numbers) and the packet length in use.
 - **A report for every call.** Route, round trip, audio lost and repaired,
   jitter buffer, video freezes, what held our video back, kept with the call
   and copyable from Settings, so a bad call can be understood from what really
   happened ([`call/CallQuality.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/CallQuality.kt)).
+
+## The two phones look after each other's network
+
+Each direction of a call has its own congestion control, and each only sees
+its own direction. Some of what makes a call rough is on the other phone's
+side of the route, where only the other phone can see it, so each side tells
+the other about its half (`network`, `uplink` and `radioShared` in
+`media-state`, sent when they change and have held for two stats intervals):
+
+- **Their Wi-Fi uplink starving: lighter video from us.** Wi-Fi is
+  half-duplex, one shared channel taking turns. The video we send comes down
+  through their access point on the same airtime their phone needs to get its
+  own voice up, so on weak or busy Wi-Fi our downstream can be what starves
+  their upstream. When they report their uplink tight (voice leaner, or
+  packets going missing) or starved (video paused for the voice) on Wi-Fi for
+  a few seconds, our video to them is capped at 800 or 400 kbps. If their
+  uplink gets any better within 45 seconds, the cap stays until it has been
+  fine for a minute; if not, it wasn't our downstream, the cap lifts and
+  isn't tried again for five minutes. Mobile data has separate up and down
+  channels, so it never applies there
+  ([`call/AirtimeShare.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/AirtimeShare.kt)).
+- **A radio shared with earbuds: half as many packets, both ways.** On
+  2.4 GHz Wi-Fi next to Bluetooth audio, every Wi-Fi frame is airtime the
+  earbuds can't use, and at 10 ms the voice's 100 packets a second each way
+  are as many frames as the video's. While either phone is in that spot,
+  neither steps below 20 ms audio packets, however calm the link
+  ([`PacketTime.floor`](../android/app/src/main/java/io/github/nomskis/earshot/call/PacketTime.kt)):
+  half the voice's frames, the earbuds get their turns back. The phone on the shared radio can't ask for its own sending to change
+  (the other side decides that), so it says `radioShared` and the other side
+  asks for it.
+
+## Calls that remember the route
+
+Every call otherwise starts blind: WebRTC guesses 300 kbps and finds the real
+figure over the first seconds, the voice starts as HD voice in 20 ms packets,
+and on a weak international route it takes the first half minute to settle on
+what works (voice first, longer packets). Two people who call each other keep
+calling over much the same route, so each call remembers, per contact and per
+kind of network on our side (Wi-Fi or mobile data): a cautious figure for
+what we could send (the lower quartile of WebRTC's estimate over the last
+minutes), the audio packet length that held, and the voice level that fit
+([`call/LinkMemory.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/LinkMemory.kt)).
+The next call starts there: the bandwidth estimate through
+`PeerConnection.setBitrate` (which resets WebRTC's estimators and aims its
+start-up probes at that rate; capped at 1 Mbps, since it probes up from there
+in a second or two anyway), the packet length and voice level as the
+starting points of their planners. Both still adapt as usual, so a route
+that has got better is found again within a minute. A reconnect within a
+call starts from what the call has learned so far. Memories last two weeks
+and never leave the phone.
+
+## Answering a call that's already connected
+
+Setting a call up takes several trips over the route: the answering phone's
+connection to the server, the offer and answer through it, the connectivity
+checks, the encryption handshake. Between Finland and Morocco that's a few
+seconds of "Connecting…" after you've tapped Accept, while the other person
+is already saying hello. So when a saved contact rings, the phone does all of
+that while it rings: it joins the call and connects, but sends nothing and
+plays nothing. The microphone isn't even prepared: the voice's stream is
+held inactive (its encoding's `active` flag) and WebRTC's habit of preparing
+the recorder as soon as a connection can send is switched off
+(`InitAudioRecordingOnSend`), with recording off as well
+(`setAudioRecording(false)`). Playback is off (`setAudioPlayout(false)`),
+the camera stays off and video is inactive, and the phone's audio mode and
+your music are left alone. The
+caller's app sees the phone join "still ringing", keeps its ringing tone and
+"Ringing…", and holds its own microphone and video back the same way. Tapping
+Accept then only has to switch the sound (and camera) on, so the call is live
+straight away. The caller starts sending when the answering phone says so, or
+as soon as that phone's voice arrives, so a message lost with a dropped
+connection to the server can't leave it on hold. If the caller's own
+connection to the server drops while it rings (a switch from Wi-Fi to mobile
+data, say), it rings again and the ringing phone takes that as the same call.
+
+Both apps have to know about it (the ring says so, through the server), so
+with an older app on either side, or an older server, calls set up after the
+answer as before. It's only done for saved contacts, because connecting shows
+the caller the phone's network addresses before you've answered. Declining,
+or the caller giving up, closes the early connection. Answering in a way it
+wasn't made for (voice only on a video call, or after switching audio mode)
+starts afresh like before; earbuds put in while it rang don't matter, since
+the echo canceller follows the earbuds during a call anyway. The details are
+in [protocol.md](protocol.md) ("Connecting while it rings").
+
+## Calls abroad: through the relay's network
+
+A direct path between two countries takes whatever route the two internet
+providers' transit gives it, and on a busy evening that middle stretch can
+lose or delay packets on its own. **Route calls through the relay** (Settings,
+"Calls abroad", off by default) sends the call through the server's TURN relay
+at both ends instead. Cloudflare's relay is anycast: each phone reaches the
+Cloudflare city nearest to it, and when both ends relay through it, Cloudflare
+can carry the stretch between those cities over its own backbone
+([Cloudflare's TURN docs](https://developers.cloudflare.com/calls/turn/overview/)).
+
+Whether that beats the direct route depends on the providers and the hour, so
+it's a switch to try, with the delay readout ("through a relay", loss each
+way) to compare. Either side turning it on is enough: the app lists
+`relay-route` in its join message and the other side, app or browser, relays
+too when its server gave it a relay (`iceTransportPolicy` `relay`,
+[`call/RelayRoute.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/RelayRoute.kt)).
+A connection that hasn't come up through the relay within 12 seconds goes
+direct for the rest of the call, so a relay that's down never stops a call.
 
 ## Sharing the radio with Bluetooth
 

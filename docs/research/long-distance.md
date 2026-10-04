@@ -38,10 +38,10 @@ ISP → international links → the other ISP → the other phone. On this route
 
 | Problem | What the app does |
 | --- | --- |
-| Bursts of lost audio | 20 ms packets that each repeat the 3 before them (60 ms of consecutive loss repaired exactly), Opus in-band FEC, and resends of lost packets when a resend can still arrive in time |
+| Bursts of lost audio | Packets that each repeat the 3 before them, starting at 20 ms (60 ms of consecutive loss repaired exactly) and going to 40 ms (120 ms) while gaps outrun the copies, Opus in-band FEC, resends of lost packets when a resend can still arrive in time, and Opus's own concealment for what's still missing ([concealment.md](concealment.md)) |
 | Delay spikes (router queues, weak Wi-Fi) | A jitter buffer sized for 97% of spikes instead of 95%, able to hold 2 s, so a spike stretches the delay briefly instead of punching holes in the audio |
 | A slow, shared upload | VP9 video (about a third fewer bits than VP8 for the same picture), WebRTC's bandwidth estimate steering the video bitrate, resolution lowered before frame rate, and the voice stepping down from HD to leaner Opus if even the voice doesn't fit |
-| Lost video packets | Three temporal layers, so most losses cost one frame instead of a freeze |
+| Lost video packets | Three temporal layers, so most losses cost one frame instead of a freeze; on a weak link (360p and below) the video is encoded in software, where the layers work |
 | Wi-Fi power save | Android's Wi-Fi locks for the length of the call |
 | Wi-Fi that's up but bad | Fast ICE failover, and (if allowed) mobile data on standby that the call moves to when Wi-Fi loses pings |
 | Strict NATs, blocked UDP | TURN relays when the server has them; Cloudflare's include TLS on port 443, which gets through almost anything |

@@ -11,6 +11,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.github.nomskis.earshot.BuildConfig
 import io.github.nomskis.earshot.call.Ids
+import io.github.nomskis.earshot.call.LinkMemories
+import io.github.nomskis.earshot.call.LinkMemory
 import io.github.nomskis.earshot.calls.CallLog
 import io.github.nomskis.earshot.calls.CallRecord
 import io.github.nomskis.earshot.calls.Contact
@@ -50,6 +52,7 @@ class SettingsRepository(private val context: Context) {
         // so a stored "on" didn't mean anyone chose it.
         val mobileDataBackup = booleanPreferencesKey("mobile_data_backup_opt_in")
         val turboDuringCalls = booleanPreferencesKey("turbo_during_calls")
+        val relayRoute = booleanPreferencesKey("relay_route")
         val backgroundGuideDone = booleanPreferencesKey("background_guide_done")
         val callSetupDone = booleanPreferencesKey("call_setup_done")
         val gameModeHintDone = booleanPreferencesKey("game_mode_hint_done")
@@ -59,6 +62,7 @@ class SettingsRepository(private val context: Context) {
         val delayRuns = stringPreferencesKey("delay_runs")
         val inboxKey = stringPreferencesKey("inbox_key")
         val contacts = stringPreferencesKey("contacts")
+        val linkMemories = stringPreferencesKey("link_memories")
         val callLog = stringPreferencesKey("call_log")
         val activeCallRoom = stringPreferencesKey("active_call_room")
         val activeCallVideo = booleanPreferencesKey("active_call_video")
@@ -89,6 +93,15 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun removeContact(address: String) {
         context.dataStore.edit { prefs -> prefs[Keys.contacts] = Contacts.encode(Contacts.remove(Contacts.decode(prefs[Keys.contacts]), address)) }
+    }
+
+    /** What past calls learned about each contact's route; see [LinkMemory]. */
+    suspend fun linkMemories(): List<LinkMemory> = LinkMemories.decode(context.dataStore.data.first()[Keys.linkMemories])
+
+    suspend fun saveLinkMemory(memory: LinkMemory) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.linkMemories] = LinkMemories.encode(LinkMemories.upsert(LinkMemories.decode(prefs[Keys.linkMemories]), memory, System.currentTimeMillis()))
+        }
     }
 
     /** This install's secret inbox key (made on first use); see [InboxKeys]. */
@@ -170,6 +183,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.lipSync] = next.lipSync
             prefs[Keys.mobileDataBackup] = next.mobileDataBackup
             prefs[Keys.turboDuringCalls] = next.turboDuringCalls
+            prefs[Keys.relayRoute] = next.relayRoute
             prefs[Keys.backgroundGuideDone] = next.backgroundGuideDone
             prefs[Keys.callSetupDone] = next.callSetupDone
             prefs[Keys.gameModeHintDone] = next.gameModeHintDone
@@ -217,6 +231,7 @@ class SettingsRepository(private val context: Context) {
             lipSync = this[Keys.lipSync] ?: defaults.lipSync,
             mobileDataBackup = this[Keys.mobileDataBackup] ?: defaults.mobileDataBackup,
             turboDuringCalls = this[Keys.turboDuringCalls] ?: defaults.turboDuringCalls,
+            relayRoute = this[Keys.relayRoute] ?: defaults.relayRoute,
             backgroundGuideDone = this[Keys.backgroundGuideDone] ?: defaults.backgroundGuideDone,
             callSetupDone = this[Keys.callSetupDone] ?: defaults.callSetupDone,
             gameModeHintDone = this[Keys.gameModeHintDone] ?: defaults.gameModeHintDone,

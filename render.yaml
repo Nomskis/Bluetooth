@@ -6,15 +6,15 @@
 # Wi-Fi): after the first deploy, open the service's Environment tab and add
 # CLOUDFLARE_TURN_KEY_ID and CLOUDFLARE_TURN_API_TOKEN (see docs/deploy.md).
 # They aren't listed here because Render would ask for them during setup.
-#
-# Region: Render uses oregon unless told otherwise. For callers in Europe or
-# Africa, add `region: frankfurt` below before the first deploy (it can't be
-# changed afterwards; docs/deploy.md says how to move an existing service).
 services:
   - type: web
     name: earshot
     runtime: docker
     plan: free
+    # Between the people who call each other (Finland and Morocco): every message that
+    # sets up, rings or adjusts a call goes through here. Render can't move a service
+    # later; for another region, change this before creating it.
+    region: frankfurt
     dockerfilePath: ./Dockerfile
     healthCheckPath: /healthz
     autoDeploy: true

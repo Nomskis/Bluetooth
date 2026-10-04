@@ -47,6 +47,10 @@ class AppGraph(context: Context) {
         startCall = { ring, withVideo -> callManager.answerCall(ring, withVideo) },
         ringingOut = { callManager.ringingOut() },
         switchTo = { ring, withVideo -> callManager.switchTo(ring, withVideo) },
+        preconnect = { ring -> callManager.preconnect(ring) },
+        dropPreconnect = { ringId -> callManager.dropPreconnect(ringId) },
+        rekeyPreconnect = { old, new -> callManager.rekeyPreconnect(old, new) },
+        inCall = { room -> callManager.inCall(room) },
     )
     /** A missed call's "Call back", waiting for the home screen to pick it up. */
     val callBack = MutableStateFlow<CallBackRequest?>(null)

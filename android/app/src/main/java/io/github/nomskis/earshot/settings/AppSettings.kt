@@ -107,6 +107,13 @@ data class AppSettings(
      * app, it uses mobile data only when that's the phone's only network).
      */
     val mobileDataBackup: Boolean = false,
+    /**
+     * Opt-in. Calls go through the server's TURN relay at both ends instead of
+     * directly; with Cloudflare's relay the stretch between the two countries can
+     * then run over its own network. Falls back to direct if the relay doesn't
+     * connect. See [io.github.nomskis.earshot.call.RelayRoute].
+     */
+    val relayRoute: Boolean = false,
     /** With Shizuku set up: Turbo's codec, buffer and low-latency switches for each call, undone after. */
     val turboDuringCalls: Boolean = true,
     /** Hold her video back to match the Bluetooth audio delay, so lips match words. */
