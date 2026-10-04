@@ -1,6 +1,8 @@
 package io.github.nomskis.earshot.call
 
 import android.content.Context
+import android.os.Build
+import android.os.PowerManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -27,10 +29,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
@@ -135,6 +139,7 @@ class CallManager(
                 null
             }
             val routeJob = launch { followRoute(session, profile, current) }
+            val thermalJob = launch { followTemperature(session) }
             // In a pocket the camera films the lining and costs battery, heat and Wi-Fi airtime.
             val pocketJob = if (current.pocketGuard && withVideo) {
                 launch {
@@ -167,6 +172,7 @@ class CallManager(
             settings.clearActiveCall()
             lipSyncJob?.cancel()
             routeJob.cancel()
+            thermalJob.cancel()
             pocketJob?.cancel()
             reapplyJob?.cancelAndJoin()
             if (end.error != null) _lastError.value = end.error
@@ -237,6 +243,18 @@ class CallManager(
             if (personal) delay(ECHO_OFF_SETTLE_MS)
             session.setEchoCancellation(!personal)
         }
+    }
+
+    /** Lighter video while the phone is hot (Android 10+ reports its thermal status). */
+    private suspend fun followTemperature(session: CallSession) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        val power = appContext.getSystemService(PowerManager::class.java) ?: return
+        callbackFlow {
+            trySend(power.currentThermalStatus)
+            val listener = PowerManager.OnThermalStatusChangedListener { trySend(it) }
+            power.addThermalStatusListener(appContext.mainExecutor, listener)
+            awaitClose { power.removeThermalStatusListener(listener) }
+        }.distinctUntilChanged().collect { status -> session.setThermal(ThermalPlan.forStatus(status)) }
     }
 
     fun endCall() {

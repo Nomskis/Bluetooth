@@ -64,6 +64,8 @@ data class CallState(
     val earbudMic: Boolean = false,
     /** The earbuds can carry a call, so the earbud mic can be switched on. */
     val earbudMicAvailable: Boolean = false,
+    /** Outgoing video lightened because the phone is warm; null when it isn't. */
+    val thermal: ThermalPlan? = null,
     /** Shown when connecting takes long: what's probably wrong. */
     val connectHint: String? = null,
     /** Their voice is paused because the earbuds went away mid-call; see [OutputHold]. */

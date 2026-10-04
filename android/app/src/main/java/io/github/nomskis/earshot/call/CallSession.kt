@@ -180,6 +180,7 @@ class CallSession(
         data class SetEchoCancellation(val on: Boolean) : Event
         data class SetOutputHeld(val held: Boolean) : Event
         data object StuckCheck : Event
+        data class SetThermal(val plan: ThermalPlan?) : Event
         data object HangUp : Event
     }
 
@@ -225,6 +226,8 @@ class CallSession(
     fun setEchoCancellation(on: Boolean) = post(Event.SetEchoCancellation(on))
     /** Their voice paused because the earbuds went away ([OutputHold]); false plays it again. */
     fun setOutputHeld(held: Boolean) = post(Event.SetOutputHeld(held))
+    /** How far to lighten outgoing video for the phone's temperature; null = not at all. */
+    fun setThermal(plan: ThermalPlan?) = post(Event.SetThermal(plan))
     fun hangUp() = post(Event.HangUp)
 
     private fun post(event: Event) {
@@ -371,6 +374,11 @@ class CallSession(
                 publishChat()
             }
             is Event.SetEchoCancellation -> setEchoCancellationNow(event.on)
+            is Event.SetThermal -> if (event.plan != _state.value.thermal) {
+                if (event.plan != null) Log.i(TAG, "Phone is warm; lighter video: $event")
+                _state.update { it.copy(thermal = event.plan) }
+                link?.let(::applyVideoCap)
+            }
             Event.StuckCheck -> if (_state.value.phase == CallPhase.NEGOTIATING || _state.value.phase == CallPhase.RECONNECTING) {
                 _state.update { it.copy(connectHint = ConnectHint.forStuck(iceServers)) }
             }
@@ -460,7 +468,9 @@ class CallSession(
     private fun RadioPlan.remoteVideoCap(): Int? = if (preferCellular) null else wifiVideoCapKbps
 
     private fun applyVideoCap(l: Link) {
-        engine.capVideoSend(l.pc, radioPlan.videoCapFor(_state.value.callPath))
+        val thermal = _state.value.thermal
+        val kbps = ThermalPlan.tighter(radioPlan.videoCapFor(_state.value.callPath), thermal?.maxKbps)
+        engine.capVideoSend(l.pc, kbps, thermal?.scaleDownBy, thermal?.maxFps)
     }
 
     private fun applyPacketPriority(l: Link) {

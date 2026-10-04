@@ -236,13 +236,21 @@ class RtcEngine(
         if (!pc.setConfiguration(rtcConfiguration(iceServers, preferCellular))) Log.w(TAG, "Could not update the ICE servers")
     }
 
-    /** Caps the video we send ([kbps] null = no cap). Takes effect without renegotiating. */
-    fun capVideoSend(pc: PeerConnection, kbps: Int?) {
+    /**
+     * Caps the video we send ([kbps] null = no cap), and optionally sends fewer
+     * pixels ([scaleDownBy]) and frames ([maxFps]). Takes effect without
+     * renegotiating.
+     */
+    fun capVideoSend(pc: PeerConnection, kbps: Int?, scaleDownBy: Double? = null, maxFps: Int? = null) {
         for (sender in pc.senders) {
             val kind = runCatching { sender.track()?.kind() }.getOrNull()
             if (kind != MediaStreamTrack.VIDEO_TRACK_KIND) continue
             val parameters = sender.parameters
-            parameters.encodings.forEach { it.maxBitrateBps = kbps?.let { k -> k * 1000 } }
+            parameters.encodings.forEach {
+                it.maxBitrateBps = kbps?.let { k -> k * 1000 }
+                it.scaleResolutionDownBy = scaleDownBy
+                it.maxFramerate = maxFps
+            }
             if (!sender.setParameters(parameters)) Log.w(TAG, "Could not cap video at $kbps kbps")
         }
     }

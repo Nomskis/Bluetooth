@@ -376,6 +376,13 @@ internal fun TopBar(state: CallState, route: AudioRoute, boostNotes: List<String
         (boostNotes + listOfNotNull(state.radioNote, lipSync)).forEach { note ->
             Text(note, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall)
         }
+        if (state.thermal != null) {
+            Text(
+                "Your phone is warm, so your video is lighter until it cools down.",
+                color = Color.White.copy(alpha = 0.8f),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         if (state.echoGuard) {
             Text(
                 "Playing out loud now, so echo cancellation is on.",
