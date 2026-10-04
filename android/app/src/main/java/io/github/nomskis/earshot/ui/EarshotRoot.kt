@@ -42,9 +42,15 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
     val callLog by viewModel.callLog.collectAsStateWithLifecycle()
     // Each time the app comes to the front outside a call, nudge a sleeping server awake.
     LifecycleStartEffect(session == null) {
-        if (session == null) viewModel.wakeServer()
+        if (session == null) {
+            viewModel.wakeServer()
+            // A newer build, and carrying on with one after "Install unknown apps" was allowed.
+            viewModel.checkForUpdate()
+            viewModel.retryUpdateInstall()
+        }
         onStopOrDispose { }
     }
+    val update by viewModel.update.collectAsStateWithLifecycle()
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         val current = settings ?: return@Surface Box(Modifier.fillMaxSize())
@@ -136,6 +142,8 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 callBack = callBack,
                 onConsumeCallBack = viewModel::consumeCallBack,
                 inboxStatus = inboxStatus,
+                update = update,
+                onUpdate = viewModel::installUpdate,
             )
         }
     }

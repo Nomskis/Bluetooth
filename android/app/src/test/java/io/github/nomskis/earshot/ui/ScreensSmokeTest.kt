@@ -191,6 +191,19 @@ class ScreensSmokeTest {
     }
 
     @Test
+    fun anUpdateIsOneTap() {
+        var tapped = 0
+        val release = io.github.nomskis.earshot.update.AppUpdates.Release(104, "https://example.com/earshot.apk")
+        compose.setContent {
+            EarshotTheme { UpdateCard(io.github.nomskis.earshot.update.AppUpdater.State.Available(release), onUpdate = { tapped++ }) }
+        }
+        compose.onNodeWithText("Update available").assertIsDisplayed()
+        compose.onNodeWithText("Build 104 is ready. It installs over this one.").assertIsDisplayed()
+        compose.onNodeWithText("Update").performClick()
+        assertEquals(1, tapped)
+    }
+
+    @Test
     fun settingsScreenRendersEverySection() {
         var updated: AppSettings? = null
         compose.setContent {

@@ -90,6 +90,11 @@ data class CallState(
     val outputHeld: Boolean = false,
     /** Echo cancellation switched on mid-call because the call now plays out loud. */
     val echoGuard: Boolean = false,
+    /**
+     * On the phone itself: true on the loudspeaker, false on the earpiece. Null on earbuds,
+     * a headset, or in Hi-Fi (where the call plays like music, wherever that goes).
+     */
+    val speakerOn: Boolean? = null,
     /** Calling a contact: their name and how it's going, until they've joined. */
     val outgoing: OutgoingCall? = null,
     /** Who a direct call is with, for the title while they're not in the room. */

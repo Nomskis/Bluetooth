@@ -120,7 +120,9 @@ class CallSession(
             audioMode = profile.mode,
             voiceVolume = settings.voiceVolume,
             frontCamera = !settings.startWithBackCamera,
-            hasCamera = withVideo,
+            hasCamera = true,
+            // A voice call is a call with the camera off: one tap turns it into a video call.
+            cameraOff = !withVideo,
             contactName = contactName,
         ),
     )
@@ -257,6 +259,7 @@ class CallSession(
         data class RequestOfferDue(val askedAt: Long) : Event
         data class SetMicMuted(val muted: Boolean) : Event
         data class SetCameraOff(val off: Boolean) : Event
+        data class SetSpeaker(val on: Boolean) : Event
         data class SetCameraPaused(val paused: Boolean) : Event
         data object SwitchCamera : Event
         data class SetFlipped(val on: Boolean) : Event
@@ -313,6 +316,9 @@ class CallSession(
 
     fun setMicMuted(muted: Boolean) = post(Event.SetMicMuted(muted))
     fun setCameraOff(off: Boolean) = post(Event.SetCameraOff(off))
+
+    /** Loudspeaker or earpiece, for a call on the phone itself. */
+    fun setSpeaker(on: Boolean) = post(Event.SetSpeaker(on))
     /** Pause the camera while the phone is in a pocket; separate from the user's own camera switch. */
     fun setCameraPaused(paused: Boolean) = post(Event.SetCameraPaused(paused))
     fun switchCamera() = post(Event.SwitchCamera)
@@ -351,7 +357,7 @@ class CallSession(
             profile = profile,
             videoQuality = settings.videoQuality,
             startWithBackCamera = settings.startWithBackCamera,
-            withVideo = withVideo,
+            camera = true,
             localPreview = localPreview,
         )
         engine.flipped = settings.flip
@@ -389,13 +395,15 @@ class CallSession(
 
     /** The audio mode, ducking and the camera: from the start, or once a call that rang here is answered. */
     private fun beginLocalMedia() {
-        audioController.begin(profile)
+        // Like the phone app: a video call on the loudspeaker, a voice call at your ear.
+        audioController.begin(profile, speaker = !_state.value.cameraOff)
+        _state.update { it.copy(speakerOn = audioController.speaker()) }
         _state.update { it.copy(earbudMicAvailable = profile.mode == AudioMode.HIFI && audioController.earbudMicAvailable()) }
         // Ducking only makes sense when the call plays next to music, i.e. in Hi-Fi mode.
         if (settings.smartDuck && profile.mode == AudioMode.HIFI) {
             smartDuck = SmartDuck(appContext) { post(Event.SmartDuckUnsupported) }
         }
-        engine.startCamera()
+        applyCamera()
     }
 
     private fun finish(phase: CallPhase, error: String? = null) {
@@ -476,8 +484,11 @@ class CallSession(
             is Event.SetCameraOff -> {
                 _state.update { it.copy(cameraOff = event.off) }
                 applyCamera()
+                // Turning a call at your ear into a video call: you're looking at the screen now.
+                if (!event.off && audioController.speaker() == false) setSpeakerNow(true)
                 sendMediaState()
             }
+            is Event.SetSpeaker -> setSpeakerNow(event.on)
             is Event.SetCameraPaused -> if (event.paused != _state.value.cameraPaused) {
                 _state.update { it.copy(cameraPaused = event.paused) }
                 applyCamera()
@@ -576,6 +587,11 @@ class CallSession(
         val name = card.name.ifBlank { remote?.name.orEmpty() }
         remoteAddress = card.address
         onContact(Contact(name, card.address, System.currentTimeMillis()))
+    }
+
+    private fun setSpeakerNow(on: Boolean) {
+        audioController.setSpeaker(on)
+        _state.update { it.copy(speakerOn = audioController.speaker()) }
     }
 
     /** Hi-Fi only: the earbuds' mic for a while (call quality), then back to the music link. */
@@ -802,7 +818,7 @@ class CallSession(
         followLinkReport(delay)
         // Earbuds can connect mid-call; keep the earbud-mic button honest.
         val micAvailable = profile.mode == AudioMode.HIFI && (_state.value.earbudMic || audioController.earbudMicAvailable())
-        _state.update { it.copy(delay = delay, earbudMicAvailable = micAvailable) }
+        _state.update { it.copy(delay = delay, earbudMicAvailable = micAvailable, speakerOn = audioController.speaker()) }
     }
 
     /**
