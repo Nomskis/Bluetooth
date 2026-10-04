@@ -21,7 +21,8 @@ android {
         applicationId = "io.github.nomskis.earshot"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
+        // CI numbers each build, so every new APK installs as an update.
+        versionCode = providers.gradleProperty("earshot.versionCode").map(String::toInt).getOrElse(1)
         versionName = "0.1.0"
 
         // Pre-fill the server address, e.g. ./gradlew assembleDebug -Pearshot.serverUrl=https://calls.example.com
@@ -52,6 +53,19 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+        }
+        // What people install: not debuggable, so Android compiles and runs the app at full
+        // speed (smoother screens, lighter work on the call's own threads), but signed with the
+        // shared key and the same app id as debug builds, so it installs over them and
+        // over itself. Not shrunk, so it runs exactly the code the tests run.
+        create("optimized") {
+            initWith(getByName("debug"))
+            isDebuggable = false
+            isJniDebuggable = false
+            isMinifyEnabled = false
+            versionNameSuffix = ""
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
         }
         release {
             isMinifyEnabled = true

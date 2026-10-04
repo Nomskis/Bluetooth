@@ -71,20 +71,27 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
       - name: Install the Android platform
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" > /dev/null
-      - name: Unit tests, lint and debug APK
+      - name: Unit tests, lint, and the debug and optimized APKs
         working-directory: android
-        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+        # Each run's number is the APK's version code, so every build installs as an update.
+        run: ./gradlew -Pearshot.versionCode=${{ github.run_number }} :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleOptimized
       - uses: actions/upload-artifact@v5
         with:
           name: earshot-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
           retention-days: 30
+      - uses: actions/upload-artifact@v5
+        with:
+          name: earshot-apk
+          path: android/app/build/outputs/apk/optimized/*.apk
+          retention-days: 30
 
   nightly:
     # A direct download for phones (Actions artifacts are zipped and need a
-    # GitHub login). Debug-signed with the shared debug key, so each build
-    # installs over the last.
-    name: Nightly APK
+    # GitHub login), shown as the latest release on the repository's front
+    # page. Signed with the shared debug key, so each build installs over the
+    # last.
+    name: Latest APK
     needs: [server, e2e, docker, android]
     if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
@@ -94,17 +101,30 @@ jobs:
     steps:
       - uses: actions/download-artifact@v5
         with:
-          name: earshot-debug-apk
+          name: earshot-apk
           path: apk
-      - name: Replace the rolling "nightly" pre-release
+      - uses: actions/download-artifact@v5
+        with:
+          name: earshot-debug-apk
+          path: apk-debug
+      - name: Replace the rolling "nightly" release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          cp apk/*.apk earshot-debug.apk
+          cp apk/*.apk earshot.apk
+          cp apk-debug/*.apk earshot-debug.apk
+          cat > notes.md <<NOTES
+          Android build ${{ github.run_number }} (${GITHUB_SHA::7}).
+
+          **On the phone:** download **earshot.apk** below and open it (allow installing unknown apps for your browser when asked). It installs over any earlier Earshot build, keeping your settings and contacts.
+
+          - **earshot.apk**: the one to use. Optimized, for the smoothest calls.
+          - **earshot-debug.apk**: the same app with debugging on, slower. Only for troubleshooting, or for a test server on plain http (no https) on your own Wi-Fi.
+          NOTES
           gh release delete nightly --cleanup-tag --yes || true
-          gh release create nightly earshot-debug.apk \
-            --prerelease \
+          gh release create nightly earshot.apk earshot-debug.apk \
+            --latest \
             --target "$GITHUB_SHA" \
-            --title "Nightly (debug build)" \
-            --notes "Latest Android build of ${GITHUB_SHA::7}. On the phone: download earshot-debug.apk and open it (allow installing unknown apps for your browser). Installs over earlier nightly builds."
+            --title "Earshot for Android (build ${{ github.run_number }})" \
+            --notes-file notes.md

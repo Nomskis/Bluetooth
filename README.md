@@ -123,20 +123,26 @@ npm start          # http://0.0.0.0:8080
 ### 2. Install the Android app
 
 On the phone, download
-[**earshot-debug.apk**](https://github.com/Nomskis/Bluetooth/releases/download/nightly/earshot-debug.apk)
-from the rolling [nightly release](https://github.com/Nomskis/Bluetooth/releases/tag/nightly)
-and open it (allow "install unknown apps" for your browser). Each build
-installs over the last. Every push also leaves the APK on its GitHub Actions
-run (**earshot-debug-apk**). Or build it yourself:
+[**earshot.apk**](https://github.com/Nomskis/Bluetooth/releases/latest/download/earshot.apk)
+(also under **Releases** on the right of the repository page) and open it
+(allow "install unknown apps" for your browser). Each new build installs over
+the last and keeps your settings and contacts. The other person installs the
+same file on theirs.
+
+That's the optimized build, for the smoothest calls. The release also has
+**earshot-debug.apk**: the same app with debugging on, slower, for
+troubleshooting. Every push also leaves both APKs on its GitHub Actions run.
+Or build it yourself:
 
 ```sh
 cd android
-./gradlew assembleDebug    # needs the Android SDK; output in app/build/outputs/apk/debug/
+./gradlew assembleOptimized    # needs the Android SDK; output in app/build/outputs/apk/optimized/
 ```
 
 In the app, open **Settings** and enter your server address (for example
-`https://calls.example.com`, or `192.168.1.20:8080` for a laptop on the same
-Wi-Fi while testing; debug builds allow plain http).
+`https://calls.example.com`). For a test server on a laptop on the same Wi-Fi
+without https (`192.168.1.20:8080`), use the debug APK; only it allows plain
+http.
 
 ### 3. Call someone
 
