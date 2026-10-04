@@ -11,6 +11,10 @@ services:
     name: earshot
     runtime: docker
     plan: free
+    # Between the people who call each other (Finland and Morocco): every message that
+    # sets up, rings or adjusts a call goes through here. Render can't move a service
+    # later; for another region, change this before creating it.
+    region: frankfurt
     dockerfilePath: ./Dockerfile
     healthCheckPath: /healthz
     autoDeploy: true
