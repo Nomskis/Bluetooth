@@ -67,6 +67,7 @@ import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.AudioMode
 import io.github.nomskis.earshot.settings.DelayRun
 import io.github.nomskis.earshot.settings.DelayRuns
+import io.github.nomskis.earshot.settings.InterruptedCall
 import io.github.nomskis.earshot.signaling.ServerUrls
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -88,6 +89,8 @@ fun HomeScreen(
     onJoin: (room: String, withVideo: Boolean) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenTuner: () -> Unit,
+    interrupted: InterruptedCall? = null,
+    onDismissInterrupted: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
@@ -117,18 +120,21 @@ fun HomeScreen(
     val serverBase = ServerUrls.normalizeBase(settings.serverUrl)
     val normalizedRoom = RoomCodes.normalize(room)
 
+    // What the permission prompt is for: the room field, or a call being rejoined.
+    var requested by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         val micGranted = result[Manifest.permission.RECORD_AUDIO] ?: context.hasPermission(Manifest.permission.RECORD_AUDIO)
         val cameraGranted = result[Manifest.permission.CAMERA] ?: context.hasPermission(Manifest.permission.CAMERA)
+        val (code, video) = requested ?: return@rememberLauncherForActivityResult
         if (!micGranted) {
             permissionError = "Earshot needs the microphone for calls."
-        } else if (normalizedRoom != null) {
-            onJoin(normalizedRoom, withVideo && cameraGranted)
+        } else {
+            onJoin(code, video && cameraGranted)
         }
     }
 
-    fun join() {
-        val code = normalizedRoom ?: return
+    fun joinRoom(code: String, withVideo: Boolean) {
+        requested = code to withVideo
         val needed = buildList {
             add(Manifest.permission.RECORD_AUDIO)
             if (withVideo) add(Manifest.permission.CAMERA)
@@ -137,6 +143,10 @@ fun HomeScreen(
             if (settings.autoGameMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) add(Manifest.permission.BLUETOOTH_CONNECT)
         }.filterNot { context.hasPermission(it) }
         if (needed.isEmpty()) onJoin(code, withVideo) else permissionLauncher.launch(needed.toTypedArray())
+    }
+
+    fun join() {
+        joinRoom(normalizedRoom ?: return, withVideo)
     }
 
     Scaffold(
@@ -173,6 +183,22 @@ fun HomeScreen(
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Button(onClick = onOpenSettings) { Text("Open settings") }
+                    }
+                }
+            }
+
+            if (interrupted != null && serverBase != null && interrupted.isRecent(System.currentTimeMillis())) {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Your call was cut off", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Android closed Earshot during your call in ${interrupted.room}. If it keeps happening, let Earshot run in the background in your phone's battery settings.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { joinRoom(interrupted.room, interrupted.withVideo) }) { Text("Rejoin") }
+                            TextButton(onClick = onDismissInterrupted) { Text("Dismiss") }
+                        }
                     }
                 }
             }

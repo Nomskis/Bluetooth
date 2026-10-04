@@ -27,6 +27,7 @@ import io.github.nomskis.earshot.earbuds.EarbudControl
 import io.github.nomskis.earshot.earbuds.describe
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.DelayRun
+import io.github.nomskis.earshot.settings.InterruptedCall
 import io.github.nomskis.earshot.signaling.ServerUrls
 import io.github.nomskis.earshot.turbo.BluetoothOutputDiagnostics
 import io.github.nomskis.earshot.turbo.CodecStatus
@@ -81,6 +82,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _serverCheck = MutableStateFlow<ServerCheck>(ServerCheck.Idle)
     val serverCheck: StateFlow<ServerCheck> = _serverCheck.asStateFlow()
+
+    /** A call the system cut off (app killed mid-call); the home screen offers to rejoin it. */
+    val interruptedCall: StateFlow<InterruptedCall?> =
+        graph.settings.interruptedCall.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun dismissInterruptedCall() {
+        viewModelScope.launch { graph.settings.clearActiveCall() }
+    }
 
     val delayRuns: StateFlow<List<DelayRun>> =
         graph.settings.delayRuns.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())

@@ -12,6 +12,7 @@ import io.github.nomskis.earshot.audio.DeviceKind
 import io.github.nomskis.earshot.audio.OutputDevice
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.DelayRun
+import io.github.nomskis.earshot.settings.InterruptedCall
 import io.github.nomskis.earshot.turbo.TurboClient
 import io.github.nomskis.earshot.ui.theme.EarshotTheme
 import org.junit.Assert.assertEquals
@@ -71,6 +72,41 @@ class ScreensSmokeTest {
         compose.onNodeWithText("Use it for calls").performScrollTo().performClick()
         assertEquals(true, updated?.autoGameMode)
         assertTrue(estimated)
+    }
+
+    @Test
+    fun homeScreenOffersToRejoinACallTheSystemCutOff() {
+        var joined: Pair<String, Boolean>? = null
+        var dismissed = false
+        compose.setContent {
+            EarshotTheme {
+                HomeScreen(
+                    settings = settings,
+                    route = route,
+                    error = null,
+                    pendingRoom = null,
+                    onConsumePendingRoom = {},
+                    onDismissError = {},
+                    onUpdateSettings = {},
+                    delayRuns = emptyList(),
+                    estimate = null,
+                    onEstimate = {},
+                    earbuds = EarbudInfo(),
+                    onDetectEarbuds = {},
+                    codec = null,
+                    onJoin = { room, video -> joined = room to video },
+                    onOpenSettings = {},
+                    onOpenTuner = {},
+                    interrupted = InterruptedCall("calm-otter-4821", withVideo = false, aliveAtMillis = System.currentTimeMillis()),
+                    onDismissInterrupted = { dismissed = true },
+                )
+            }
+        }
+        compose.onNodeWithText("Your call was cut off").assertIsDisplayed()
+        // Permissions aren't granted under Robolectric, so Rejoin asks for them first; Dismiss is direct.
+        compose.onNodeWithText("Dismiss").performClick()
+        assertTrue(dismissed)
+        assertEquals(null, joined)
     }
 
     @Test

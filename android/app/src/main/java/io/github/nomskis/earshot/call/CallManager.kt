@@ -17,6 +17,7 @@ import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.AudioMode
 import io.github.nomskis.earshot.settings.DelayRuns
 import io.github.nomskis.earshot.settings.EchoCancellation
+import io.github.nomskis.earshot.settings.InterruptedCall
 import io.github.nomskis.earshot.settings.SettingsRepository
 import io.github.nomskis.earshot.signaling.ServerUrls
 import io.github.nomskis.earshot.turbo.TurboBoost
@@ -113,6 +114,13 @@ class CallManager(
             if (radioPlan.preferCellular || current.mobileDataBackup) cellular.acquire()
             watchNetwork(session, current)
             session.start()
+            // If the system kills the app mid-call, the next launch can offer to rejoin.
+            val aliveJob = launch {
+                while (true) {
+                    settings.markCallAlive(room, withVideo)
+                    delay(InterruptedCall.ALIVE_EVERY_MS)
+                }
+            }
             // Game mode only matters when the call plays over the music link next to your music.
             val boost = current.autoGameMode && profile.mode == AudioMode.HIFI
             val boostJob = if (boost) launch { earbudBoost.begin() } else null
@@ -144,6 +152,8 @@ class CallManager(
             }
 
             val end = session.state.first { !it.isActive }
+            aliveJob.cancel()
+            settings.clearActiveCall()
             lipSyncJob?.cancel()
             routeJob.cancel()
             reapplyJob?.cancelAndJoin()

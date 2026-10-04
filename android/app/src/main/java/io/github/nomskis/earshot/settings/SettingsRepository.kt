@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.github.nomskis.earshot.BuildConfig
@@ -45,6 +46,33 @@ class SettingsRepository(private val context: Context) {
         val lastRoom = stringPreferencesKey("last_room")
         val peerId = stringPreferencesKey("peer_id")
         val delayRuns = stringPreferencesKey("delay_runs")
+        val activeCallRoom = stringPreferencesKey("active_call_room")
+        val activeCallVideo = booleanPreferencesKey("active_call_video")
+        val activeCallAliveAt = longPreferencesKey("active_call_alive_at")
+    }
+
+    /** The call that was running when the app last died without hanging up, if any. */
+    val interruptedCall: Flow<InterruptedCall?> = context.dataStore.data.map { prefs ->
+        val room = prefs[Keys.activeCallRoom] ?: return@map null
+        InterruptedCall(room, prefs[Keys.activeCallVideo] ?: true, prefs[Keys.activeCallAliveAt] ?: 0L)
+    }
+
+    /** Called when a call starts and then every so often while it runs. */
+    suspend fun markCallAlive(room: String, withVideo: Boolean, nowMillis: Long = System.currentTimeMillis()) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.activeCallRoom] = room
+            prefs[Keys.activeCallVideo] = withVideo
+            prefs[Keys.activeCallAliveAt] = nowMillis
+        }
+    }
+
+    /** The call ended properly (or the offer to rejoin was dismissed). */
+    suspend fun clearActiveCall() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(Keys.activeCallRoom)
+            prefs.remove(Keys.activeCallVideo)
+            prefs.remove(Keys.activeCallAliveAt)
+        }
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { it.toSettings() }
