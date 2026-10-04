@@ -33,7 +33,9 @@ export function createEarshotServer(config, { log = console, fetchImpl = globalT
     const { pathname } = new URL(req.url ?? '/', 'http://localhost');
     if (pathname === '/healthz') {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ status: 'ok' }));
+      // Whether calls can fall back to a relay, so the apps can say when they can't.
+      const relay = config.ice.turnUrls.length > 0 || (turnService?.current().length ?? 0) > 0;
+      res.end(JSON.stringify({ status: 'ok', relay }));
       return;
     }
     try {

@@ -78,6 +78,13 @@ for example Render, Fly.io or Railway:
 - WebSockets must be allowed (they are by default on the platforms above).
 - Free tiers that sleep when idle add a delay to the first connection.
 
+## Checking it from the app
+
+Settings › **Test connection** says whether the server answers, how far away
+it is (round trips to it slow every call setup and reconnect, so a server
+nearer both callers helps), and whether it has a relay for calls that can't
+connect directly. `/healthz` answers `{"status":"ok","relay":true|false}`.
+
 ## TURN (when calls won't connect)
 
 Most calls connect directly. Some networks (certain mobile carriers, strict
