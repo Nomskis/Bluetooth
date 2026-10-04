@@ -209,7 +209,8 @@ class CallManager(
         // Game mode and Turbo change the delay; plan once they have settled.
         settling.forEach { it.join() }
         routeMonitor.route.map { it.mediaOutput }.distinctUntilChanged().collectLatest { output ->
-            val onBluetooth = output?.kind == DeviceKind.BLUETOOTH_MUSIC
+            // LE Audio earbuds add their own delay too (less than A2DP, but enough to see).
+            val onBluetooth = output?.kind == DeviceKind.BLUETOOTH_MUSIC || output?.kind == DeviceKind.BLUETOOTH_LE
             // Only Bluetooth outputs get measured in the delay tuner.
             val measured = if (onBluetooth) {
                 DelayRuns.bestMatch(
