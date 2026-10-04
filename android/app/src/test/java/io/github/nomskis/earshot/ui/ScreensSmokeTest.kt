@@ -36,7 +36,7 @@ class ScreensSmokeTest {
 
     private val buds = OutputDevice(DeviceKind.BLUETOOTH_MUSIC, "realme Buds Air8 Pro")
     private val route = AudioRoute(buds, AudioManager.MODE_NORMAL, null, bluetoothMusicAvailable = true)
-    private val settings = AppSettings(serverUrl = "https://calls.example.com", lastRoom = "calm-otter-4821")
+    private val settings = AppSettings(serverUrl = "https://calls.example.com", lastRoom = "calm-otter-4821", displayName = "Sam")
     private val run = DelayRun(device = buds.name, label = "Game mode on", delayMs = 118.0, reportedMs = 210.0, atMillis = 1)
 
     @Test
@@ -134,6 +134,8 @@ class ScreensSmokeTest {
             }
         }
         compose.onNodeWithText("Connect a server first").assertIsDisplayed()
+        // No name yet: asked for right there.
+        compose.onNodeWithText("Your name").assertIsDisplayed()
     }
 
     @Test

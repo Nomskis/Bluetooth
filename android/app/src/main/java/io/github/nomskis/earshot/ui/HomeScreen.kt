@@ -96,6 +96,8 @@ fun HomeScreen(
     val snackbar = remember { SnackbarHostState() }
     var room by rememberSaveable { mutableStateOf(settings.lastRoom) }
     var withVideo by rememberSaveable { mutableStateOf(true) }
+    // Until a name is set, ask for it here (it stays while you type); Settings has it too.
+    val askName by rememberSaveable { mutableStateOf(settings.displayName.isBlank()) }
     var permissionError by remember { mutableStateOf<String?>(null) }
 
     // A silent probe for Android's own estimate of these earbuds' delay, once per pair,
@@ -204,6 +206,17 @@ fun HomeScreen(
             }
 
             // What you do every time first; what explains the setup below it.
+            if (askName) {
+                OutlinedTextField(
+                    value = settings.displayName,
+                    onValueChange = { name -> onUpdateSettings { it.copy(displayName = name.take(MAX_NAME_LENGTH)) } },
+                    label = { Text("Your name") },
+                    placeholder = { Text("Shown to the other person") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
             OutlinedTextField(
                 value = room,
                 onValueChange = { room = it },
@@ -361,3 +374,6 @@ internal fun Context.shareInvite(link: String) {
         .putExtra(Intent.EXTRA_TEXT, "Join my Earshot call: $link")
     startActivity(Intent.createChooser(send, "Send invite").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
+
+/** Same limit as the server and the web client. */
+private const val MAX_NAME_LENGTH = 64
