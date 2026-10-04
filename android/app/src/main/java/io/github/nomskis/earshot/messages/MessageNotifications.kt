@@ -12,11 +12,12 @@ import androidx.core.app.RemoteInput
 import io.github.nomskis.earshot.MainActivity
 import io.github.nomskis.earshot.R
 
-/** A notification per conversation, with their latest messages and a Reply right there. */
+/** A notification per conversation, with their latest messages, Reply and Mark as read right there. */
 object MessageNotifications {
     const val CHANNEL = "messages"
     const val EXTRA_CONVERSATION = "io.github.nomskis.earshot.CONVERSATION"
     const val KEY_REPLY = "reply"
+    const val ACTION_MARK_READ = "io.github.nomskis.earshot.MARK_READ"
 
     fun createChannel(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
@@ -56,6 +57,17 @@ object MessageNotifications {
             .addRemoteInput(RemoteInput.Builder(KEY_REPLY).setLabel(context.getString(R.string.chat_reply)).build())
             .setAllowGeneratedReplies(true)
             .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
+            .setShowsUserInterface(false)
+            .build()
+        val markRead = PendingIntent.getBroadcast(
+            context,
+            requestCode(address) + 1,
+            Intent(context, MessageReplyReceiver::class.java).setAction(ACTION_MARK_READ).putExtra(EXTRA_CONVERSATION, address),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val markReadAction = NotificationCompat.Action.Builder(R.drawable.ic_notification, context.getString(R.string.mark_read), markRead)
+            .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ)
+            .setShowsUserInterface(false)
             .build()
         val notification = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
@@ -64,6 +76,7 @@ object MessageNotifications {
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .addAction(replyAction)
+            .addAction(markReadAction)
             .setShortcutId(address)
             .build()
         val manager = NotificationManagerCompat.from(context)

@@ -62,6 +62,12 @@ data class Conversation(
         )
     }
 
+    /** Gone from this phone only. One of ours still on its way isn't sent any more. */
+    fun delete(id: String, mine: Boolean): Conversation = copy(messages = messages.filterNot { it.id == id && it.mine == mine })
+
+    /** Every message gone from this phone; the conversation itself stays. */
+    fun cleared(): Conversation = copy(messages = emptyList())
+
     fun read(nowMs: Long): Conversation = if (unread == 0) this else copy(readUpTo = maxOf(readUpTo, nowMs, messages.maxOfOrNull { it.atMillis } ?: 0))
 
     private fun trim(list: List<TextMessage>): List<TextMessage> = list.takeLast(MAX_MESSAGES)

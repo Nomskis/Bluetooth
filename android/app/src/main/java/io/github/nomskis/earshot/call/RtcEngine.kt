@@ -240,7 +240,7 @@ class RtcEngine(
     }
 
     /** What a connection was made with that every later configuration of it has to repeat. */
-    private data class Fixed(val mobileDataNextToWifi: Boolean, val relayOnly: Boolean)
+    private data class Fixed(val mobileDataNextToWifi: Boolean, val relayOnly: Boolean, val fastFailover: Boolean = false)
 
     /**
      * Per connection: whether it may gather on mobile data next to Wi-Fi (WebRTC fixes that
@@ -252,7 +252,8 @@ class RtcEngine(
     /**
      * [mobileDataNextToWifi] false keeps the call off mobile data while a cheaper network
      * (working Wi-Fi) is up; with mobile data as the only network it's used as usual.
-     * [relayOnly] sends everything through the TURN relay ([RelayRoute]).
+     * [relayOnly] sends everything through the TURN relay ([RelayRoute]). [fastFailover]: a
+     * second network stands by, so a stalled path is worth leaving within a second.
      */
     fun createPeerConnection(
         iceServers: List<IceServerConfig>,
@@ -260,8 +261,9 @@ class RtcEngine(
         preferCellular: Boolean = false,
         mobileDataNextToWifi: Boolean = true,
         relayOnly: Boolean = false,
+        fastFailover: Boolean = false,
     ): PeerConnection? {
-        val options = Fixed(mobileDataNextToWifi, relayOnly)
+        val options = Fixed(mobileDataNextToWifi, relayOnly, fastFailover)
         return factory.createPeerConnection(rtcConfiguration(iceServers, preferCellular, options), observer)
             ?.also { fixed[it] = options }
     }
@@ -396,7 +398,7 @@ class RtcEngine(
             // per second. On one network there's nowhere to go, and the quick timings only
             // turn a mobile-data hiccup (round trips of 1.7 s happen) into "Reconnecting",
             // so those calls keep WebRTC's own timings.
-            if (fixed.mobileDataNextToWifi || CallTuning.FAST_FAILOVER_WITHOUT_STANDBY) {
+            if (fixed.fastFailover || CallTuning.FAST_FAILOVER_WITHOUT_STANDBY) {
                 iceConnectionReceivingTimeout = FAILOVER_RECEIVE_TIMEOUT_MS
                 iceBackupCandidatePairPingInterval = BACKUP_PING_INTERVAL_MS
                 stableWritableConnectionPingIntervalMs = STABLE_PING_INTERVAL_MS

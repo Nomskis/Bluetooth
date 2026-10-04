@@ -78,6 +78,10 @@ this list works with every pair of classic Bluetooth earbuds.
   really leaves, the voice gets leaner before it would break up, and if even
   that's too little the video pauses, the other side is told why, and it
   comes back by itself.
+- **Use less data.** Like WhatsApp's and Signal's switch: video at most
+  300 kbps and 15 fps in both directions, about a third of a gigabyte an hour
+  instead of one or more, and less for a thin mobile link to queue up in front
+  of the voice. The voice itself is untouched.
 - **Calls abroad through the relay's network.** An opt-in switch sends the
   call through your server's TURN relay at both ends; with Cloudflare's
   relay, the stretch between the two countries can run over Cloudflare's own
@@ -124,7 +128,9 @@ this list works with every pair of classic Bluetooth earbuds.
   like a messaging app, with their latest message and what's unread on the
   home screen. A message to a phone that's offline waits on your server and
   arrives when it's back; yours stays "waiting" until their phone confirms
-  it, then shows "Delivered" and "Seen". Replies right from the notification.
+  it, then shows "Delivered" and "Seen". Reply or mark as read right from the
+  notification;
+  long-press a message to copy or delete it.
   A call's chat lands in the same conversation. Someone you block can't ring
   you or write to you, and isn't told.
 

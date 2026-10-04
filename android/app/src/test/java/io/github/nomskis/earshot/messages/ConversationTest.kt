@@ -35,6 +35,17 @@ class ConversationTest {
     }
 
     @Test
+    fun deletingTakesOnlyThatOneAndClearingTakesAll() {
+        val c = empty.sending("m1", "Mine", 1_000).received("m1", "Theirs", 1_001).sending("m2", "Unsent", 1_002)
+        // The same id on both sides: only the one asked for goes.
+        assertEquals(listOf("Theirs", "Unsent"), c.delete("m1", mine = true).messages.map { it.text })
+        // An unsent one deleted isn't sent any more.
+        assertEquals(listOf("m1"), c.delete("m2", mine = true).outbox.map { it.id })
+        assertEquals(emptyList<TextMessage>(), c.cleared().messages)
+        assertEquals(c.address, c.cleared().address)
+    }
+
+    @Test
     fun theirMessageSentAgainIsKeptOnce() {
         val c = empty.received("m1", "Hi", 1_000).received("m1", "Hi", 1_000)
         assertEquals(1, c.messages.size)

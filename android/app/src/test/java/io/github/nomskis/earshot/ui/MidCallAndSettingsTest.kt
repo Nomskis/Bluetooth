@@ -11,7 +11,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import io.github.nomskis.earshot.call.CallPhase
 import io.github.nomskis.earshot.call.CallState
 import io.github.nomskis.earshot.settings.AppSettings
@@ -61,6 +63,27 @@ class MidCallAndSettingsTest {
         compose.setContent { EarshotTheme { TopBar(call, onMinimize = { minimized++ }) } }
         compose.onNodeWithContentDescription("Minimize").performClick()
         assertEquals(1, minimized)
+    }
+
+    @Test
+    fun aMessageCanBeCopiedOrDeletedAndAChatCleared() {
+        val sam = io.github.nomskis.earshot.calls.Contact("Sam", "c2FtLWFkZHJlc3MtMDAwMD")
+        val chat = io.github.nomskis.earshot.messages.Conversation(sam.address).received("m1", "Landed!", 1_000).sending("m2", "Welcome home", 2_000)
+        val deleted = mutableListOf<String>()
+        var cleared = 0
+        compose.setContent {
+            EarshotTheme {
+                ConversationScreen(sam, chat, onSend = {}, onCall = {}, onBack = {}, onDelete = { deleted += it.text }, onClear = { cleared++ })
+            }
+        }
+        compose.onNodeWithText("Landed!").performTouchInput { longClick() }
+        compose.onNodeWithText("Copy").assertIsDisplayed()
+        compose.onNodeWithText("Delete").performClick()
+        assertEquals(listOf("Landed!"), deleted)
+        compose.onNodeWithContentDescription("More").performClick()
+        compose.onNodeWithText("Clear chat").performClick()
+        compose.onNodeWithText("Clear").performClick()
+        assertEquals(1, cleared)
     }
 
     private fun settings(

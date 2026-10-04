@@ -103,6 +103,9 @@ fun HomeScreen(
     recentCalls: List<CallRecord> = emptyList(),
     onRenameContact: ((Contact, String) -> Unit)? = null,
     onBlockContact: ((Contact) -> Unit)? = null,
+    /** "Call ended · 12:34", shown once. */
+    callEnded: String? = null,
+    onCallEndedShown: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
@@ -127,6 +130,20 @@ fun HomeScreen(
             room = pendingRoom
             invited = pendingRoom
             onConsumePendingRoom()
+        }
+    }
+    // Taken over here at once, so it's shown once even if the screen changes while it's up.
+    var endedNote by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(callEnded) {
+        callEnded?.let {
+            endedNote = it
+            onCallEndedShown()
+        }
+    }
+    LaunchedEffect(endedNote) {
+        endedNote?.let {
+            snackbar.showSnackbar(it)
+            endedNote = null
         }
     }
     LaunchedEffect(error, permissionError) {

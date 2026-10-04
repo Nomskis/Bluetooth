@@ -45,6 +45,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean) {
     val inboxStatus by viewModel.inboxStatus.collectAsStateWithLifecycle()
     val callLog by viewModel.callLog.collectAsStateWithLifecycle()
     val blocked by viewModel.blocked.collectAsStateWithLifecycle()
+    val callEnded by viewModel.callEnded.collectAsStateWithLifecycle()
     // Each time the app comes to the front outside a call, nudge a sleeping server awake.
     LifecycleStartEffect(session == null) {
         if (session == null) {
@@ -101,6 +102,8 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean) {
                             onSend = { text -> viewModel.sendMessage(contact.address, text) },
                             onCall = { video -> viewModel.callFromConversation(contact, video) },
                             onBack = { viewModel.openConversation(null) },
+                            onDelete = { message -> viewModel.deleteMessage(contact.address, message) },
+                            onClear = { viewModel.clearConversation(contact.address) },
                         )
                     }
                     screen == Screen.SETTINGS -> SettingsScreen(
@@ -189,6 +192,8 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean) {
                         recentCalls = callLog,
                         onRenameContact = { contact, name -> viewModel.renameContact(contact.address, name) },
                         onBlockContact = viewModel::block,
+                        callEnded = callEnded,
+                        onCallEndedShown = viewModel::consumeCallEnded,
                     )
                 }
             }

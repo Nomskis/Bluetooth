@@ -1,7 +1,10 @@
 package io.github.nomskis.earshot.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +24,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -30,15 +37,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import io.github.nomskis.earshot.calls.Contact
@@ -66,7 +77,26 @@ fun ConversationScreen(
     onSend: (String) -> Unit,
     onCall: (withVideo: Boolean) -> Unit,
     onBack: () -> Unit,
+    /** Off this phone only. */
+    onDelete: (TextMessage) -> Unit = {},
+    onClear: () -> Unit = {},
 ) {
+    var menu by remember { mutableStateOf(false) }
+    var clearing by remember { mutableStateOf(false) }
+    if (clearing) {
+        AlertDialog(
+            onDismissRequest = { clearing = false },
+            title = { Text("Clear chat?") },
+            text = { Text("Deletes the messages on this phone") },
+            confirmButton = {
+                TextButton(onClick = {
+                    clearing = false
+                    onClear()
+                }) { Text("Clear") }
+            },
+            dismissButton = { TextButton(onClick = { clearing = false }) { Text("Cancel") } },
+        )
+    }
     BackHandler(onBack = onBack)
     var draft by rememberSaveable(contact.address) { mutableStateOf("") }
     val messages = conversation?.messages.orEmpty()
@@ -84,6 +114,19 @@ fun ConversationScreen(
                 actions = {
                     IconButton(onClick = { onCall(false) }) { Icon(Icons.Filled.Call, contentDescription = "Voice call ${contact.name}") }
                     IconButton(onClick = { onCall(true) }) { Icon(Icons.Filled.Videocam, contentDescription = "Video call ${contact.name}") }
+                    Box {
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Clear chat") },
+                                enabled = messages.isNotEmpty(),
+                                onClick = {
+                                    menu = false
+                                    clearing = true
+                                },
+                            )
+                        }
+                    }
                 },
             )
         },
@@ -118,7 +161,7 @@ fun ConversationScreen(
                         if (day != previous) {
                             item(key = "day-$day") { DayHeader(dayLabel(day, today)) }
                         }
-                        item(key = (if (message.mine) "me-" else "them-") + message.id) { MessageBubble(message) }
+                        item(key = (if (message.mine) "me-" else "them-") + message.id) { MessageBubble(message, onDelete = { onDelete(message) }) }
                     }
                 }
             }
@@ -178,23 +221,43 @@ internal fun dayLabel(day: LocalDate, today: LocalDate): String {
     }
 }
 
+/** One message; a long press offers Copy and Delete. */
 @Composable
-private fun MessageBubble(message: TextMessage) {
+private fun MessageBubble(message: TextMessage, onDelete: () -> Unit) {
     val mine = message.mine
+    val context = LocalContext.current
+    var menu by remember { mutableStateOf(false) }
     Column(
         Modifier.fillMaxWidth(),
         horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
     ) {
-        Column(
-            Modifier
-                .widthIn(max = 300.dp)
-                .background(
-                    if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-                    RoundedCornerShape(16.dp),
+        Box {
+            Column(
+                Modifier
+                    .widthIn(max = 300.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .combinedClickable(onLongClickLabel = "Message options", onLongClick = { menu = true }, onClick = {})
+                    .background(if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Text(message.text, style = MaterialTheme.typography.bodyLarge)
+            }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(
+                    text = { Text("Copy") },
+                    onClick = {
+                        menu = false
+                        context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Message", message.text))
+                    },
                 )
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-            Text(message.text, style = MaterialTheme.typography.bodyLarge)
+                DropdownMenuItem(
+                    text = { Text("Delete") },
+                    onClick = {
+                        menu = false
+                        onDelete()
+                    },
+                )
+            }
         }
         Text(
             messageMeta(message),
