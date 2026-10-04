@@ -11,6 +11,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.github.nomskis.earshot.BuildConfig
 import io.github.nomskis.earshot.call.Ids
+import io.github.nomskis.earshot.calls.CallLog
+import io.github.nomskis.earshot.calls.CallRecord
 import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.calls.Contacts
 import io.github.nomskis.earshot.calls.InboxKeys
@@ -57,6 +59,7 @@ class SettingsRepository(private val context: Context) {
         val delayRuns = stringPreferencesKey("delay_runs")
         val inboxKey = stringPreferencesKey("inbox_key")
         val contacts = stringPreferencesKey("contacts")
+        val callLog = stringPreferencesKey("call_log")
         val activeCallRoom = stringPreferencesKey("active_call_room")
         val activeCallVideo = booleanPreferencesKey("active_call_video")
         val activeCallAliveAt = longPreferencesKey("active_call_alive_at")
@@ -67,6 +70,21 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun saveContact(contact: Contact) {
         context.dataStore.edit { prefs -> prefs[Keys.contacts] = Contacts.encode(Contacts.upsert(Contacts.decode(prefs[Keys.contacts]), contact)) }
+    }
+
+    suspend fun renameContact(address: String, name: String) {
+        context.dataStore.edit { prefs -> prefs[Keys.contacts] = Contacts.encode(Contacts.rename(Contacts.decode(prefs[Keys.contacts]), address, name)) }
+    }
+
+    /** Every call, newest first; see [CallLog]. */
+    val callLog: Flow<List<CallRecord>> = context.dataStore.data.map { CallLog.decode(it[Keys.callLog]) }
+
+    suspend fun addCallRecord(record: CallRecord) {
+        context.dataStore.edit { prefs -> prefs[Keys.callLog] = CallLog.encode(CallLog.add(CallLog.decode(prefs[Keys.callLog]), record)) }
+    }
+
+    suspend fun clearCallLog() {
+        context.dataStore.edit { prefs -> prefs.remove(Keys.callLog) }
     }
 
     suspend fun removeContact(address: String) {

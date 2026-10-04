@@ -28,7 +28,13 @@ object InboxKeys {
 
 /** Someone you can call directly: saved when you've had a call with them. */
 @Serializable
-data class Contact(val name: String, val address: String, val lastCallAtMillis: Long = 0)
+data class Contact(
+    val name: String,
+    val address: String,
+    val lastCallAtMillis: Long = 0,
+    /** You named them yourself; the name their phone sends no longer replaces it. */
+    val renamed: Boolean = false,
+)
 
 object Contacts {
     /** Enough for the people you actually call; the oldest go first. */
@@ -45,9 +51,21 @@ object Contacts {
 
     /** Adds or refreshes [contact] (same address = same person), most recent first. */
     fun upsert(contacts: List<Contact>, contact: Contact): List<Contact> {
-        val clean = contact.copy(name = contact.name.trim().take(MAX_NAME).ifEmpty { "Contact" })
+        val existing = contacts.firstOrNull { it.address == contact.address }
+        var clean = contact.copy(name = cleanName(contact.name))
+        if (existing != null) {
+            // A name you gave them stays; the latest call time wins.
+            if (existing.renamed && !contact.renamed) clean = clean.copy(name = existing.name, renamed = true)
+            clean = clean.copy(lastCallAtMillis = maxOf(existing.lastCallAtMillis, clean.lastCallAtMillis))
+        }
         return (listOf(clean) + contacts.filter { it.address != clean.address }).take(MAX)
     }
+
+    /** Your own name for them; their position in the list doesn't change. */
+    fun rename(contacts: List<Contact>, address: String, name: String): List<Contact> =
+        contacts.map { if (it.address == address) it.copy(name = cleanName(name), renamed = true) else it }
+
+    private fun cleanName(name: String) = name.trim().take(MAX_NAME).ifEmpty { "Contact" }
 
     fun remove(contacts: List<Contact>, address: String): List<Contact> = contacts.filter { it.address != address }
 }

@@ -55,6 +55,21 @@ object CallStats {
         return if (types.isEmpty()) null else "relay" in types
     }
 
+    /**
+     * "direct", or "relay (udp)" / "relay (tcp)" / "relay (tls)" (how we reach our relay)
+     * when the connection in use goes through one.
+     */
+    fun pathDescription(report: Map<String, Entry>): String? {
+        val pair = selectedPair(report) ?: return null
+        val local = report[pair.members["localCandidateId"] as? String]?.members ?: return null
+        val remote = report[pair.members["remoteCandidateId"] as? String]?.members
+        return when {
+            local["candidateType"] == "relay" -> "relay (${local["relayProtocol"] as? String ?: "udp"})"
+            remote?.get("candidateType") == "relay" -> "relay (theirs)"
+            else -> "direct"
+        }
+    }
+
     /** Every working candidate pair with its network and ping counters, for [PathSteering]. */
     fun candidatePairs(report: Map<String, Entry>): List<PathSteering.CandidatePair> = report.mapNotNull { (id, entry) ->
         if (entry.type != "candidate-pair" || entry.members["state"] != "succeeded") return@mapNotNull null

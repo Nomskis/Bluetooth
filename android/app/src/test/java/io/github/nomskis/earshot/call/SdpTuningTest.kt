@@ -30,23 +30,36 @@ class SdpTuningTest {
     ).joinToString("\r\n")
 
     @Test
-    fun asksForTenMillisecondAudioPacketsOnly() {
-        val tuned = SdpTuning.preferLowLatencyAudio(offer)
+    fun asksForTheAudioPacketLengthOnly() {
+        // A browser peer may have asked for 10 ms; ours asks for 20 back.
+        val tuned = SdpTuning.preferAudioPacketTime(offer.replace("a=ptime:20", "a=ptime:10"), ms = 20)
         val lines = tuned.split("\r\n")
         val audioIndex = lines.indexOfFirst { it.startsWith("m=audio") }
         val videoIndex = lines.indexOfFirst { it.startsWith("m=video") }
-        assertEquals("a=ptime:10", lines[audioIndex + 1])
+        assertEquals("a=ptime:20", lines[audioIndex + 1])
         assertEquals(1, lines.count { it.startsWith("a=ptime:") })
         assertFalse(lines.subList(videoIndex, lines.size).any { it.startsWith("a=ptime") })
         assertTrue(tuned.endsWith("\r\n"))
         // Everything else is untouched.
-        assertEquals(offer.replace("a=ptime:20\r\n", ""), tuned.replace("a=ptime:10\r\n", ""))
+        assertEquals(offer.replace("a=ptime:20\r\n", ""), tuned.replace("a=ptime:20\r\n", ""))
+        assertEquals(20, WebRtcTuning.AUDIO_PACKET_MS)
     }
 
     @Test
     fun isIdempotent() {
-        val once = SdpTuning.preferLowLatencyAudio(offer)
-        assertEquals(once, SdpTuning.preferLowLatencyAudio(once))
+        val once = SdpTuning.preferAudioPacketTime(offer)
+        assertEquals(once, SdpTuning.preferAudioPacketTime(once))
+    }
+
+    @Test
+    fun letsLostVoicePacketsBeResent() {
+        val tuned = SdpTuning.enableAudioNack(offer)
+        val lines = tuned.split("\r\n")
+        // Right after Opus's rtpmap, for Opus only (not RED, not video).
+        assertEquals("a=rtcp-fb:111 nack", lines[lines.indexOf("a=rtpmap:111 opus/48000/2") + 1])
+        assertEquals(1, lines.count { it.contains("nack") })
+        assertEquals(tuned, SdpTuning.enableAudioNack(tuned))
+        assertEquals("v=0\r\n", SdpTuning.enableAudioNack("v=0\r\n"))
     }
 
     @Test

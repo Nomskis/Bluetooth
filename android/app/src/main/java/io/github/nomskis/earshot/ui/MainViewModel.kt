@@ -26,6 +26,7 @@ import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.earbuds.EarbudControl
 import io.github.nomskis.earshot.earbuds.describe
 import io.github.nomskis.earshot.calls.CallBackRequest
+import io.github.nomskis.earshot.calls.CallRecord
 import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.calls.InboxClient
 import io.github.nomskis.earshot.settings.AppSettings
@@ -406,6 +407,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun removeContact(contact: Contact) {
         viewModelScope.launch { graph.settings.removeContact(contact.address) }
     }
+
+    /** Every call, newest first. */
+    val callLog: StateFlow<List<CallRecord>> =
+        graph.settings.callLog.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Whether this phone can be rung right now. */
     val inboxStatus: StateFlow<InboxClient.State> = graph.callInbox.status

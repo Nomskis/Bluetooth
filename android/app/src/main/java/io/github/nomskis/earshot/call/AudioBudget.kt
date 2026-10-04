@@ -5,7 +5,7 @@ import kotlin.math.min
 /**
  * Keeps the voice inside what the connection can carry. WebRTC sends audio at
  * a fixed bitrate whatever its bandwidth estimate says, and HD voice with
- * three redundant copies (see [WebRtcTuning]) is about 250 kbps on the wire.
+ * three redundant copies (see [WebRtcTuning]) is about 220 kbps on the wire.
  * Plenty of Wi-Fi carries that easily; a starved hotspot doesn't, and then
  * the voice itself would break up. So when the estimate says it doesn't fit
  * (with room for some video), the voice steps down to a leaner Opus bitrate,
@@ -89,8 +89,8 @@ class AudioBudget(private val redundancy: Int = WebRtcTuning.RED_REDUNDANCY) {
         const val FAILED_PROBE_MS = 30_000L
         /** A step up that lasted this long has held. */
         const val HELD_PROBE_MS = 60_000L
-        /** 10 ms packets. */
-        const val PACKETS_PER_SECOND = 100
+        /** See [WebRtcTuning.AUDIO_PACKET_MS]. */
+        const val PACKETS_PER_SECOND = 1000 / WebRtcTuning.AUDIO_PACKET_MS
         /** IPv4, UDP, RTP with its usual extensions, and the SRTP tag. */
         const val HEADER_BYTES = 58
     }

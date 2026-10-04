@@ -46,6 +46,18 @@ docker compose --profile https up -d
   afterwards takes about a minute. The Android app wakes it in the background
   whenever you open the app, so it's usually up by the time you've picked a
   room; the browser side wakes it by loading the invite page.
+
+  **Pick the region nearest both callers.** The blueprint doesn't set one, so
+  Render uses Oregon. The call itself never goes through the server, but every
+  step of setting one up (and of ringing, and of reconnecting) makes a round
+  trip to it: from Europe or North Africa that's about 170 ms each way to
+  Oregon against about 40 to Frankfurt. To use Frankfurt, add `region:
+  frankfurt` under the service in `render.yaml` *before* the first deploy.
+  Render can't move a service that already exists: create a new one instead
+  (New › Web Service, this repository, Docker, region Frankfurt, free plan),
+  put its address into Settings on both phones, then delete the old one
+  (free hours are shared between services). Contacts keep working, since
+  they don't depend on the server's address.
 - **Fly.io:** install `flyctl`, then in the repository run
   `fly launch --copy-config --no-deploy` and `fly deploy`. The included
   [`fly.toml`](../fly.toml) keeps one small machine running so calls connect

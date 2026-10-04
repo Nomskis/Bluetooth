@@ -7,11 +7,10 @@ package io.github.nomskis.earshot.call
 object SdpTuning {
 
     /**
-     * Asks the other side to send 10 ms audio packets instead of the default
-     * 20 ms. Each packet waits half as long to fill before it's sent, which
-     * saves about 10 ms per direction for a little more packet overhead.
+     * Asks the other side to send audio packets of [ms] (a=ptime, replacing any
+     * already there; see [WebRtcTuning.AUDIO_PACKET_MS] for why 20).
      */
-    fun preferLowLatencyAudio(sdp: String): String {
+    fun preferAudioPacketTime(sdp: String, ms: Int = WebRtcTuning.AUDIO_PACKET_MS): String {
         val out = StringBuilder(sdp.length + 16)
         var inAudio = false
         val lines = sdp.split("\r\n")
@@ -20,7 +19,7 @@ object SdpTuning {
             if (line.startsWith("m=")) {
                 inAudio = line.startsWith("m=audio")
                 out.append(line).append("\r\n")
-                if (inAudio) out.append("a=ptime:10").append("\r\n")
+                if (inAudio) out.append("a=ptime:$ms").append("\r\n")
             } else if (!(inAudio && line.startsWith("a=ptime:"))) {
                 out.append(line)
                 if (!isLast) out.append("\r\n")
@@ -89,6 +88,24 @@ object SdpTuning {
             val rtpmap = lines.indexOfFirst { it.startsWith("a=rtpmap:$pt ") }
             lines.add(rtpmap + 1, "$prefix" + "maxaveragebitrate=$bitrate")
         }
+        return lines.joinToString("\r\n")
+    }
+
+    /**
+     * Lets lost voice packets be resent (RTCP NACK for Opus, a=rtcp-fb:<pt> nack). WebRTC
+     * supports it but doesn't offer it for audio; with it in the description we send, the
+     * other side keeps its recent packets and resends any we ask for, and the jitter
+     * buffer only asks when a resend can still arrive before the gap would be played.
+     * It catches the longer bursts that the redundant copies can't.
+     */
+    fun enableAudioNack(sdp: String): String {
+        val pt = Regex("^a=rtpmap:(\\d+) opus/48000", setOf(RegexOption.MULTILINE, RegexOption.IGNORE_CASE))
+            .find(sdp)?.groupValues?.get(1) ?: return sdp
+        val nack = "a=rtcp-fb:$pt nack"
+        val lines = sdp.split("\r\n").toMutableList()
+        if (lines.any { it == nack }) return sdp
+        val rtpmap = lines.indexOfFirst { it.startsWith("a=rtpmap:$pt ") }
+        lines.add(rtpmap + 1, nack)
         return lines.joinToString("\r\n")
     }
 

@@ -18,9 +18,10 @@ class AudioBudgetTest {
     }
 
     @Test
-    fun hdVoiceWithItsCopiesIsAboutAQuarterMegabit() {
-        assertEquals(249_000.0, budget.wireBps(Level.FULL), 2_000.0)
-        assertEquals(137_000.0, budget.wireBps(Level.LOW), 2_000.0)
+    fun hdVoiceWithItsCopiesIsAboutAFifthOfAMegabit() {
+        // 4 x 48 kbps of Opus, plus 50 packets a second of headers.
+        assertEquals(220_000.0, budget.wireBps(Level.FULL), 2_000.0)
+        assertEquals(108_000.0, budget.wireBps(Level.LOW), 2_000.0)
     }
 
     @Test

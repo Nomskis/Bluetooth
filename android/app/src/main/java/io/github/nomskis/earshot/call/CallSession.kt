@@ -148,6 +148,8 @@ class CallSession(
     private var stuckJob: Job? = null
     /** Leaves Wi-Fi that's up but losing packets, for mobile data on standby. */
     private val steering = PathSteering()
+    /** How the call is going, for the history and its report. */
+    private val qualityTracker = CallQualityTracker()
     private val ringback = Ringback(
         if (profile.mode == AudioMode.HIFI) android.media.AudioManager.STREAM_MUSIC else android.media.AudioManager.STREAM_VOICE_CALL,
     )
@@ -322,7 +324,9 @@ class CallSession(
         if (::signaling.isInitialized) signaling.close()
         audioController.end()
         if (::engine.isInitialized) engine.release()
-        _state.update { it.copy(phase = phase, error = error, signalingOnline = false, hasRemoteVideo = false) }
+        // A report is a nice-to-have; nothing about it may stop a call from ending.
+        val quality = if (_state.value.connectedAt != null) runCatching { qualityTracker.summary() }.getOrNull() else null
+        _state.update { it.copy(phase = phase, error = error, signalingOnline = false, hasRemoteVideo = false, quality = quality) }
         events.close()
         scope.cancel()
         executor.shutdown()
@@ -577,6 +581,7 @@ class CallSession(
         val micAvailable = profile.mode == AudioMode.HIFI && (_state.value.earbudMic || audioController.earbudMicAvailable())
         _state.update { it.copy(delay = delay, earbudMicAvailable = micAvailable) }
         followAudioBudget(l, entries)
+        qualityTracker.update(entries, voiceReduced = l.audioBudget.capBps != null)
         steer(l, entries)
         val path = RadioPlan.pathFor(CallStats.selectedNetworkType(entries)) ?: return
         if (path == _state.value.callPath) return
@@ -763,6 +768,7 @@ class CallSession(
             )
         }
         engine.preferRedundantAudio(l.pc)
+        engine.preferVp9(l.pc)
         setPhase(CallPhase.NEGOTIATING)
         sendOffer(l, iceRestart = false)
     }
@@ -799,6 +805,7 @@ class CallSession(
         if (link !== l) return
         if (fresh) addLocalTracks(l)
         engine.preferRedundantAudio(l.pc)
+        engine.preferVp9(l.pc)
         val answer = l.pc.awaitCreateAnswer()
         if (link !== l) return
         l.pc.awaitSetLocal(answer)
@@ -808,8 +815,10 @@ class CallSession(
     }
 
     /** Our tweaks to every description we send. */
-    private fun tune(sdp: String): String =
-        SdpTuning.capVideoBandwidth(SdpTuning.preferHdVoice(SdpTuning.preferLowLatencyAudio(sdp)), radioPlan.remoteVideoCap())
+    private fun tune(sdp: String): String {
+        val audio = SdpTuning.enableAudioNack(SdpTuning.preferHdVoice(SdpTuning.preferAudioPacketTime(sdp)))
+        return SdpTuning.capVideoBandwidth(audio, radioPlan.remoteVideoCap())
+    }
 
     private suspend fun onAnswer(data: SignalData.Answer) {
         val l = link ?: return
@@ -999,6 +1008,7 @@ class CallSession(
         val mobileData = settings.mobileDataBackup || settings.mobileDataOn24GHz || !LinkConditions.onWorkingWifi(appContext)
         val pc = engine.createPeerConnection(iceServers, observer, preferCellular, mobileDataNextToWifi = mobileData)
             ?: error("WebRTC could not create a peer connection")
+        qualityTracker.newConnection()
         val tracks = engine.createSendTracks()
         tracks.audio.setEnabled(!_state.value.micMuted)
         tracks.video?.setEnabled(!_state.value.sendsNoVideo)
@@ -1109,7 +1119,13 @@ class CallSession(
     }
 
     private fun setPhase(phase: CallPhase) {
-        _state.update { if (it.isActive) it.copy(phase = phase) else it }
+        _state.update {
+            if (!it.isActive) return@update it
+            if (phase == CallPhase.RECONNECTING && it.phase == CallPhase.CONNECTED) qualityTracker.reconnected()
+            // The timer counts from the first connection, through any reconnects.
+            val connectedAt = it.connectedAt ?: if (phase == CallPhase.CONNECTED) SystemClock.elapsedRealtime() else null
+            it.copy(phase = phase, connectedAt = connectedAt)
+        }
         // Connecting for a long time usually means the networks block direct calls; say so.
         if (phase == CallPhase.NEGOTIATING || phase == CallPhase.RECONNECTING) {
             if (stuckJob?.isActive != true) {

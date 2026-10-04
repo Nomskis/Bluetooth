@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.SystemClock
 import android.os.PowerManager
 import io.github.nomskis.earshot.audio.AudioProfile
 import io.github.nomskis.earshot.audio.AudioRoute
@@ -13,6 +14,7 @@ import io.github.nomskis.earshot.audio.CodecInfo
 import io.github.nomskis.earshot.audio.DeviceKind
 import io.github.nomskis.earshot.audio.LatencyProbe
 import io.github.nomskis.earshot.audio.LinkConditions
+import io.github.nomskis.earshot.calls.CallRecords
 import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.calls.InboxKeys
 import io.github.nomskis.earshot.calls.IncomingRing
@@ -89,6 +91,8 @@ class CallManager(
     /** The ring the current call sends, if it's a call to a contact. */
     @Volatile
     private var outgoing: OutgoingRing? = null
+    /** Left for their call when we rang each other at once; not a call of its own in the history. */
+    private var supersededRing: OutgoingRing? = null
 
     /** On a call, or about to be. */
     val busy: Boolean get() = _session.value != null || starting.value
@@ -106,6 +110,7 @@ class CallManager(
     fun switchTo(ring: IncomingRing, withVideo: Boolean) {
         scope.launch {
             starting.first { !it }
+            supersededRing = outgoing
             _session.value?.hangUp()
             _session.first { it == null }
             answerCall(ring, withVideo)
@@ -140,6 +145,8 @@ class CallManager(
             val profile = AudioProfile.forCall(current, route)
             val radioPlan = radioPlan(current, route)
             // Swapped with the other side during the call, so you can call each other directly next time.
+            val startedAtMillis = System.currentTimeMillis()
+            var learnedAddress: String? = null
             val inboxKey = settings.inboxKey()
             val me = Chat.Frame.Contact(current.displayName, InboxKeys.address(inboxKey))
             val outgoing = calling?.let { OutgoingRing(it, current.displayName, inboxKey, withVideo) }
@@ -157,7 +164,10 @@ class CallManager(
                 withVideo = withVideo,
                 radioPlan = radioPlan,
                 me = me,
-                onContact = { contact -> scope.launch { settings.saveContact(contact) } },
+                onContact = { contact ->
+                    learnedAddress = contact.address
+                    scope.launch { settings.saveContact(contact) }
+                },
                 outgoing = outgoing,
                 contactName = calling?.name ?: answering?.callerName,
             )
@@ -168,6 +178,9 @@ class CallManager(
             if (radioPlan.preferCellular || current.mobileDataBackup) cellular.acquire()
             watchNetwork(session, current)
             session.start()
+            // Their name as the call went, for the history (they may have left by the end).
+            var peerName: String? = null
+            val nameJob = launch { session.state.collect { s -> s.remotePeer?.name?.takeIf { it.isNotBlank() }?.let { peerName = it } } }
             // If the system kills the app mid-call, the next launch can offer to rejoin.
             val aliveJob = launch {
                 while (true) {
@@ -218,7 +231,23 @@ class CallManager(
             }
 
             val end = session.state.first { !it.isActive }
+            val endedAt = SystemClock.elapsedRealtime()
+            nameJob.cancel()
             aliveJob.cancel()
+            if (outgoing == null || outgoing !== supersededRing) {
+                CallRecords.ended(
+                    calling = calling,
+                    answering = answering,
+                    room = room,
+                    peerName = peerName,
+                    learnedAddress = learnedAddress,
+                    ringStatus = outgoing?.status,
+                    connectedForMs = end.connectedAt?.let { endedAt - it },
+                    video = withVideo,
+                    startedAtMillis = startedAtMillis,
+                    quality = end.quality,
+                )?.let { settings.addCallRecord(it) }
+            }
             settings.clearActiveCall()
             lipSyncJob?.cancel()
             routeJob.cancel()

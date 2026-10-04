@@ -102,8 +102,8 @@ are in [research/latency.md](research/latency.md); in short:
 
 | What | How | Works with |
 | --- | --- | --- |
-| Shorter network path | 10 ms Opus packets (`a=ptime:10`), redundant audio (RED) preferred, a jitter buffer that shrinks quickly (`audioJitterBufferFastAccelerate`) | everything |
-| Ride out bad Wi-Fi | Each audio packet repeats the 3 before it, a jitter buffer sized for spiky networks, VP8 temporal layers, Wi-Fi kept out of power save (see below) | everything |
+| Shorter network path | Redundant audio (RED) preferred, a jitter buffer that shrinks quickly (`audioJitterBufferFastAccelerate`) | everything |
+| Ride out bad Wi-Fi | 20 ms packets that repeat the 3 before them, resends of lost audio, a jitter buffer sized for spikes, VP9 with temporal layers, Wi-Fi kept out of power save (see below) | everything |
 | Fast playback path | `PERFORMANCE_MODE_LOW_LATENCY` with a self-adjusting buffer (`setUseLowLatency`), game-audio label | everything; low-latency Bluetooth where the phone supports it |
 | Measure it | The sonar meter in the delay tuner: chirps through an earbud held to the mic, matched filter, calibrated against the phone speaker | everything |
 | See them talk first | A voice detector on their decoded audio, 100–250 ms ahead of your ears: the call screen glows, music dips (`AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`), 8-second replay | everything |
@@ -116,20 +116,30 @@ are in [research/latency.md](research/latency.md); in short:
 
 ## Riding out bad Wi-Fi
 
-Gym and café Wi-Fi rarely runs out of bandwidth first. It loses packets in
-bursts and delivers others late, in clumps. Each setting below was checked
-against the WebRTC source the app ships with
-([`call/WebRtcTuning.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/WebRtcTuning.kt)):
+Home and gym Wi-Fi, and long routes like Morocco to Finland, rarely run out
+of bandwidth first. They lose packets in bursts and deliver others late, in
+clumps. Each setting below was checked against the WebRTC source the app
+ships with ([`call/WebRtcTuning.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/WebRtcTuning.kt));
+[research/long-distance.md](research/long-distance.md) has the reasoning for
+calls between countries over weak Wi-Fi.
 
-- **Audio repeats itself.** With RED, every 10 ms packet also carries the 3
-  before it (`WebRTC-Audio-Red-For-Opus/Enabled-3/`; WebRTC's default is 1),
-  so up to 30 ms of consecutive loss is repaired exactly instead of
-  concealed. That adds bytes, not packets, and on Wi-Fi each packet's airtime
-  costs more than its size: about 100 kbps more at HD voice. Opus's own
-  in-band FEC stays on underneath.
+- **20 ms audio packets**, WebRTC's usual size (`a=ptime:20`). Half the
+  packets of 10 ms means less contention for airtime on weak Wi-Fi and half
+  the header overhead, the same redundant copies cover twice the loss, and
+  Opus codes 20 ms frames more efficiently. It costs about 10 ms of delay.
+- **Audio repeats itself.** With RED, every packet also carries the 3 before
+  it (`WebRTC-Audio-Red-For-Opus/Enabled-3/`; WebRTC's default is 1), so up to
+  60 ms of consecutive loss is repaired exactly instead of concealed. That
+  adds bytes, not packets: about 100 kbps more at HD voice. Opus's own in-band
+  FEC stays on underneath.
+- **Lost audio is resent when there's time.** The descriptions we send turn
+  on NACK for Opus (`a=rtcp-fb:111 nack`), which WebRTC supports but doesn't
+  offer for audio. The jitter buffer asks for a missing packet only when a
+  resend can still arrive before the gap would be played, so it catches the
+  longer bursts the copies can't, without adding delay.
 - **Voice that fits the connection.** WebRTC sends audio at a fixed bitrate
   whatever its bandwidth estimate says, and HD voice with its copies is about
-  250 kbps. When the estimate (`availableOutgoingBitrate`) says that doesn't
+  220 kbps. When the estimate (`availableOutgoingBitrate`) says that doesn't
   fit with room for some video, the voice steps down to 32, then 20 kbps Opus
   (still clear speech) through the sender's `maxBitrateBps`, and steps back up
   once there's room. Stepping up is a probe: a step that doesn't hold makes
@@ -140,9 +150,13 @@ against the WebRTC source the app ships with
   (`WebRTC-Audio-NetEqDelayManagerConfig/quantile:0.97/`), so a jittery
   network causes fewer dropouts. On a steady network the two are the same;
   the extra delay only appears while the network is that bad. The buffer can
-  hold a full second (`audioJitterBufferMaxPackets` 100), so a long stall
-  doesn't overflow it.
-- **Video that doesn't freeze on a lost packet.** VP8 sent with three
+  hold 2 seconds (`audioJitterBufferMaxPackets` 100), so a long stall in a
+  crowded router's queue doesn't overflow it.
+- **VP9 video.** VP9 needs roughly a third fewer bits than VP8 for the same
+  picture, which is what a slow home upload needs most; VP8 and H.264 stay as
+  fallbacks. WebRTC lowers the resolution by itself if a phone can't keep up
+  with the encoding.
+- **Video that doesn't freeze on a lost packet.** VP9 or VP8 sent with three
   temporal layers (`scalabilityMode` L1T3): half the frames are referenced by
   nothing and a quarter by one other, so a loss usually costs one frame
   instead of stalling the picture until it's resent or a new keyframe
@@ -155,6 +169,10 @@ against the WebRTC source the app ships with
   also covers the screen being off on Android 10 to 13. From Android 14 there
   is no way for an app to do that with the screen off.
 - **Fast failover** (above), and mobile data on standby if you allow it.
+- **A report for every call.** Route, round trip, audio lost and repaired,
+  jitter buffer, video freezes, what held our video back, kept with the call
+  and copyable from Settings, so a bad call can be understood from what really
+  happened ([`call/CallQuality.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/CallQuality.kt)).
 
 ## Sharing the radio with Bluetooth
 
