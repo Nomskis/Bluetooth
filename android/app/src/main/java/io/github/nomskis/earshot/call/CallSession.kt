@@ -171,6 +171,7 @@ class CallSession(
         data class SetCameraOff(val off: Boolean) : Event
         data class SetCameraPaused(val paused: Boolean) : Event
         data object SwitchCamera : Event
+        data class SetFlipped(val on: Boolean) : Event
         data class CameraSwitched(val front: Boolean) : Event
         data class SetVoiceVolume(val volume: Float) : Event
         data object NetworkChanged : Event
@@ -220,6 +221,7 @@ class CallSession(
     /** Pause the camera while the phone is in a pocket; separate from the user's own camera switch. */
     fun setCameraPaused(paused: Boolean) = post(Event.SetCameraPaused(paused))
     fun switchCamera() = post(Event.SwitchCamera)
+    fun setFlipped(on: Boolean) = post(Event.SetFlipped(on))
     fun setVoiceVolume(volume: Float) = post(Event.SetVoiceVolume(volume))
     fun onNetworkChanged() = post(Event.NetworkChanged)
     fun toggleReplay() = post(Event.ToggleReplay)
@@ -256,8 +258,14 @@ class CallSession(
             withVideo = withVideo,
             localPreview = localPreview,
         )
+        engine.flipped = settings.flip
         _state.update {
-            it.copy(hasCamera = engine.hasVideo, frontCamera = engine.isFrontCamera, radioNote = RadioPlan.describe(radioPlan, null))
+            it.copy(
+                hasCamera = engine.hasVideo,
+                frontCamera = engine.isFrontCamera,
+                flipped = settings.flip,
+                radioNote = RadioPlan.describe(radioPlan, null),
+            )
         }
         audioController.begin(profile)
         _state.update { it.copy(earbudMicAvailable = profile.mode == AudioMode.HIFI && audioController.earbudMicAvailable()) }
@@ -340,6 +348,10 @@ class CallSession(
                 sendMediaState()
             }
             Event.SwitchCamera -> engine.switchCamera { front -> post(Event.CameraSwitched(front)) }
+            is Event.SetFlipped -> {
+                engine.flipped = event.on
+                _state.update { it.copy(flipped = event.on) }
+            }
             is Event.CameraSwitched -> _state.update { it.copy(frontCamera = event.front) }
             is Event.SetVoiceVolume -> {
                 link?.remoteAudio?.setVolume(event.volume.toDouble())

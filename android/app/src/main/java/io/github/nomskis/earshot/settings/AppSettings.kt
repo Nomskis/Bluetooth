@@ -65,6 +65,8 @@ data class AppSettings(
     val autoGainControl: Boolean = true,
     val videoQuality: VideoQuality = VideoQuality.HIGH,
     val startWithBackCamera: Boolean = false,
+    /** Flip: your video mirrored left to right, the same for you and the other person. */
+    val flip: Boolean = false,
     val keepScreenOn: Boolean = true,
     /** Turn the screen off when the proximity sensor is covered (in a pocket), so it can't be tapped by accident. */
     val pocketGuard: Boolean = true,

@@ -56,6 +56,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 earbudBoost = earbudBoost,
                 turboNote = turboBoost?.text,
                 onVoiceVolumeSaved = { v -> viewModel.updateSettings { it.copy(voiceVolume = v) } },
+                onFlipSaved = { on -> viewModel.updateSettings { it.copy(flip = on) } },
                 onLeaveScreen = onLeaveCallScreen,
             )
             screen == Screen.SETTINGS -> SettingsScreen(

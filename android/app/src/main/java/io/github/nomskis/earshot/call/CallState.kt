@@ -44,6 +44,8 @@ data class CallState(
     val cameraPaused: Boolean = false,
     val hasCamera: Boolean = true,
     val frontCamera: Boolean = true,
+    /** Flip is on: your video is mirrored, for you and the other person alike. */
+    val flipped: Boolean = false,
     val signalingOnline: Boolean = false,
     val voiceVolume: Float = 1f,
     /** The other person is talking (detected before their voice reaches your ears). */

@@ -113,6 +113,31 @@ class CallScreenPartsTest {
     }
 
     @Test
+    fun flipIsOneTapAndShowsWhenItsOn() {
+        var flips = 0
+        compose.setContent {
+            EarshotTheme {
+                Controls(
+                    state = state.copy(flipped = true),
+                    onMic = {},
+                    onCamera = {},
+                    onSwitchCamera = {},
+                    onFlip = { flips++ },
+                    onVolume = {},
+                    onVolumeDone = {},
+                    onReplay = {},
+                    onEarbudMic = {},
+                    onHangUp = {},
+                    modifier = Modifier,
+                )
+            }
+        }
+        compose.onNodeWithContentDescription("Flip").assertIsDisplayed().performClick()
+        assertEquals(1, flips)
+        compose.onNodeWithContentDescription("Switch camera").assertIsDisplayed()
+    }
+
+    @Test
     fun chatButtonShowsUnreadWhenTheOtherSideHasChat() {
         var opened = 0
         val withChat = state.copy(remotePeer = PeerInfo("p1", "Sam", ClientInfo("web", "0.1.0", listOf(Chat.CAPABILITY)), seq = 1))

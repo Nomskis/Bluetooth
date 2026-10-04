@@ -207,6 +207,8 @@ fun SettingsScreen(
             Toggle("Start with the back camera", settings.startWithBackCamera) { v ->
                 onUpdate { it.copy(startWithBackCamera = v) }
             }
+            Toggle("Flip", settings.flip) { v -> onUpdate { it.copy(flip = v) } }
+            Hint("Mirrors your video left to right. You and the other person see the same picture. There's a Flip button during calls too.")
             Toggle("Keep the screen on during calls", settings.keepScreenOn) { v -> onUpdate { it.copy(keepScreenOn = v) } }
             Toggle("Screen off in your pocket", settings.pocketGuard) { v -> onUpdate { it.copy(pocketGuard = v) } }
             Hint(

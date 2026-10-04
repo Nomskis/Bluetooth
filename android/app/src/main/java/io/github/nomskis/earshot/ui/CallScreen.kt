@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CallEnd
+import androidx.compose.material.icons.filled.Flip
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.HeadsetMic
 import androidx.compose.material.icons.filled.Mic
@@ -88,6 +89,7 @@ fun CallScreen(
     earbudBoost: EarbudBoost.Status?,
     turboNote: String?,
     onVoiceVolumeSaved: (Float) -> Unit,
+    onFlipSaved: (Boolean) -> Unit = {},
     onLeaveScreen: () -> Unit,
 ) {
     val state by session.state.collectAsStateWithLifecycle()
@@ -160,7 +162,8 @@ fun CallScreen(
             VideoRenderer(
                 sink = session.localPreview,
                 eglContext = session.eglContext,
-                mirror = state.frontCamera,
+                // The frames as sent, Flip included: what you see is what they see.
+                mirror = false,
                 overlay = true,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -204,6 +207,10 @@ fun CallScreen(
                 onMic = { session.setMicMuted(!state.micMuted) },
                 onCamera = { session.setCameraOff(!state.cameraOff) },
                 onSwitchCamera = session::switchCamera,
+                onFlip = {
+                    session.setFlipped(!state.flipped)
+                    onFlipSaved(!state.flipped)
+                },
                 onVolume = session::setVoiceVolume,
                 onVolumeDone = onVoiceVolumeSaved,
                 onReplay = session::toggleReplay,
@@ -452,6 +459,7 @@ internal fun Controls(
     onMic: () -> Unit,
     onCamera: () -> Unit,
     onSwitchCamera: () -> Unit,
+    onFlip: () -> Unit = {},
     onVolume: (Float) -> Unit,
     onVolumeDone: (Float) -> Unit,
     onReplay: () -> Unit,
@@ -500,6 +508,7 @@ internal fun Controls(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (state.hasCamera) {
                 ControlButton(Icons.Filled.Cameraswitch, "Switch camera", active = false, small = true, onClick = onSwitchCamera)
+                ControlButton(Icons.Filled.Flip, "Flip", active = state.flipped, small = true, onClick = onFlip)
             }
             ControlButton(
                 Icons.AutoMirrored.Filled.VolumeUp,

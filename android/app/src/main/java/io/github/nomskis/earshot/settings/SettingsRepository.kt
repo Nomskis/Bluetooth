@@ -32,6 +32,7 @@ class SettingsRepository(private val context: Context) {
         val autoGainControl = booleanPreferencesKey("auto_gain_control")
         val videoQuality = stringPreferencesKey("video_quality")
         val startWithBackCamera = booleanPreferencesKey("start_with_back_camera")
+        val flip = booleanPreferencesKey("flip")
         val keepScreenOn = booleanPreferencesKey("keep_screen_on")
         val pocketGuard = booleanPreferencesKey("pocket_guard")
         val gameAudioLabel = booleanPreferencesKey("game_audio_label")
@@ -135,6 +136,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.autoGainControl] = next.autoGainControl
             prefs[Keys.videoQuality] = next.videoQuality.name
             prefs[Keys.startWithBackCamera] = next.startWithBackCamera
+            prefs[Keys.flip] = next.flip
             prefs[Keys.keepScreenOn] = next.keepScreenOn
             prefs[Keys.pocketGuard] = next.pocketGuard
             prefs[Keys.gameAudioLabel] = next.gameAudioLabel
@@ -179,6 +181,7 @@ class SettingsRepository(private val context: Context) {
             autoGainControl = this[Keys.autoGainControl] ?: defaults.autoGainControl,
             videoQuality = enumOrDefault(this[Keys.videoQuality], defaults.videoQuality),
             startWithBackCamera = this[Keys.startWithBackCamera] ?: defaults.startWithBackCamera,
+            flip = this[Keys.flip] ?: defaults.flip,
             keepScreenOn = this[Keys.keepScreenOn] ?: defaults.keepScreenOn,
             pocketGuard = this[Keys.pocketGuard] ?: defaults.pocketGuard,
             gameAudioLabel = this[Keys.gameAudioLabel] ?: defaults.gameAudioLabel,

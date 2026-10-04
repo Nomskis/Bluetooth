@@ -82,6 +82,15 @@ class RtcEngine(
     val hasVideo: Boolean
     var isFrontCamera: Boolean
         private set
+    private val flipProcessor = FlipProcessor()
+
+    /** Flip: your video mirrored left to right, for the other person and your own preview alike. */
+    var flipped: Boolean
+        get() = flipProcessor.flip
+        set(value) {
+            flipProcessor.flip = value
+        }
+
     /** WebRTC's software echo canceller for the microphone. */
     var echoCancellation: Boolean = profile.softwareEchoCancellation
         private set
@@ -132,6 +141,8 @@ class RtcEngine(
             capturer = cameraCapturer
             surfaceTextureHelper = SurfaceTextureHelper.create("EarshotCapture", eglContext)
             videoSource = factory.createVideoSource(false)
+            // Every camera frame passes through Flip before it's encoded or previewed.
+            videoSource.setVideoProcessor(flipProcessor)
             cameraCapturer.initialize(surfaceTextureHelper, appContext, videoSource.capturerObserver)
             previewTrack = factory.createVideoTrack("preview", videoSource).also { it.addSink(localPreview) }
             isFrontCamera = enumerator.isFrontFacing(chosen)
