@@ -17,6 +17,7 @@ import io.github.nomskis.earshot.call.CallState
 import io.github.nomskis.earshot.call.Chat
 import io.github.nomskis.earshot.call.ChatMessage
 import io.github.nomskis.earshot.call.DelayBreakdown
+import io.github.nomskis.earshot.call.LinkQuality
 import io.github.nomskis.earshot.call.LipSync
 import io.github.nomskis.earshot.call.RemoteMedia
 import io.github.nomskis.earshot.settings.AudioMode
@@ -62,10 +63,11 @@ class CallScreenPartsTest {
         }
         compose.onNodeWithText("Sam").assertIsDisplayed()
         compose.onNodeWithText("Talking").assertIsDisplayed()
-        compose.onNodeWithText("≈ 215 ms from their mouth to your ear").assertIsDisplayed().performClick()
-        compose.onNodeWithText("Network 25 ms, 0.4% packets lost (repaired where possible)").assertIsDisplayed()
         compose.onNodeWithText("Earbud game mode on").assertIsDisplayed()
         compose.onNodeWithText("Video held back 140 ms to match the earbuds (measured)").assertIsDisplayed()
+        // The details push the notes further down.
+        compose.onNodeWithText("≈ 215 ms from their mouth to your ear").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Network 25 ms, 0.4% packets lost (repaired where possible)").assertIsDisplayed()
     }
 
     @Test
@@ -74,6 +76,31 @@ class CallScreenPartsTest {
             EarshotTheme { TopBar(state.copy(echoGuard = true), route, emptyList(), Modifier) }
         }
         compose.onNodeWithText("Playing out loud now, so echo cancellation is on.").assertIsDisplayed()
+    }
+
+    @Test
+    fun aWeakConnectionSaysWhichWay() {
+        val rough = state.copy(
+            delay = state.delay!!.copy(senderMs = 40, lossPercent = 12.0, concealedPercent = 4.2, sendLossPercent = 0.0, packetMs = 20),
+        )
+        compose.setContent {
+            EarshotTheme { TopBar(rough, route, emptyList(), Modifier) }
+        }
+        compose.onNodeWithText("Weak connection from Sam").assertIsDisplayed()
+        compose.onNodeWithText("≈ 225 ms from their mouth to your ear").performClick()
+        compose.onNodeWithText("From Sam: poor (12% lost, 4% filled in)").assertIsDisplayed()
+        compose.onNodeWithText("To Sam: good").assertIsDisplayed()
+        compose.onNodeWithText("Their phone ≈ 40 ms (estimate, 20 ms packets for a rough link)").assertIsDisplayed()
+    }
+
+    @Test
+    fun weakConnectionLabelNamesTheDirection() {
+        val fine = state.delay!!.copy(sendLossPercent = 0.0)
+        assertEquals(null, weakConnectionLabel(fine, "Sam"))
+        assertEquals("Weak connection to Sam", weakConnectionLabel(fine.copy(sendSqueeze = LinkQuality.POOR), "Sam"))
+        assertEquals("Weak connection from them", weakConnectionLabel(fine.copy(lossPercent = 9.0), null))
+        assertEquals("Weak connection", weakConnectionLabel(fine.copy(networkMs = 400), "Sam"))
+        assertEquals("fair (3% lost)", describeDirection(LinkQuality.FAIR, 3.0, 0.1))
     }
 
     @Test

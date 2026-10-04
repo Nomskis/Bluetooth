@@ -47,7 +47,9 @@ this list works with every pair of classic Bluetooth earbuds:
   the phone's own speaker). One tap tries your earbuds' game mode and every
   codec and keeps whatever is fastest for calls.
 - **See the delay live.** During a call the screen shows roughly how long
-  their voice takes from their mouth to your ear, and where the time goes.
+  their voice takes from their mouth to your ear, where the time goes, and
+  which way the connection is weak ("Weak connection from Sam"), so you know
+  whose Wi-Fi to blame.
 - **See them talk before you hear them.** Earshot sees their voice arrive
   100–250 ms before the earbuds play it: the call screen lights up as they
   start talking, your music dips while they talk, and you can replay the last

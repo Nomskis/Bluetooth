@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
 import { ChatLog, MAX_CHAT_LENGTH, parseChat } from '../../web/js/chat.js';
-import { DelayTracker, SENDER_ESTIMATE_MS, isWeak, relayed } from '../../web/js/delay.js';
+import { DelayTracker, SENDER_ESTIMATE_MS, fromThem, isWeak, relayed, toThem, weakLabel } from '../../web/js/delay.js';
 import { opusHasNack, opusMaxAverageBitrate, preferHdVoice, preferLowLatencyAudio, requestAudioResends } from '../../web/js/sdp.js';
 import { CALM_MS, PacketTime, SETTLE_MS, inboundAudioCounters } from '../../web/js/ptime.js';
 import { VoiceActivityDetector, rms } from '../../web/js/voice.js';
@@ -168,6 +168,33 @@ test('weak connection: loss, network delay or jitter past the thresholds', () =>
   assert.equal(isWeak({ ...fine, networkMs: 350 }), true);
   assert.equal(isWeak({ ...fine, jitterBufferMs: 300 }), true);
   assert.equal(isWeak({ lossPercent: null, networkMs: null, jitterBufferMs: null }), false);
+});
+
+test('weak connection: which way it is weak', () => {
+  const fine = { lossPercent: 1, networkMs: 40, jitterBufferMs: 60, sendLossPercent: 0.5 };
+  assert.equal(fromThem(fine), 'good');
+  assert.equal(toThem(fine), 'good');
+  assert.equal(fromThem({ ...fine, concealedPercent: 4 }), 'poor');
+  assert.equal(fromThem({ ...fine, lossPercent: 3 }), 'fair');
+  assert.equal(toThem({ ...fine, sendLossPercent: 10 }), 'poor');
+  assert.equal(weakLabel(fine, 'Sam'), null);
+  assert.equal(weakLabel({ ...fine, lossPercent: 12 }, 'Sam'), 'Weak connection from Sam');
+  assert.equal(weakLabel({ ...fine, sendLossPercent: 12 }, ''), 'Weak connection to them');
+  assert.equal(weakLabel({ ...fine, networkMs: 400 }, 'Sam'), 'Weak connection');
+  assert.equal(fromThem({}), null);
+});
+
+test('delay tracker reads concealment, their side\'s loss report and our packet length', () => {
+  const tracker = new DelayTracker();
+  const report = (concealed, total) => [
+    { type: 'inbound-rtp', kind: 'audio', concealedSamples: concealed, totalSamplesReceived: total },
+    { type: 'remote-inbound-rtp', kind: 'audio', fractionLost: 0.04 },
+  ];
+  assert.equal(tracker.update(report(0, 96000), null).concealedPercent, null);
+  const next = tracker.update(report(1920, 192000), null, 20);
+  assert.equal(next.concealedPercent, 2);
+  assert.equal(next.sendLossPercent, 4);
+  assert.equal(next.senderMs, SENDER_ESTIMATE_MS + 10);
 });
 
 test('packet time: gaps the redundant copies cannot cover ask for longer packets, a calm minute shorter again', () => {

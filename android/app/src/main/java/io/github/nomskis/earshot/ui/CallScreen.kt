@@ -78,6 +78,7 @@ import io.github.nomskis.earshot.call.CallSession
 import io.github.nomskis.earshot.call.CallState
 import io.github.nomskis.earshot.call.ChatMessage
 import io.github.nomskis.earshot.call.DelayBreakdown
+import io.github.nomskis.earshot.call.LinkQuality
 import io.github.nomskis.earshot.call.LipSync
 import io.github.nomskis.earshot.calls.OutgoingRing
 import io.github.nomskis.earshot.earbuds.EarbudBoost
@@ -426,9 +427,10 @@ internal fun TopBar(state: CallState, route: AudioRoute, boostNotes: List<String
                 Spacer(Modifier.width(8.dp))
                 Badge("Muted")
             }
-            if (state.delay?.weakConnection == true && state.phase == CallPhase.CONNECTED) {
+            val weak = weakConnectionLabel(state.delay, state.remotePeer?.name?.takeIf { it.isNotBlank() })
+            if (weak != null && state.phase == CallPhase.CONNECTED) {
                 Spacer(Modifier.width(8.dp))
-                Badge("Weak connection")
+                Badge(weak)
             }
             if (!state.signalingOnline && state.phase == CallPhase.CONNECTED) {
                 Spacer(Modifier.width(8.dp))
@@ -436,7 +438,7 @@ internal fun TopBar(state: CallState, route: AudioRoute, boostNotes: List<String
             }
         }
         RouteChip(route, state.audioMode)
-        state.delay?.let { DelayChip(it) }
+        state.delay?.let { DelayChip(it, state.remotePeer?.name?.takeIf { n -> n.isNotBlank() }) }
         // What Earshot is doing for the earbuds behind the scenes.
         if (state.earbudMic) {
             Text(
@@ -483,9 +485,40 @@ internal fun TopBar(state: CallState, route: AudioRoute, boostNotes: List<String
     }
 }
 
-/** "≈ 230 ms mouth to ear"; tap for where the time goes. */
+/**
+ * Which way the connection is weak, when it is: on a call between two
+ * countries the weak side is usually one person's uplink, and knowing whose
+ * tells you who should move closer to the router or off a busy network.
+ */
+internal fun weakConnectionLabel(delay: DelayBreakdown?, name: String?): String? {
+    val from = delay?.fromThem == LinkQuality.POOR
+    val to = delay?.toThem == LinkQuality.POOR
+    val who = name ?: "them"
+    return when {
+        from && to -> "Weak connection"
+        from -> "Weak connection from $who"
+        to -> "Weak connection to $who"
+        else -> null
+    }
+}
+
+/** One direction in words: "good", or "poor (12% lost, 4% filled in)". */
+internal fun describeDirection(quality: LinkQuality, lossPercent: Double?, concealedPercent: Double? = null): String {
+    val word = when (quality) {
+        LinkQuality.GOOD -> "good"
+        LinkQuality.FAIR -> "fair"
+        LinkQuality.POOR -> "poor"
+    }
+    val details = listOfNotNull(
+        lossPercent?.takeIf { it >= 0.5 }?.let { "%.0f%% lost".format(it) },
+        concealedPercent?.takeIf { it >= 0.5 }?.let { "%.0f%% filled in".format(it) },
+    )
+    return if (details.isEmpty()) word else "$word (${details.joinToString(", ")})"
+}
+
+/** "≈ 230 ms mouth to ear"; tap for where the time goes, and how each direction is doing. */
 @Composable
-private fun DelayChip(delay: DelayBreakdown) {
+private fun DelayChip(delay: DelayBreakdown, name: String?) {
     var open by rememberSaveable { mutableStateOf(false) }
     val total = delay.totalMs ?: return
     Column(
@@ -499,7 +532,18 @@ private fun DelayChip(delay: DelayBreakdown) {
         if (open) {
             val small = MaterialTheme.typography.bodySmall
             val dim = Color.White.copy(alpha = 0.8f)
-            Text("Their phone ≈ ${delay.senderMs} ms (estimate)", color = dim, style = small)
+            val who = name ?: "them"
+            delay.fromThem?.let { Text("From $who: ${describeDirection(it, delay.lossPercent, delay.concealedPercent)}", color = dim, style = small) }
+            delay.toThem?.let { quality ->
+                val squeezed = when (delay.sendSqueeze) {
+                    LinkQuality.POOR -> ", your video paused to fit"
+                    LinkQuality.FAIR -> ", your voice leaner to fit"
+                    else -> ""
+                }
+                Text("To $who: ${describeDirection(quality, delay.sendLossPercent)}$squeezed", color = dim, style = small)
+            }
+            val packets = if (delay.packetMs > 10) ", ${delay.packetMs} ms packets for a rough link" else ""
+            Text("Their phone ≈ ${delay.senderMs} ms (estimate$packets)", color = dim, style = small)
             val loss = delay.lossPercent?.let { if (it < 0.05) ", no packets lost" else ", %.1f%% packets lost (repaired where possible)".format(it) } ?: ""
             val via = when (delay.relayed) {
                 true -> " through a relay"

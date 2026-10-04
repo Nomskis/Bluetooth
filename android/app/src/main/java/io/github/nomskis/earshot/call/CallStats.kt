@@ -36,6 +36,26 @@ object CallStats {
         return received to lost
     }
 
+    /** Cumulative (concealedSamples, totalSamplesReceived) for her audio. */
+    fun audioConcealment(report: Map<String, Entry>): Pair<Double, Double>? {
+        val inbound = report.values.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "audio" } ?: return null
+        val concealed = number(inbound.members["concealedSamples"]) ?: return null
+        val total = number(inbound.members["totalSamplesReceived"]) ?: return null
+        return concealed to total
+    }
+
+    /**
+     * Share of our packets lost on the way to her, 0..1, from her side's last receiver
+     * report (RTCRemoteInboundRtpStreamStats.fractionLost): audio, or video when there's
+     * no report on the audio yet.
+     */
+    fun sendLossFraction(report: Map<String, Entry>): Double? {
+        val remote = report.values.filter { it.type == "remote-inbound-rtp" }
+        return listOf("audio", "video").firstNotNullOfOrNull { kind ->
+            remote.firstOrNull { it.members["kind"] == kind }?.let { number(it.members["fractionLost"]) }
+        }
+    }
+
     /** Cumulative counters for her audio, for [PacketTime]; null until all are reported. */
     fun inboundAudioCounters(report: Map<String, Entry>): PacketTime.Counters? {
         val inbound = report.values.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "audio" } ?: return null

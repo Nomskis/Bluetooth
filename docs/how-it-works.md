@@ -112,7 +112,7 @@ are in [research/latency.md](research/latency.md); in short:
 | Earbud game mode | Each brand's own command, on for the call and back after | OPPO/OnePlus/realme, Nothing/CMF, Xiaomi/Redmi, Huawei/Honor, Soundcore, EarFun |
 | Turbo | Android's privileged Bluetooth controls, through Shizuku: for each call, low-latency mode, the codec measured fastest, the shortest buffer; undone after | Android 13+ with Wireless debugging |
 | Fast failover | ICE tuned to swap a stalled path in ~1 s; mobile data on standby if you allow it | everything |
-| Live readout | Mouth-to-ear delay from stats plus the measured app-to-ear figure | everything |
+| Live readout | Mouth-to-ear delay from stats plus the measured app-to-ear figure, and which way the connection is weak | everything |
 
 ## Riding out bad Wi-Fi
 
@@ -200,6 +200,13 @@ against the WebRTC source the app ships with
   also covers the screen being off on Android 10 to 13. From Android 14 there
   is no way for an app to do that with the screen off.
 - **Fast failover** (above), and mobile data on standby if you allow it.
+- **Which way it's weak.** On a call between two countries the weak part is
+  usually one person's uplink, so the call screen says which direction
+  struggles: "Weak connection from Sam" when their voice reaches you with
+  loss or gaps that had to be filled in, "to Sam" when their side reports
+  your packets going missing (RTCP `fractionLost`) or your voice had to get
+  leaner, or video pause, to fit. Tap the delay readout for both directions
+  (good, fair or poor, with the numbers) and the packet length in use.
 
 ## Sharing the radio with Bluetooth
 

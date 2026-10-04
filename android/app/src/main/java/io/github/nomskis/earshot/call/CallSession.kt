@@ -592,12 +592,17 @@ class CallSession(
 
     private fun onStats(l: Link, report: RTCStatsReport) {
         val entries = report.statsMap.mapValues { (_, s) -> CallStats.Entry(s.type, s.members) }
-        val delay = delayTracker.update(entries, playoutMs, playoutMeasured, packetTime.ms)
+        followMediaBudget(l, entries)
+        followPacketTime(l, entries)
+        val squeeze = when {
+            l.budget.videoPaused -> LinkQuality.POOR
+            l.budget.level != MediaBudget.Level.FULL -> LinkQuality.FAIR
+            else -> LinkQuality.GOOD
+        }
+        val delay = delayTracker.update(entries, playoutMs, playoutMeasured, packetTime.ms).copy(sendSqueeze = squeeze)
         // Earbuds can connect mid-call; keep the earbud-mic button honest.
         val micAvailable = profile.mode == AudioMode.HIFI && (_state.value.earbudMic || audioController.earbudMicAvailable())
         _state.update { it.copy(delay = delay, earbudMicAvailable = micAvailable) }
-        followMediaBudget(l, entries)
-        followPacketTime(l, entries)
         steer(l, entries)
         val path = RadioPlan.pathFor(CallStats.selectedNetworkType(entries)) ?: return
         if (path == _state.value.callPath) return

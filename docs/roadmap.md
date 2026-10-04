@@ -23,10 +23,10 @@ Roughly in order. Each item stands on its own; pick any.
 - **Headset mode to Hi-Fi mid-call.** Hi-Fi calls can now borrow the earbud
   mic and come back; a call started in headset mode still can't move to
   Hi-Fi without rebuilding the audio device module.
-- **Connection quality at a glance.** The delay readout already breaks down
-  network time, packet loss and whether the call is direct or relayed; a
-  simple good/poor indicator and the negotiated codec and bitrate would round
-  it off.
+- **Codec and bitrate in the readout.** The delay readout already says
+  which way the connection is weak, the loss each way, whether the call is
+  direct or relayed and the audio packet length; the negotiated video codec
+  and the bitrates in use would round it off.
 - **A private release key.** The latest release carries an optimized,
   non-debuggable APK signed with the shared debug key, so builds install over
   each other; signing with a key kept in the repository's secrets would stop
