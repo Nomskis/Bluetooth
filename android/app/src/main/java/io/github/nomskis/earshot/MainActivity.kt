@@ -3,9 +3,11 @@ package io.github.nomskis.earshot
 import android.app.PictureInPictureParams
 import android.content.Intent
 import android.graphics.Rect
+import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
+import android.view.Display
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -27,6 +29,15 @@ class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
     private val inPictureInPicture = mutableStateOf(false)
     private var started = false
+
+    // The pocket guard blanks the display without stopping the activity, so watch the display too.
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayChanged(displayId: Int) {
+            if (displayId == Display.DEFAULT_DISPLAY) publishVisibility()
+        }
+        override fun onDisplayAdded(displayId: Int) = Unit
+        override fun onDisplayRemoved(displayId: Int) = Unit
+    }
 
     private val pipListener = Consumer<PictureInPictureModeChangedInfo> { info ->
         inPictureInPicture.value = info.isInPictureInPictureMode
@@ -66,18 +77,22 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         started = true
+        getSystemService(DisplayManager::class.java)?.registerDisplayListener(displayListener, null)
         publishVisibility()
     }
 
     override fun onStop() {
         started = false
+        getSystemService(DisplayManager::class.java)?.unregisterDisplayListener(displayListener)
         publishVisibility()
         super.onStop()
     }
 
     /** Chat messages become notifications while you can't see the call screen. */
     private fun publishVisibility() {
-        appGraph.callScreenVisible.value = started && !inPictureInPicture.value
+        val displayOn = getSystemService(DisplayManager::class.java)
+            ?.getDisplay(Display.DEFAULT_DISPLAY)?.state?.let { it == Display.STATE_ON } ?: true
+        appGraph.callScreenVisible.value = started && displayOn && !inPictureInPicture.value
     }
 
     override fun onDestroy() {
