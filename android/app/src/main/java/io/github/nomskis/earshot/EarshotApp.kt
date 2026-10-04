@@ -12,6 +12,7 @@ import io.github.nomskis.earshot.earbuds.EarbudControl
 import io.github.nomskis.earshot.settings.SettingsRepository
 import io.github.nomskis.earshot.turbo.TurboBoost
 import io.github.nomskis.earshot.turbo.TurboClient
+import io.github.nomskis.earshot.update.AppUpdater
 import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -54,6 +55,8 @@ class AppGraph(context: Context) {
     )
     /** A missed call's "Call back", waiting for the home screen to pick it up. */
     val callBack = MutableStateFlow<CallBackRequest?>(null)
+    /** Newer builds, installed over this one. */
+    val updater = AppUpdater(context, http)
 }
 
 class EarshotApp : Application() {

@@ -27,21 +27,56 @@ class CallAudioController(context: Context) {
     /** The device [begin] routed the call to (Android 12+). */
     private var chosen: AudioDeviceInfo? = null
 
-    fun begin(profile: AudioProfile) {
+    /**
+     * The call path: earbuds or a headset when there are any, otherwise the loudspeaker for
+     * [speaker] (a video call) and the earpiece for a voice call, like the phone app.
+     */
+    fun begin(profile: AudioProfile, speaker: Boolean) {
         if (!profile.useCallMode || active) return
         active = true
         previousMode = audioManager.mode
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val device = pickCommunicationDevice(audioManager.availableCommunicationDevices)
+            val device = pickCommunicationDevice(audioManager.availableCommunicationDevices, speaker)
             if (device != null && !audioManager.setCommunicationDevice(device)) {
                 Log.w(TAG, "Could not route the call to ${device.productName}")
             } else {
                 chosen = device
             }
         } else {
-            beginLegacyRouting()
+            beginLegacyRouting(speaker)
+        }
+    }
+
+    /**
+     * Where the call plays when it's on the phone itself: true for the loudspeaker, false for
+     * the earpiece; null when it's on earbuds or a headset (or not on the call path at all).
+     */
+    fun speaker(): Boolean? {
+        if (!active) return null
+        @Suppress("DEPRECATION")
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            when (audioManager.communicationDevice?.type ?: chosen?.type) {
+                AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> true
+                AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> false
+                else -> null
+            }
+        } else {
+            if (startedSco || hasWiredHeadset()) null else audioManager.isSpeakerphoneOn
+        }
+    }
+
+    /** Moves a call that's on the phone itself between the loudspeaker and the earpiece. */
+    fun setSpeaker(on: Boolean) {
+        if (!active || speaker() == null) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val type = if (on) AudioDeviceInfo.TYPE_BUILTIN_SPEAKER else AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+            val device = audioManager.availableCommunicationDevices.firstOrNull { it.type == type } ?: return
+            if (audioManager.setCommunicationDevice(device)) chosen = device else Log.w(TAG, "Could not move the call to ${device.productName}")
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.isSpeakerphoneOn = on
         }
     }
 
@@ -121,35 +156,39 @@ class CallAudioController(context: Context) {
         audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
     }
 
-    /** For a video call the loudspeaker beats the earpiece when nothing is plugged in. */
-    private fun pickCommunicationDevice(devices: List<AudioDeviceInfo>): AudioDeviceInfo? {
+    /** Anything worn first; then the loudspeaker for a video call, the earpiece for a voice call. */
+    private fun pickCommunicationDevice(devices: List<AudioDeviceInfo>, speaker: Boolean): AudioDeviceInfo? {
         val priority = listOf(
             AudioDeviceInfo.TYPE_BLE_HEADSET,
             AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
             AudioDeviceInfo.TYPE_WIRED_HEADSET,
             AudioDeviceInfo.TYPE_USB_HEADSET,
             AudioDeviceInfo.TYPE_HEARING_AID,
-            AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
-        )
+        ) + if (speaker) {
+            listOf(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER, AudioDeviceInfo.TYPE_BUILTIN_EARPIECE)
+        } else {
+            listOf(AudioDeviceInfo.TYPE_BUILTIN_EARPIECE, AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+        }
         return priority.firstNotNullOfOrNull { type -> devices.firstOrNull { it.type == type } }
     }
 
+    private fun hasWiredHeadset(): Boolean = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
+        it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET || it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+            it.type == AudioDeviceInfo.TYPE_USB_HEADSET
+    }
+
     @Suppress("DEPRECATION")
-    private fun beginLegacyRouting() {
+    private fun beginLegacyRouting(speaker: Boolean = true) {
         previousSpeakerphone = audioManager.isSpeakerphoneOn
         val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
         val hasBluetooth = outputs.any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
-        val hasWired = outputs.any {
-            it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET || it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
-                it.type == AudioDeviceInfo.TYPE_USB_HEADSET
-        }
         when {
             hasBluetooth && audioManager.isBluetoothScoAvailableOffCall -> {
                 audioManager.startBluetoothSco()
                 audioManager.isBluetoothScoOn = true
                 startedSco = true
             }
-            !hasWired -> audioManager.isSpeakerphoneOn = true
+            !hasWiredHeadset() -> audioManager.isSpeakerphoneOn = speaker
         }
     }
 

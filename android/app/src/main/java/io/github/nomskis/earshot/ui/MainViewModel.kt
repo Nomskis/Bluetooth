@@ -38,6 +38,7 @@ import io.github.nomskis.earshot.turbo.BluetoothOutputDiagnostics
 import io.github.nomskis.earshot.turbo.CodecStatus
 import io.github.nomskis.earshot.turbo.TurboBoost
 import io.github.nomskis.earshot.turbo.TurboClient
+import io.github.nomskis.earshot.update.AppUpdater
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -83,6 +84,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         graph.routeMonitor.route.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), graph.routeMonitor.snapshot())
 
     /** A room handed to us by an earshot://join/<room> link. */
+    /** A newer build of the app, and how installing it is going. */
+    val update: StateFlow<AppUpdater.State> = graph.updater.state
+
+    /** Looks for a newer build (on start, and each time the app comes back to the front). */
+    fun checkForUpdate() {
+        viewModelScope.launch { graph.updater.check() }
+    }
+
+    fun installUpdate() {
+        when (val state = graph.updater.state.value) {
+            is AppUpdater.State.Available -> viewModelScope.launch { graph.updater.install(state.release) }
+            is AppUpdater.State.NeedsPermission -> graph.updater.openInstallPermission()
+            else -> Unit
+        }
+    }
+
+    /** Back from allowing installs: carry on with the update. */
+    fun retryUpdateInstall() {
+        val state = graph.updater.state.value as? AppUpdater.State.NeedsPermission ?: return
+        viewModelScope.launch { graph.updater.install(state.release) }
+    }
+
     private val _pendingRoom = MutableStateFlow<String?>(null)
     val pendingRoom: StateFlow<String?> = _pendingRoom.asStateFlow()
 

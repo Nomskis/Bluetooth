@@ -2,12 +2,16 @@ package io.github.nomskis.earshot.ui
 
 import android.app.Application
 import android.media.AudioManager
+import android.os.SystemClock
+import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.audio.DeviceKind
@@ -25,6 +29,7 @@ import io.github.nomskis.earshot.signaling.ClientInfo
 import io.github.nomskis.earshot.signaling.PeerInfo
 import io.github.nomskis.earshot.ui.theme.EarshotTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -57,58 +62,66 @@ class CallScreenPartsTest {
     )
 
     @Test
-    fun topBarShowsWhoIsTalkingTheDelayAndWhatEarshotIsDoing() {
-        compose.setContent {
-            EarshotTheme { TopBar(state, route, listOf("Earbud game mode on"), Modifier) }
-        }
+    fun topBarShowsWhoAndHowLongWithJustTheWordsThatMatter() {
+        val connected = state.copy(connectedAt = SystemClock.elapsedRealtime() - 75_000, remoteMedia = RemoteMedia(micMuted = true))
+        compose.setContent { EarshotTheme { TopBar(connected) } }
         compose.onNodeWithText("Sam").assertIsDisplayed()
+        compose.onNodeWithText("1:15").assertIsDisplayed()
         compose.onNodeWithText("Talking").assertIsDisplayed()
-        compose.onNodeWithText("Earbud game mode on").assertIsDisplayed()
-        compose.onNodeWithText("Video held back 140 ms to match the earbuds (measured)").assertIsDisplayed()
-        // The details push the notes further down.
-        compose.onNodeWithText("≈ 215 ms from their mouth to your ear").assertIsDisplayed().performClick()
-        compose.onNodeWithText("Network 25 ms, 0.4% packets lost (repaired where possible)").assertIsDisplayed()
+        compose.onNodeWithText("Sam muted").assertIsDisplayed()
+        // The details live a tap away, not over the video.
+        assertTrue(compose.onAllNodesWithText("2.4 GHz Wi-Fi: lighter video so your earbuds stay smooth").fetchSemanticsNodes().isEmpty())
     }
 
     @Test
-    fun topBarSaysWhenEchoCancellationCameOnBecauseTheCallIsOutLoud() {
+    fun theTimerReadsLikeAPhoneCall() {
+        assertEquals("0:07", callTimer(7_400))
+        assertEquals("12:34", callTimer((12 * 60 + 34) * 1000L))
+        assertEquals("1:02:03", callTimer((3600 + 2 * 60 + 3) * 1000L))
+        assertEquals("Connecting…", callStatus(state.copy(phase = CallPhase.NEGOTIATING), 0))
+    }
+
+    @Test
+    fun callDetailsShowTheDelayAndWhatEarshotIsDoing() {
         compose.setContent {
-            EarshotTheme { TopBar(state.copy(echoGuard = true), route, emptyList(), Modifier) }
+            EarshotTheme { CallInfo(state.copy(echoGuard = true, videoPausedForVoice = true), route, listOf("Earbud game mode on")) }
         }
-        compose.onNodeWithText("Playing out loud now, so echo cancellation is on.").assertIsDisplayed()
+        compose.onNodeWithText("≈ 215 ms from their mouth to your ear").assertIsDisplayed()
+        compose.onNodeWithText("Network 25 ms, 0.4% packets lost (repaired where possible)").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Earbud game mode on").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Video held back 140 ms to match the earbuds (measured)").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Playing out loud now, so echo cancellation is on.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Weak connection: your video is paused so your voice gets through. It comes back by itself.").performScrollTo().assertIsDisplayed()
     }
 
     @Test
-    fun aWeakConnectionSaysWhichWay() {
+    fun aWeakConnectionDoesntBlameEitherSide() {
         val rough = state.copy(
-            delay = state.delay!!.copy(senderMs = 40, lossPercent = 12.0, concealedPercent = 4.2, sendLossPercent = 0.0, packetMs = 20),
+            delay = state.delay!!.copy(senderMs = 40, lossPercent = 12.0, concealedPercent = 4.2, sendLossPercent = 0.0, packetMs = 40),
         )
         compose.setContent {
-            EarshotTheme { TopBar(rough, route, emptyList(), Modifier) }
+            EarshotTheme {
+                Column {
+                    TopBar(rough)
+                    CallInfo(rough, route, emptyList())
+                }
+            }
         }
-        compose.onNodeWithText("Weak connection from Sam").assertIsDisplayed()
-        compose.onNodeWithText("≈ 225 ms from their mouth to your ear").performClick()
+        // Both phones used to see "from" the other person: incoming voice is judged by gaps too.
+        compose.onNodeWithText("Weak connection").assertIsDisplayed()
         compose.onNodeWithText("From Sam: poor (12% lost, 4% filled in)").assertIsDisplayed()
         compose.onNodeWithText("To Sam: good").assertIsDisplayed()
-        compose.onNodeWithText("Their phone ≈ 40 ms (estimate, 20 ms packets for a rough link)").assertIsDisplayed()
+        compose.onNodeWithText("Their phone ≈ 40 ms (estimate, 40 ms packets for a rough link)").assertIsDisplayed()
     }
 
     @Test
-    fun weakConnectionLabelNamesTheDirection() {
+    fun weakConnectionLabelOnlySaysWhetherItsWeak() {
         val fine = state.delay!!.copy(sendLossPercent = 0.0)
         assertEquals(null, weakConnectionLabel(fine, "Sam"))
-        assertEquals("Weak connection to Sam", weakConnectionLabel(fine.copy(sendSqueeze = LinkQuality.POOR), "Sam"))
-        assertEquals("Weak connection from them", weakConnectionLabel(fine.copy(lossPercent = 9.0), null))
+        assertEquals("Weak connection", weakConnectionLabel(fine.copy(sendSqueeze = LinkQuality.POOR), "Sam"))
+        assertEquals("Weak connection", weakConnectionLabel(fine.copy(lossPercent = 9.0), null))
         assertEquals("Weak connection", weakConnectionLabel(fine.copy(networkMs = 400), "Sam"))
         assertEquals("fair (3% lost)", describeDirection(LinkQuality.FAIR, 3.0, 0.1))
-    }
-
-    @Test
-    fun aWeakConnectionSaysWhyVideoIsPausedOnBothEnds() {
-        compose.setContent {
-            EarshotTheme { TopBar(state.copy(videoPausedForVoice = true), route, emptyList(), Modifier) }
-        }
-        compose.onNodeWithText("Weak connection: your video is paused so your voice gets through. It comes back by itself.").assertIsDisplayed()
     }
 
     @Test
@@ -130,82 +143,105 @@ class CallScreenPartsTest {
     }
 
     @Test
-    fun controlsOfferTheEarbudMicAndHangUp() {
-        var earbudMic = 0
+    fun aVoiceCallSaysSoWithTheirInitial() {
+        val voice = state.copy(hasRemoteVideo = false, cameraOff = true, remoteMedia = RemoteMedia(cameraOff = true))
+        compose.setContent { EarshotTheme { RemotePlaceholder(voice, compact = false) } }
+        compose.onNodeWithText("Voice call").assertIsDisplayed()
+        compose.onNodeWithText("S").assertIsDisplayed()
+    }
+
+    private fun controls(
+        state: CallState,
+        onCamera: () -> Unit = {},
+        onSpeaker: () -> Unit = {},
+        onMore: () -> Unit = {},
+        onHangUp: () -> Unit = {},
+        unreadChat: Int = 0,
+    ) = compose.setContent {
+        EarshotTheme {
+            Controls(
+                state = state,
+                onMic = {},
+                onCamera = onCamera,
+                onSwitchCamera = {},
+                onSpeaker = onSpeaker,
+                onMore = onMore,
+                onHangUp = onHangUp,
+                unreadChat = unreadChat,
+            )
+        }
+    }
+
+    @Test
+    fun onVideoTheRowHasTheCameraSwitchAndHangUp() {
         var hungUp = 0
-        compose.setContent {
-            EarshotTheme {
-                Controls(
-                    state = state,
-                    onMic = {},
-                    onCamera = {},
-                    onSwitchCamera = {},
-                    onVolume = {},
-                    onVolumeDone = {},
-                    onReplay = {},
-                    onEarbudMic = { earbudMic++ },
-                    onHangUp = { hungUp++ },
-                    modifier = Modifier,
-                )
-            }
-        }
-        compose.onNodeWithContentDescription("Use the earbuds' mic (call quality)").performClick()
-        compose.onNodeWithContentDescription("Hang up").performClick()
-        assertEquals(1, earbudMic)
-        assertEquals(1, hungUp)
-        // Sam's client doesn't list chat, so there's no chat button.
-        compose.onNodeWithContentDescription("Chat").assertDoesNotExist()
-    }
-
-    @Test
-    fun flipIsOneTapAndShowsWhenItsOn() {
-        var flips = 0
-        compose.setContent {
-            EarshotTheme {
-                Controls(
-                    state = state.copy(flipped = true),
-                    onMic = {},
-                    onCamera = {},
-                    onSwitchCamera = {},
-                    onFlip = { flips++ },
-                    onVolume = {},
-                    onVolumeDone = {},
-                    onReplay = {},
-                    onEarbudMic = {},
-                    onHangUp = {},
-                    modifier = Modifier,
-                )
-            }
-        }
-        compose.onNodeWithContentDescription("Flip").assertIsDisplayed().performClick()
-        assertEquals(1, flips)
+        controls(state, onHangUp = { hungUp++ })
         compose.onNodeWithContentDescription("Switch camera").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Turn camera off").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Hang up").performClick()
+        assertEquals(1, hungUp)
     }
 
     @Test
-    fun chatButtonShowsUnreadWhenTheOtherSideHasChat() {
+    fun aVoiceCallAtYourEarOffersTheSpeakerAndTheCamera() {
+        var speaker = 0
+        var camera = 0
+        controls(state.copy(cameraOff = true, speakerOn = false), onCamera = { camera++ }, onSpeaker = { speaker++ })
+        compose.onNodeWithContentDescription("Speaker on").performClick()
+        // One tap turns the voice call into a video call.
+        compose.onNodeWithContentDescription("Turn camera on").performClick()
+        assertEquals(1, speaker)
+        assertEquals(1, camera)
+    }
+
+    @Test
+    fun unreadChatShowsOnMore() {
+        var opened = 0
+        controls(state, onMore = { opened++ }, unreadChat = 2)
+        compose.onNodeWithText("2").assertIsDisplayed()
+        compose.onNodeWithContentDescription("More, 2 unread messages").performClick()
+        assertEquals(1, opened)
+    }
+
+    private fun more(state: CallState, onChat: () -> Unit = {}, onFlip: () -> Unit = {}, onEarbudMic: () -> Unit = {}) = compose.setContent {
+        EarshotTheme {
+            MoreMenu(
+                state = state,
+                unreadChat = 2,
+                onChat = onChat,
+                onSpeaker = {},
+                onSwitchCamera = {},
+                onFlip = onFlip,
+                onVolume = {},
+                onVolumeDone = {},
+                onReplay = {},
+                onEarbudMic = onEarbudMic,
+                onInfo = {},
+            )
+        }
+    }
+
+    @Test
+    fun moreHasTheExtras() {
+        var flips = 0
+        var earbudMic = 0
+        more(state.copy(flipped = true), onFlip = { flips++ }, onEarbudMic = { earbudMic++ })
+        compose.onNodeWithText("Stop mirroring my video").performClick()
+        compose.onNodeWithText("Use the earbuds' mic (call quality)").performClick()
+        compose.onNodeWithText("Replay the last 8 seconds").assertIsDisplayed()
+        compose.onNodeWithText("Call details").assertIsDisplayed()
+        assertEquals(1, flips)
+        assertEquals(1, earbudMic)
+        // Sam's client doesn't list chat, so there's no chat.
+        assertTrue(compose.onAllNodesWithText("Chat", substring = true).fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun moreOffersChatWhenTheOtherSideHasIt() {
         var opened = 0
         val withChat = state.copy(remotePeer = PeerInfo("p1", "Sam", ClientInfo("web", "0.1.0", listOf(Chat.CAPABILITY)), seq = 1))
-        compose.setContent {
-            EarshotTheme {
-                Controls(
-                    state = withChat,
-                    onMic = {},
-                    onCamera = {},
-                    onSwitchCamera = {},
-                    onVolume = {},
-                    onVolumeDone = {},
-                    onReplay = {},
-                    onEarbudMic = {},
-                    onHangUp = {},
-                    modifier = Modifier,
-                    onChat = { opened++ },
-                    unreadChat = 2,
-                )
-            }
-        }
-        compose.onNodeWithText("2").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Chat, 2 unread").performClick()
+        more(withChat, onChat = { opened++ })
+        compose.onNodeWithText("Chat (2 new)").performClick()
         assertEquals(1, opened)
     }
 

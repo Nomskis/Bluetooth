@@ -21,8 +21,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.TextButton
@@ -30,6 +31,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -64,6 +66,7 @@ import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.AudioMode
 import io.github.nomskis.earshot.settings.InterruptedCall
 import io.github.nomskis.earshot.signaling.ServerUrls
+import io.github.nomskis.earshot.update.AppUpdater
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,6 +91,9 @@ fun HomeScreen(
     onConsumeCallBack: () -> Unit = {},
     /** Whether this phone can be rung; null hides it. */
     inboxStatus: InboxClient.State? = null,
+    /** A newer build of the app, and how installing it is going. */
+    update: AppUpdater.State = AppUpdater.State.Idle,
+    onUpdate: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
@@ -160,11 +166,11 @@ fun HomeScreen(
     fun callContact(contact: Contact, withVideo: Boolean) = withPermissions(withVideo) { video -> onCallContact(contact, video) }
 
     /** One tap: a new room, the call started in it, and the link on its way to them. */
-    fun invite() {
+    fun invite(withVideo: Boolean) {
         val base = serverBase ?: return
         val code = RoomCodes.generate()
         room = code
-        withPermissions(withVideo = true) { video ->
+        withPermissions(withVideo) { video ->
             onJoin(code, video)
             context.shareInvite(ServerUrls.inviteLink(base, code))
         }
@@ -208,6 +214,8 @@ fun HomeScreen(
                     }
                 }
             }
+
+            UpdateCard(update, onUpdate)
 
             val invitedRoom = invited?.let(RoomCodes::normalize)
             if (invitedRoom != null && serverBase != null) {
@@ -263,16 +271,38 @@ fun HomeScreen(
 
             if (serverBase != null) ContactsCard(contacts, onCall = ::callContact, onRemove = onRemoveContact)
 
-            Button(
-                onClick = { invite() },
-                enabled = serverBase != null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-            ) {
-                Icon(Icons.Filled.Share, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
+            // Like a contact's two buttons: a video call or a voice call, either can switch later.
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Invite someone", style = MaterialTheme.typography.titleMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(
+                        onClick = { invite(withVideo = true) },
+                        enabled = serverBase != null,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp),
+                    ) {
+                        Icon(Icons.Filled.Videocam, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Video call")
+                    }
+                    OutlinedButton(
+                        onClick = { invite(withVideo = false) },
+                        enabled = serverBase != null,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp),
+                    ) {
+                        Icon(Icons.Filled.Call, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Voice call")
+                    }
+                }
+                Text(
+                    "Sends them a link. When they open it, you're in the call together.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             TextButton(onClick = { showCode = !showCode }, enabled = serverBase != null) {
@@ -327,6 +357,33 @@ fun HomeScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/** A newer build: one tap downloads it and Android asks to update, keeping contacts and settings. */
+@Composable
+internal fun UpdateCard(update: AppUpdater.State, onUpdate: () -> Unit) {
+    val (title, detail, button) = when (update) {
+        is AppUpdater.State.Available -> Triple("Update available", "Build ${update.release.build} is ready. It installs over this one.", "Update")
+        is AppUpdater.State.Downloading -> Triple("Updating…", "Downloading build ${update.release.build}: ${update.percent}%", null)
+        is AppUpdater.State.NeedsPermission -> Triple(
+            "One step first",
+            "Android needs Earshot to be allowed to install apps. Turn on \"Allow from this source\", then come back.",
+            "Open settings",
+        )
+        AppUpdater.State.Installing -> Triple("Updating…", "Android will ask you to confirm the update.", null)
+        is AppUpdater.State.Failed -> Triple("Update didn't finish", update.reason, null)
+        AppUpdater.State.Idle -> return
+    }
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+        Column(Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(detail, style = MaterialTheme.typography.bodyMedium)
+            if (update is AppUpdater.State.Downloading) {
+                LinearProgressIndicator(progress = { update.percent / 100f }, modifier = Modifier.fillMaxWidth())
+            }
+            button?.let { Button(onClick = onUpdate) { Text(it) } }
         }
     }
 }

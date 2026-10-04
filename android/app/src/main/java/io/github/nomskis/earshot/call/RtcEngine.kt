@@ -72,7 +72,11 @@ class RtcEngine(
     val profile: AudioProfile,
     private val videoQuality: VideoQuality,
     startWithBackCamera: Boolean,
-    withVideo: Boolean,
+    /**
+     * Set up the camera at all. A voice call has one too, switched off, so it can turn into a
+     * video call with a tap: the video track is in the call from the start, so no renegotiation.
+     */
+    camera: Boolean,
     /** Local camera preview; the UI attaches a renderer to it. */
     private val localPreview: ProxyVideoSink,
 ) {
@@ -137,7 +141,7 @@ class RtcEngine(
         audioSource = factory.createAudioSource(audioConstraints(profile))
 
         val enumerator = cameraEnumerator()
-        val names = if (withVideo) enumerator.deviceNames.toList() else emptyList()
+        val names = if (camera) runCatching { enumerator.deviceNames.toList() }.getOrDefault(emptyList()) else emptyList()
         val front = names.firstOrNull { enumerator.isFrontFacing(it) }
         val back = names.firstOrNull { enumerator.isBackFacing(it) }
         val chosen = (if (startWithBackCamera) back ?: front else front ?: back) ?: names.firstOrNull()

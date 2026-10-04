@@ -34,6 +34,8 @@ android {
         val linkServer = providers.gradleProperty("earshot.serverUrl")
             .orElse(providers.gradleProperty("earshot.defaultServerUrl")).getOrElse("")
         manifestPlaceholders["roomLinkHost"] = URI(linkServer.ifBlank { "https://calls.example.com" }).host
+        // Where the app looks for newer builds (the GitHub repository's "nightly" release); blank: it doesn't.
+        buildConfigField("String", "UPDATE_REPO", "\"\"")
     }
 
     signingConfigs {
@@ -77,6 +79,9 @@ android {
             val server = providers.gradleProperty("earshot.serverUrl")
                 .orElse(providers.gradleProperty("earshot.defaultServerUrl")).getOrElse("")
             buildConfigField("String", "DEFAULT_SERVER_URL", "\"$server\"")
+            // Updates itself from the builds CI publishes (gradle.properties).
+            val updateRepo = providers.gradleProperty("earshot.updateRepo").getOrElse("")
+            buildConfigField("String", "UPDATE_REPO", "\"$updateRepo\"")
         }
         release {
             isMinifyEnabled = true
