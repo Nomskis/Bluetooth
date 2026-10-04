@@ -67,7 +67,14 @@ by itself. Those decisions are entirely the app's.
 ## Echo
 
 A speakerphone call needs echo cancellation, because the microphone hears the
-other person coming out of the speaker. With earbuds in, the phone's mic, a
+other person coming out of the speaker. **Without earbuds or headphones, a call
+uses the phone's own call audio** (communication mode, the voice-call mic and
+the phone's hardware echo canceller), like any calling app: Hi-Fi only helps
+with earbuds, and playing the call as media leaves only WebRTC's software echo
+control, which on Android is its weak mobile mode (`webrtc_voice_engine.cc`
+sets `echo_canceller.mobile_mode`). In the first real calls that let the other
+person hear themselves and chopped speech. The rest of this section is about
+Hi-Fi with earbuds in, and a call whose earbuds drop out. With earbuds in, the phone's mic, a
 meter away on a bench, can't hear what's playing inside your ears, so there's
 nothing to cancel, and an echo canceller would only make your voice worse.
 
@@ -115,6 +122,13 @@ are in [research/latency.md](research/latency.md); in short:
 | Live readout | Mouth-to-ear delay from stats plus the measured app-to-ear figure, and which way the connection is weak | everything |
 
 ## Riding out bad Wi-Fi
+
+> **Off for now.** After the first real calls went badly, every tuning in this
+> section is switched off (`call/CallTuning.kt`), and the VP9, temporal-layer
+> and software-encoder video settings are gone: a call runs on WebRTC's own
+> defaults, plus Opus's own concealment and keyframe flushing. Each tuning
+> comes back on its own once a call report shows it helps. Without earbuds, a
+> call also uses the phone's call audio and its echo canceller (see "Echo").
 
 Home and gym Wi-Fi, and long routes like Morocco to Finland, rarely run out
 of bandwidth first. They lose packets in bursts and deliver others late, in
@@ -228,6 +242,13 @@ calls between countries over weak Wi-Fi.
   VP8). So a weak link gets temporal layers and libvpx's rate control, and a
   good one keeps the cheaper hardware encoder
   ([`call/WebRtcTuning.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/WebRtcTuning.kt)).
+- **A frozen picture comes back sooner.** It recovers with a keyframe, which
+  the sender's pacer would otherwise queue behind the older frames' packets
+  still waiting to go out: on a congested uplink, video the receiver can no
+  longer use. With `WebRTC-Pacer-KeyframeFlushing` the keyframe's first packet
+  drops that stream's queued packets and resends, so it leaves at once. It's
+  off in the WebRTC the app ships; upstream launched it and has since made it
+  the only behaviour.
 - **Wi-Fi out of power save.** A phone in power save lets the router hold its
   packets and fetches them in bursts. The call holds Android's low-latency
   Wi-Fi lock (screen on, app in front) and the high-performance one, which

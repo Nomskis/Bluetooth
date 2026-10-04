@@ -57,8 +57,15 @@ data class AudioProfile(
                 .build()
         }
 
-        fun forCall(settings: AppSettings, route: AudioRoute): AudioProfile = when (settings.audioMode) {
-            AudioMode.HIFI -> AudioProfile(
+        /**
+         * Hi-Fi only pays off with earbuds or headphones on: on the loudspeaker there's no
+         * music link to keep, and playing the call as media leaves only WebRTC's software echo
+         * control, which on Android is its weak mobile mode (webrtc_voice_engine.cc sets
+         * echo_canceller.mobile_mode), so the other side heard themselves back. Without them,
+         * the call goes the phone's own call path, with its echo canceller, like any calling app.
+         */
+        fun forCall(settings: AppSettings, route: AudioRoute): AudioProfile = when {
+            settings.audioMode == AudioMode.HIFI && route.outputIsPersonal -> AudioProfile(
                 mode = AudioMode.HIFI,
                 // USAGE_GAME routes exactly like media (same audio strategy), but AudioFlinger
                 // asks a capable Bluetooth stack for its low-latency mode while a fast GAME
@@ -83,7 +90,7 @@ data class AudioProfile(
                 lowLatencyPlayback = settings.lowLatencyPlayback,
             )
 
-            AudioMode.HEADSET -> AudioProfile(
+            else -> AudioProfile(
                 mode = AudioMode.HEADSET,
                 playbackUsage = AudioAttributes.USAGE_VOICE_COMMUNICATION,
                 playbackContentType = AudioAttributes.CONTENT_TYPE_SPEECH,

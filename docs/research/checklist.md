@@ -14,6 +14,17 @@ is left unexamined. Each line is one of:
 
 When something new comes up, it goes on this list first.
 
+**After the first real calls (October 2026), every tuning of Earshot's own is
+off** (`call/CallTuning.kt`). Those calls, Finland to Morocco with one phone on
+mobile data, had an echo, voice that barely got through, a 577 ms smoothing
+buffer with a fifth of the voice made up while nothing was lost, and video in
+pieces, with 2.5 Mbps or more to spare. A call is now WebRTC's own defaults,
+plus the phone's call audio when no earbuds are on (its echo canceller instead
+of WebRTC's weak mobile one) and two changes upstream WebRTC itself shipped or
+that were measured on 6367's own NetEq (Opus concealment, keyframe flushing).
+The ✅ rows below that `CallTuning` switches off come back one at a time, each
+with a call report to show it helps.
+
 ## 1. Capture
 
 | Item | Status | Notes |
@@ -49,10 +60,10 @@ When something new comes up, it goes on this list first.
 
 | Item | Status | Notes |
 | --- | --- | --- |
-| Codec: VP9 preferred | ✅ | About a third fewer bits than VP8 |
+| Codec: VP9 preferred | ❌ | Most Android phones have no hardware VP9 encoder, so it ran on the CPU and the picture fell apart in real calls. WebRTC's own order (VP8 first) again |
 | AV1 | 📞 | In the shipped library (libaom encoder, dav1d decoder; `LibaomAv1Encoder`, `Dav1dDecoder`). Fewer bits again than VP9, but software-only on nearly every phone: promising at 360p and below on a weak uplink, once its CPU and heat are measured on the actual phones |
-| Temporal layers (L1T3) | ✅ | VP8 and VP9 |
-| Software encoder on a weak link (≤360p) | ✅ | Codec-neutral `WebRTC-Video-EncoderFallbackSettings` |
+| Temporal layers (L1T3) | ❌ | Off with the rest of the video experiments; hardware encoders ignore it anyway |
+| Software encoder on a weak link (≤360p) | ❌ | Switching encoders as the resolution changed costs a keyframe each time, and software encoding costs CPU; off |
 | Keep frame rate, lower resolution (`MAINTAIN_FRAMERATE`) | ✔️ | WebRTC's default for a camera |
 | Quality scaler thresholds at low bitrates | 🔬 | When it drops resolution, and whether VP9's thresholds suit a weak uplink |
 
@@ -63,7 +74,9 @@ When something new comes up, it goes on this list first.
 | Resends (NACK, RTX) | ✔️ | WebRTC default |
 | Forward error correction (ULPFEC) | ✔️ | Negotiated by default and used by WebRTC's NACK/FEC hybrid by RTT and loss |
 | FlexFEC | 📞 | In the shipped library (`WebRTC-FlexFEC-03`, `-Advertised`); worth its bandwidth only if call reports show lost video packets, not bandwidth, as what freezes the picture |
-| Keyframe requests and recovery after loss | 🔬 | How fast a frozen picture recovers on a long round trip |
+| Keyframe out first after a freeze (`WebRTC-Pacer-KeyframeFlushing`) | ✅ | A keyframe drops the stale video still queued ahead of it, so a frozen picture recovers sooner on a congested uplink. Off in 6367; upstream launched it and made it the only behaviour |
+| How long a receiver waits before asking for a keyframe | 📞 | 3 s without a decodable frame in 6367 (`kMaxWaitForFrame`); an `rtx-time` of 500 ms in our descriptions would make it 1.5 s, but also re-ask for keyframes sooner while congestion stalls the encoder. Worth it only if call reports show long freezes |
+| Resends sent ahead of the pacing budget (`WebRTC-Pacer-FastRetransmissions`) | ❌ | Still an experiment upstream, never launched; bursts on a link that's already short |
 
 ## 6. Bandwidth and congestion
 
@@ -73,7 +86,7 @@ When something new comes up, it goes on this list first.
 | Start bitrate from the last call (route memory) | ✅ | LinkMemory |
 | Lighter video towards a starving Wi-Fi uplink | ✅ | AirtimeShare |
 | Congestion window pushback (limits queued data) | ✔️ | On by default in 6367 (350 ms) |
-| Loss-based estimate on random, non-congestion loss | 🔬 | Does GoogCC back off needlessly on lossy Wi-Fi? (`WebRTC-Bwe-LossBasedBweV2`) |
+| Loss-based estimate on random, non-congestion loss | ✔️ | 6367 already runs the loss-based estimator v2 by default, which models the loss a link always has rather than backing off on every lost packet |
 
 ## 7. Network and route
 

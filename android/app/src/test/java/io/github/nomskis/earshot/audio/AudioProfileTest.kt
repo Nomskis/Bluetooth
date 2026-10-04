@@ -57,6 +57,16 @@ class AudioProfileTest {
     }
 
     @Test
+    fun withoutEarbudsAHiFiCallUsesThePhonesCallAudioAndItsEchoCanceller() {
+        // On the loudspeaker, media playback left only WebRTC's weak mobile echo control.
+        val profile = AudioProfile.forCall(AppSettings(audioMode = AudioMode.HIFI), speaker)
+        assertTrue(profile.useCallMode)
+        assertTrue(profile.hardwareEchoCanceler)
+        assertEquals(MediaRecorder.AudioSource.VOICE_COMMUNICATION, profile.audioSource)
+        assertEquals(AudioAttributes.USAGE_VOICE_COMMUNICATION, profile.playbackUsage)
+    }
+
+    @Test
     fun headsetModeIsAClassicCall() {
         val profile = AudioProfile.forCall(AppSettings(audioMode = AudioMode.HEADSET), earbuds)
         assertEquals(AudioAttributes.USAGE_VOICE_COMMUNICATION, profile.playbackUsage)
