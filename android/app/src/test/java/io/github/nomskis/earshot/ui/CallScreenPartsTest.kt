@@ -18,6 +18,7 @@ import io.github.nomskis.earshot.call.Chat
 import io.github.nomskis.earshot.call.ChatMessage
 import io.github.nomskis.earshot.call.DelayBreakdown
 import io.github.nomskis.earshot.call.LipSync
+import io.github.nomskis.earshot.call.RemoteMedia
 import io.github.nomskis.earshot.settings.AudioMode
 import io.github.nomskis.earshot.signaling.ClientInfo
 import io.github.nomskis.earshot.signaling.PeerInfo
@@ -73,6 +74,23 @@ class CallScreenPartsTest {
             EarshotTheme { TopBar(state.copy(echoGuard = true), route, emptyList(), Modifier) }
         }
         compose.onNodeWithText("Playing out loud now, so echo cancellation is on.").assertIsDisplayed()
+    }
+
+    @Test
+    fun aWeakConnectionSaysWhyVideoIsPausedOnBothEnds() {
+        compose.setContent {
+            EarshotTheme { TopBar(state.copy(videoPausedForVoice = true), route, emptyList(), Modifier) }
+        }
+        compose.onNodeWithText("Weak connection: your video is paused so your voice gets through. It comes back by itself.").assertIsDisplayed()
+    }
+
+    @Test
+    fun theirPausedVideoIsExplainedInsteadOfCameraOff() {
+        val paused = state.copy(remoteMedia = RemoteMedia(cameraOff = true, weakConnection = true))
+        compose.setContent { EarshotTheme { RemotePlaceholder(paused, compact = false) } }
+        compose.onNodeWithText(
+            "Sam's video is paused: the connection is too weak for it right now, so the voice gets through. It comes back by itself.",
+        ).assertIsDisplayed()
     }
 
     @Test

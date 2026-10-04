@@ -330,6 +330,7 @@ function renderBadges(media) {
   };
   if (media.micMuted) add('Muted');
   if (media.inPocket) add('Phone in pocket');
+  else if (media.weakConnection) add('Video paused: weak connection');
   else if (media.cameraOff) add('Camera off');
   if (media.audioMode === 'hifi') add('Hi-Fi audio', 'hifi');
 }

@@ -306,6 +306,9 @@ internal fun RemotePlaceholder(state: CallState, compact: Boolean) {
             CallPhase.RECONNECTING -> "Connection lost. Reconnecting…"
             CallPhase.CONNECTED -> when {
                 state.remoteMedia.inPocket -> "Camera paused: ${peerName?.let { "$it's" } ?: "their"} phone is in a pocket"
+                state.remoteMedia.weakConnection ->
+                    "${peerName?.let { "$it's" } ?: "Their"} video is paused: the connection is too weak for it right now, " +
+                        "so the voice gets through. It comes back by itself."
                 state.remoteMedia.cameraOff -> "${peerName ?: "They"} turned the camera off"
                 else -> "Connected"
             }
@@ -448,6 +451,13 @@ internal fun TopBar(state: CallState, route: AudioRoute, boostNotes: List<String
         }
         (boostNotes + listOfNotNull(state.radioNote, lipSync)).forEach { note ->
             Text(note, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall)
+        }
+        if (state.videoPausedForVoice) {
+            Text(
+                "Weak connection: your video is paused so your voice gets through. It comes back by itself.",
+                color = Color.White.copy(alpha = 0.8f),
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
         if (state.thermal != null) {
             Text(

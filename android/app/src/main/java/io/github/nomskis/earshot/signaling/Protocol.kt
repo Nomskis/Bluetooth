@@ -203,6 +203,8 @@ sealed interface SignalData {
         val audioMode: String? = null,
         /** The camera is paused because the phone is in a pocket (cameraOff is true too). */
         val inPocket: Boolean? = null,
+        /** Video is paused because the connection can't carry it next to the voice (cameraOff is true too). */
+        val weakConnection: Boolean? = null,
     ) : SignalData
 }
 

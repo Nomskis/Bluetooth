@@ -61,6 +61,11 @@ this list works with every pair of classic Bluetooth earbuds:
   recovers.
   On 5 GHz Wi-Fi the call's packets are marked for Wi-Fi's priority queue,
   so a crowded network lets them through ahead of everyone's downloads.
+- **Voice first on a weak connection.** On a thin or long-distance link (a
+  call abroad over weak Wi-Fi or mobile data) video only gets what the voice
+  really leaves, the voice gets leaner before it would break up, and if even
+  that's too little the video pauses, the other side is told why, and it
+  comes back by itself.
 - **Lips in time with the voice.** Their video is held back by exactly the
   Bluetooth delay that WebRTC doesn't know about, using your measurement when
   there is one.

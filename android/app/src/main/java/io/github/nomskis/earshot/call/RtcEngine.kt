@@ -268,10 +268,11 @@ class RtcEngine(
 
     /**
      * Caps the video we send ([kbps] null = no cap), and optionally sends fewer
-     * pixels ([scaleDownBy]) and frames ([maxFps]). Takes effect without
-     * renegotiating.
+     * pixels ([scaleDownBy]) and frames ([maxFps]); [active] false stops sending
+     * it altogether (the camera keeps running, so it's back at once). Takes
+     * effect without renegotiating.
      */
-    fun capVideoSend(pc: PeerConnection, kbps: Int?, scaleDownBy: Double? = null, maxFps: Int? = null) {
+    fun capVideoSend(pc: PeerConnection, kbps: Int?, scaleDownBy: Double? = null, maxFps: Int? = null, active: Boolean = true) {
         for (sender in pc.senders) {
             val kind = runCatching { sender.track()?.kind() }.getOrNull()
             if (kind != MediaStreamTrack.VIDEO_TRACK_KIND) continue
@@ -280,8 +281,9 @@ class RtcEngine(
                 it.maxBitrateBps = kbps?.let { k -> k * 1000 }
                 it.scaleResolutionDownBy = scaleDownBy
                 it.maxFramerate = maxFps
+                it.active = active
             }
-            if (!sender.setParameters(parameters)) Log.w(TAG, "Could not cap video at $kbps kbps")
+            if (!sender.setParameters(parameters)) Log.w(TAG, "Could not cap video at $kbps kbps (active: $active)")
         }
     }
 

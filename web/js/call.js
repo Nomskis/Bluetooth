@@ -229,6 +229,7 @@ export class CallEngine extends EventTarget {
           micMuted: !!data.micMuted,
           cameraOff: !!data.cameraOff,
           inPocket: !!data.inPocket,
+          weakConnection: !!data.weakConnection,
           audioMode: data.audioMode ?? null,
         };
         this.dispatchEvent(new CustomEvent('remote-media', { detail: { ...this.#remoteMedia } }));

@@ -120,11 +120,13 @@ a `4000` close.
 | `answer` | `session`, `sdp` | the answerer |
 | `candidate` | `session`, `candidate: { candidate, sdpMid, sdpMLineIndex, usernameFragment? }` | both |
 | `request-offer` | `session` (may be null) | the answerer, when it needs a fresh offer |
-| `media-state` | `micMuted`, `cameraOff`, `audioMode?` (`hifi`, `headset`, `standard`), `inPocket?` | both, after connecting and on every change |
+| `media-state` | `micMuted`, `cameraOff`, `audioMode?` (`hifi`, `headset`, `standard`), `inPocket?`, `weakConnection?` | both, after connecting and on every change |
 
 `inPocket: true` (with `cameraOff: true`) means the camera paused itself
 because the phone's proximity sensor is covered, a pocket usually; show that
-rather than "camera off".
+rather than "camera off". `weakConnection: true` (with `cameraOff: true`)
+means the camera is on but the sender paused its video because the
+connection can't carry it next to the voice; it resumes by itself.
 
 Ignore kinds you don't know; newer clients may send more.
 

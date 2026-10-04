@@ -164,11 +164,11 @@ class CallSession(
         var chatChannel: DataChannel? = null
         /** When priority marks were switched on for this connection; 0 = not marked. */
         var markedAt = 0L
-        /** Keeps our voice inside what this connection can carry. */
-        val audioBudget = AudioBudget()
-        /** Last stats sample's cumulative bytes sent, for rates. */
+        /** Shares what this connection can carry between our voice and our video, voice first. */
+        val budget = MediaBudget()
+        /** Last stats sample's cumulative audio bytes and packets sent, for rates. */
         var audioBytes: Double? = null
-        var videoBytes: Double? = null
+        var audioPackets: Double? = null
         var bytesAt = 0L
 
         val isHealthy: Boolean
@@ -547,8 +547,11 @@ class CallSession(
 
     private fun applyVideoCap(l: Link) {
         val thermal = _state.value.thermal
-        val kbps = ThermalPlan.tighter(radioPlan.videoCapFor(_state.value.callPath), thermal?.maxKbps)
-        engine.capVideoSend(l.pc, kbps, thermal?.scaleDownBy, thermal?.maxFps)
+        val kbps = ThermalPlan.tighter(
+            ThermalPlan.tighter(radioPlan.videoCapFor(_state.value.callPath), thermal?.maxKbps),
+            l.budget.videoCapBps?.let { it / 1000 },
+        )
+        engine.capVideoSend(l.pc, kbps, thermal?.scaleDownBy, thermal?.maxFps, active = !l.budget.videoPaused)
     }
 
     private fun applyPacketPriority(l: Link) {
@@ -576,7 +579,7 @@ class CallSession(
         // Earbuds can connect mid-call; keep the earbud-mic button honest.
         val micAvailable = profile.mode == AudioMode.HIFI && (_state.value.earbudMic || audioController.earbudMicAvailable())
         _state.update { it.copy(delay = delay, earbudMicAvailable = micAvailable) }
-        followAudioBudget(l, entries)
+        followMediaBudget(l, entries)
         steer(l, entries)
         val path = RadioPlan.pathFor(CallStats.selectedNetworkType(entries)) ?: return
         if (path == _state.value.callPath) return
@@ -585,20 +588,38 @@ class CallSession(
         applyVideoCap(l)
     }
 
-    /** Leaner voice when the connection can't carry HD voice with its copies, and back. */
-    private fun followAudioBudget(l: Link, entries: Map<String, CallStats.Entry>) {
+    /**
+     * Voice first: video gets what the voice really leaves (RED's copies included), the
+     * voice gets leaner when even that's too little, and video pauses when the leanest voice
+     * still doesn't leave room for a picture. Each comes back by itself.
+     */
+    private fun followMediaBudget(l: Link, entries: Map<String, CallStats.Entry>) {
         val now = SystemClock.elapsedRealtime()
-        val audio = CallStats.outboundBytes(entries, "audio")
-        val video = CallStats.outboundBytes(entries, "video")
+        val bytes = CallStats.outboundBytes(entries, "audio")
+        val packets = CallStats.outboundPackets(entries, "audio")
         val seconds = (now - l.bytesAt) / 1000.0
-        val audioBps = if (audio != null && l.audioBytes != null && l.bytesAt > 0 && seconds > 0) (audio - l.audioBytes!!) * 8 / seconds else null
-        val sendingVideo = video != null && l.videoBytes != null && video > l.videoBytes!!
-        l.audioBytes = audio
-        l.videoBytes = video
+        val lastBytes = l.audioBytes
+        val lastPackets = l.audioPackets
+        // On the wire: what WebRTC counts, plus IP, UDP and the SRTP tag on each packet.
+        val audioBps = if (bytes != null && packets != null && lastBytes != null && lastPackets != null && l.bytesAt > 0 && seconds > 0) {
+            ((bytes - lastBytes) + (packets - lastPackets) * MediaBudget.TRANSPORT_OVERHEAD_BYTES) * 8 / seconds
+        } else {
+            null
+        }
+        l.audioBytes = bytes
+        l.audioPackets = packets
         l.bytesAt = now
-        if (l.audioBudget.update(CallStats.availableOutgoingBitrate(entries), audioBps, sendingVideo, now)) {
-            Log.i(TAG, "Voice now ${l.audioBudget.capBps?.let { "capped at ${it / 1000} kbps" } ?: "at full quality"} for this connection")
-            engine.capAudioSend(l.pc, l.audioBudget.capBps)
+        val wantsVideo = l.tracks.video != null && !_state.value.sendsNoVideo
+        val changes = l.budget.update(CallStats.availableOutgoingBitrate(entries), audioBps, wantsVideo, now)
+        if (changes.voice) {
+            Log.i(TAG, "Voice now ${l.budget.voiceCapBps?.let { "capped at ${it / 1000} kbps" } ?: "at full quality"} for this connection")
+            engine.capAudioSend(l.pc, l.budget.voiceCapBps)
+        }
+        if (changes.video) applyVideoCap(l)
+        if (l.budget.videoPaused != _state.value.videoPausedForVoice) {
+            Log.i(TAG, if (l.budget.videoPaused) "Connection too weak for video next to the voice; pausing our video" else "Trying our video again")
+            _state.update { it.copy(videoPausedForVoice = l.budget.videoPaused) }
+            sendMediaState()
         }
     }
 
@@ -719,7 +740,15 @@ class CallSession(
             is SignalData.Candidate -> onRemoteCandidate(data)
             is SignalData.RequestOffer -> onRequestOffer(data)
             is SignalData.MediaState -> _state.update {
-                it.copy(remoteMedia = RemoteMedia(data.micMuted, data.cameraOff, data.audioMode, inPocket = data.inPocket == true))
+                it.copy(
+                    remoteMedia = RemoteMedia(
+                        data.micMuted,
+                        data.cameraOff,
+                        data.audioMode,
+                        inPocket = data.inPocket == true,
+                        weakConnection = data.weakConnection == true,
+                    ),
+                )
             }
         }
     }
@@ -1036,7 +1065,7 @@ class CallSession(
             l.tracks.audio.dispose()
             l.tracks.video?.dispose()
         }
-        _state.update { it.copy(hasRemoteVideo = false, remoteSpeaking = false, callPath = null) }
+        _state.update { it.copy(hasRemoteVideo = false, remoteSpeaking = false, callPath = null, videoPausedForVoice = false) }
         smartDuck?.onRemoteSpeaking(false)
     }
 
@@ -1082,9 +1111,11 @@ class CallSession(
         sendSignal(
             SignalData.MediaState(
                 micMuted = s.micMuted,
-                cameraOff = s.sendsNoVideo,
+                // Older apps show any of these as the camera being off, which beats a frozen picture.
+                cameraOff = s.sendsNoVideo || s.videoPausedForVoice,
                 audioMode = mode,
                 inPocket = (s.cameraPaused && !s.cameraOff).takeIf { it },
+                weakConnection = (s.videoPausedForVoice && !s.sendsNoVideo).takeIf { it },
             ),
         )
     }

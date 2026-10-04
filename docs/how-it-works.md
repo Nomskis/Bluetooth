@@ -139,14 +139,30 @@ against the WebRTC source the app ships with
   or mobile data. The browser tests check it over a simulated lossy link
   (`e2e/lossy-link.js`): with a sixth of the voice packets dropped, the
   receiver asks and the sender resends.
-- **Voice that fits the connection.** WebRTC sends audio at a fixed bitrate
-  whatever its bandwidth estimate says, and HD voice with its copies is about
-  250 kbps. When the estimate (`availableOutgoingBitrate`) says that doesn't
-  fit with room for some video, the voice steps down to 32, then 20 kbps Opus
-  (still clear speech) through the sender's `maxBitrateBps`, and steps back up
-  once there's room. Stepping up is a probe: a step that doesn't hold makes
-  the next try wait longer
-  ([`call/AudioBudget.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/AudioBudget.kt)).
+- **Voice first, then video.** WebRTC splits its bandwidth estimate between
+  voice and video itself, but it only counts the voice's codec bitrate, not
+  RED's copies (`audio_send_stream.cc` registers the codec rate with the
+  allocator). HD voice with its copies is about 250 kbps on the wire and
+  WebRTC reserves about 100, so video is handed ~150 kbps that aren't there.
+  On a fast connection that's noise; under about 1.2 Mbps (a weak uplink in
+  another country, say) the call sends more than the connection carries all
+  the time, a standing queue that turns into delay and then loss, for the
+  voice too. So every two seconds, from the estimate
+  (`availableOutgoingBitrate`) and what the voice really sends
+  ([`call/MediaBudget.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/MediaBudget.kt)):
+  - video is capped at what the voice really leaves (`maxBitrateBps`), while
+    the estimate is under 1.5 Mbps;
+  - the voice steps down to 32, then 20 kbps Opus (still clear speech) when
+    the estimate can't carry it with room for some video, since WebRTC sends
+    audio at a fixed bitrate whatever its estimate says;
+  - video pauses (`active = false` on its encoding; the camera keeps running)
+    when even the leanest voice would leave it under 60 kbps, so the voice
+    gets through. The other side is told (`weakConnection` in `media-state`)
+    and says why instead of showing a frozen picture.
+
+  Coming back is a probe: video resumes after 20 s, and the voice steps back
+  up the same way; one that doesn't hold makes the next try wait twice as
+  long, up to almost three minutes.
 - **A jitter buffer sized for spikes.** WebRTC sizes the audio buffer to
   absorb 95% of the delay spikes it has seen; Earshot asks for 97%
   (`WebRTC-Audio-NetEqDelayManagerConfig/quantile:0.97/`), so a jittery

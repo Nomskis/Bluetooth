@@ -47,6 +47,13 @@ object CallStats {
         return streams.sumOf { (number(it.members["bytesSent"]) ?: 0.0) + (number(it.members["headerBytesSent"]) ?: 0.0) }
     }
 
+    /** Cumulative packets we've sent of [kind] ("audio" or "video"), resends included (RTCOutboundRtpStreamStats). */
+    fun outboundPackets(report: Map<String, Entry>, kind: String): Double? {
+        val streams = report.values.filter { it.type == "outbound-rtp" && it.members["kind"] == kind }
+        if (streams.isEmpty()) return null
+        return streams.sumOf { number(it.members["packetsSent"]) ?: 0.0 }
+    }
+
     /** True when the connection in use goes through a TURN relay (either end's candidate is "relay"). */
     fun relayed(report: Map<String, Entry>): Boolean? {
         val pair = selectedPair(report) ?: return null
