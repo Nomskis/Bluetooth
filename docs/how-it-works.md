@@ -201,6 +201,30 @@ add their own battery managers that can stop it anyway, so the home screen
 shows the switches for the phone in hand, with a button to each maker's own
 screen ([`system/BackgroundHealth.kt`](../android/app/src/main/java/io/github/nomskis/earshot/system/BackgroundHealth.kt)).
 
+If a call gets killed anyway, it doesn't vanish: a running call marks itself
+alive every minute and clears the mark when it ends properly, so the next
+launch within 15 minutes offers **Rejoin**. The peer id is per install, so
+inside the server's grace period the call simply resumes.
+
+## Long calls at the gym
+
+- **Pocket guard.** While the call screen is up, Earshot holds a proximity
+  wake lock, like a phone call: covered, the screen goes dark and ignores
+  touches. The activity isn't stopped by that, so "is the call screen
+  visible" also checks that the display is on, and chat messages become
+  notifications you can hear.
+- **Camera pause.** Covered for 2 seconds, the camera stops (it would only
+  film the pocket) and `media-state` tells the other side `inPocket`, so they
+  see why. That also gives the Wi-Fi airtime back to the earbuds on 2.4 GHz.
+- **Heat.** On Android 10+, the thermal status steers outgoing video:
+  moderate caps it at 1 Mbps and 24 fps, severe at 500 kbps, 15 fps and two
+  thirds of the resolution, critical at 250 kbps, 10 fps and half. Encoding
+  is the biggest heat source a call can turn down; the voice is left alone.
+- **Dropped earbuds.** Their voice pauses rather than playing out loud, and
+  echo cancellation comes on while it does play out loud (see Echo above).
+- **Chat.** For when one of you can't talk or hear: a data channel, so
+  encrypted and phone to phone, with quick replies from the notification.
+
 ## Borrowing the earbuds' mic mid-call
 
 A Hi-Fi call can switch to the earbuds' microphone for a while (a loud
