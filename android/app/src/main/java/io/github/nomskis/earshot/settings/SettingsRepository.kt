@@ -11,6 +11,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.github.nomskis.earshot.BuildConfig
 import io.github.nomskis.earshot.call.Ids
+import io.github.nomskis.earshot.call.LinkMemories
+import io.github.nomskis.earshot.call.LinkMemory
 import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.calls.Contacts
 import io.github.nomskis.earshot.calls.InboxKeys
@@ -58,6 +60,7 @@ class SettingsRepository(private val context: Context) {
         val delayRuns = stringPreferencesKey("delay_runs")
         val inboxKey = stringPreferencesKey("inbox_key")
         val contacts = stringPreferencesKey("contacts")
+        val linkMemories = stringPreferencesKey("link_memories")
         val activeCallRoom = stringPreferencesKey("active_call_room")
         val activeCallVideo = booleanPreferencesKey("active_call_video")
         val activeCallAliveAt = longPreferencesKey("active_call_alive_at")
@@ -72,6 +75,15 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun removeContact(address: String) {
         context.dataStore.edit { prefs -> prefs[Keys.contacts] = Contacts.encode(Contacts.remove(Contacts.decode(prefs[Keys.contacts]), address)) }
+    }
+
+    /** What past calls learned about each contact's route; see [LinkMemory]. */
+    suspend fun linkMemories(): List<LinkMemory> = LinkMemories.decode(context.dataStore.data.first()[Keys.linkMemories])
+
+    suspend fun saveLinkMemory(memory: LinkMemory) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.linkMemories] = LinkMemories.encode(LinkMemories.upsert(LinkMemories.decode(prefs[Keys.linkMemories]), memory, System.currentTimeMillis()))
+        }
     }
 
     /** This install's secret inbox key (made on first use); see [InboxKeys]. */

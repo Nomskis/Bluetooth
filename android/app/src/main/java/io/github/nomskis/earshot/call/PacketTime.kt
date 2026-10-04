@@ -20,10 +20,11 @@ import kotlin.math.min
  * step back down that doesn't hold makes the next one wait longer. Same rules
  * as web/js/ptime.js.
  */
-class PacketTime {
+class PacketTime(start: Step = Step.SHORT) {
     enum class Step(val ms: Int) { SHORT(10), MEDIUM(20), LONG(40) }
 
-    var step = Step.SHORT
+    /** Where it starts: shorter after a calm minute if the link has got better ([LinkMemory]). */
+    var step = start
         private set
     val ms: Int get() = step.ms
 

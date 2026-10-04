@@ -42,6 +42,17 @@ object LinkConditions {
         return local && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
+    /** "wifi" (or Ethernet) or "cellular" for the phone's own network now; null when there's none or it's something else. */
+    fun networkKind(context: Context): String? {
+        val cm = context.getSystemService(ConnectivityManager::class.java) ?: return null
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return null
+        return when {
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "wifi"
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+            else -> null
+        }
+    }
+
     fun bandFor(frequencyMhz: Int): WifiBand? = when (frequencyMhz) {
         in 2_400..2_500 -> WifiBand.GHZ_2_4
         in 4_900..5_900 -> WifiBand.GHZ_5

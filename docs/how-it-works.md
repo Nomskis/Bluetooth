@@ -208,6 +208,26 @@ against the WebRTC source the app ships with
   leaner, or video pause, to fit. Tap the delay readout for both directions
   (good, fair or poor, with the numbers) and the packet length in use.
 
+## Calls that remember the route
+
+Every call otherwise starts blind: WebRTC guesses 300 kbps and finds the real
+figure over the first seconds, the voice starts as HD voice in 10 ms packets,
+and on a weak international route it takes the first half minute to settle on
+what works (voice first, longer packets). Two people who call each other keep
+calling over much the same route, so each call remembers, per contact and per
+kind of network on our side (Wi-Fi or mobile data): a cautious figure for
+what we could send (the lower quartile of WebRTC's estimate over the last
+minutes), the audio packet length that held, and the voice level that fit
+([`call/LinkMemory.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/LinkMemory.kt)).
+The next call starts there: the bandwidth estimate through
+`PeerConnection.setBitrate` (which resets WebRTC's estimators and aims its
+start-up probes at that rate; capped at 1 Mbps, since it probes up from there
+in a second or two anyway), the packet length and voice level as the
+starting points of their planners. Both still adapt as usual, so a route
+that has got better is found again within a minute. A reconnect within a
+call starts from what the call has learned so far. Memories last two weeks
+and never leave the phone.
+
 ## Calls abroad: through the relay's network
 
 A direct path between two countries takes whatever route the two internet

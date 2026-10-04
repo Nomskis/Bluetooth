@@ -31,14 +31,18 @@ import kotlin.math.min
  *   That also works for voice-only calls, where WebRTC's estimate barely
  *   grows beyond what's being sent.
  */
-class MediaBudget(private val redundancy: Int = WebRtcTuning.RED_REDUNDANCY) {
+class MediaBudget(
+    private val redundancy: Int = WebRtcTuning.RED_REDUNDANCY,
+    /** Where the voice starts: where it settled last time on this route ([LinkMemory]); it probes up as usual. */
+    startLevel: Level = Level.FULL,
+) {
     /** Opus bitrates. FULL is whatever the other side asked for, normally HD voice. */
     enum class Level(val opusBps: Int) { FULL(SdpTuning.HD_VOICE_BITRATE), REDUCED(32_000), LOW(20_000) }
 
     /** What changed in one interval, so the caller re-applies only that. */
     data class Changes(val voice: Boolean = false, val video: Boolean = false)
 
-    var level = Level.FULL
+    var level = startLevel
         private set
 
     /** The Opus cap to apply to the audio sender; null leaves it as negotiated. */

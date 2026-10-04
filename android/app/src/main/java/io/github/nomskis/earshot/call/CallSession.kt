@@ -89,6 +89,14 @@ class CallSession(
     private val outgoing: OutgoingRing? = null,
     /** Who a direct call is with (the contact rung, or who rang us), for the title. */
     contactName: String? = outgoing?.contact?.name,
+    /** Their inbox address when known from the start (a direct call); the contact card fills it in otherwise. */
+    remoteAddress: String? = outgoing?.contact?.address,
+    /** What the last call with them, from this kind of network, learned about the route. */
+    private val startFrom: LinkMemory? = null,
+    /** Our network when the call starts ("wifi", "cellular"), the half of the route that's ours. */
+    private val network: String? = null,
+    /** At the end: what this call learned, for the next one ([LinkMemory]). Called on the call thread. */
+    private val onLearned: (LinkMemory) -> Unit = {},
 ) {
     private val appContext = context.applicationContext
     private val executor = Executors.newSingleThreadExecutor { Thread(it, "EarshotCall") }
@@ -150,7 +158,13 @@ class CallSession(
     /** Leaves Wi-Fi that's up but losing packets, for mobile data on standby. */
     private val steering = PathSteering()
     /** The audio packet length we ask the other side for; lives across reconnects, like the network it reflects. */
-    private val packetTime = PacketTime()
+    private val packetTime = PacketTime(startFrom?.packetStep ?: PacketTime.Step.SHORT)
+    /** What the route carries, learned as the call goes, for reconnects within it and for the next call. */
+    private val learner = LinkLearner()
+    private var remoteAddress = remoteAddress
+    /** Where a new connection's voice and send estimate start: the last connection's, else the last call's. */
+    private var startLevel = startFrom?.level ?: MediaBudget.Level.FULL
+    private var startBitrateBps = startFrom?.startBitrateBps
     /** The relay route was tried on this call and didn't connect ([RelayRoute]). */
     private var relayFailed = false
     private val ringback = Ringback(
@@ -161,7 +175,14 @@ class CallSession(
     private var gaveUpJob: Job? = null
 
     /** One RTCPeerConnection and everything tied to it. */
-    private class Link(val pc: PeerConnection, val session: String, var tracks: SendTracks, val relayOnly: Boolean) {
+    private class Link(
+        val pc: PeerConnection,
+        val session: String,
+        var tracks: SendTracks,
+        val relayOnly: Boolean,
+        /** Shares what this connection can carry between our voice and our video, voice first. */
+        val budget: MediaBudget,
+    ) {
         val pendingCandidates = mutableListOf<IceCandidate>()
         /** ICE has been connected at least once on this connection. */
         var everConnected = false
@@ -171,8 +192,6 @@ class CallSession(
         var chatChannel: DataChannel? = null
         /** When priority marks were switched on for this connection; 0 = not marked. */
         var markedAt = 0L
-        /** Shares what this connection can carry between our voice and our video, voice first. */
-        val budget = MediaBudget()
         /** Last stats sample's cumulative audio bytes and packets sent, for rates. */
         var audioBytes: Double? = null
         var audioPackets: Double? = null
@@ -335,6 +354,7 @@ class CallSession(
         replayPlayer.stop()
         ringback.stop()
         smartDuck?.release()
+        learned()?.let(onLearned)
         closeLink()
         lipSyncSink.release()
         if (::signaling.isInitialized) signaling.close()
@@ -453,6 +473,7 @@ class CallSession(
                 val card = Chat.decode(event.text) as? Chat.Frame.Contact
                 if (card != null) {
                     val name = card.name.ifBlank { remote?.name.orEmpty() }
+                    remoteAddress = card.address
                     onContact(Contact(name, card.address, System.currentTimeMillis()))
                     return
                 }
@@ -613,6 +634,7 @@ class CallSession(
     private fun onStats(l: Link, report: RTCStatsReport) {
         val entries = report.statsMap.mapValues { (_, s) -> CallStats.Entry(s.type, s.members) }
         followMediaBudget(l, entries)
+        if (l.isHealthy) CallStats.availableOutgoingBitrate(entries)?.let(learner::addEstimate)
         followPacketTime(l, entries)
         val squeeze = when {
             l.budget.videoPaused -> LinkQuality.POOR
@@ -1109,6 +1131,8 @@ class CallSession(
         val relayOnly = RelayRoute.use(settings.relayRoute, remote, iceServers, relayFailed)
         val pc = engine.createPeerConnection(iceServers, observer, preferCellular, mobileDataNextToWifi = mobileData, relayOnly = relayOnly)
             ?: error("WebRTC could not create a peer connection")
+        // Start the bandwidth estimate where this route has been, not at WebRTC's blind 300 kbps.
+        startBitrateBps?.let { if (!pc.setBitrate(null, it, null)) Log.w(TAG, "Could not set the start bitrate") }
         val tracks = engine.createSendTracks()
         tracks.audio.setEnabled(!_state.value.micMuted)
         tracks.video?.setEnabled(!_state.value.sendsNoVideo)
@@ -1116,7 +1140,7 @@ class CallSession(
             val why = if (settings.relayRoute) "as set in Settings (Calls abroad)" else "as the other phone asked"
             _state.update { it.copy(routeNote = "Going through the relay, $why") }
         }
-        return Link(pc, session, tracks, relayOnly).also {
+        return Link(pc, session, tracks, relayOnly, MediaBudget(startLevel = startLevel)).also {
             observer.link = it
             openChatChannel(it)
             if (relayOnly) {
@@ -1134,12 +1158,32 @@ class CallSession(
         l.tracksAdded = true
     }
 
+    /** What this call has learned so far, for the next connection within it. */
+    private fun rememberRoute(l: Link) {
+        startLevel = l.budget.level
+        learner.sendEstimateBps?.let { startBitrateBps = LinkMemory.startBitrateFor(it) }
+    }
+
+    /** What this call learned, for the next call with them; null when it's too short to tell or we don't know who they are. */
+    private fun learned(): LinkMemory? {
+        val address = remoteAddress ?: return null
+        val estimate = learner.sendEstimateBps ?: return null
+        val path = when (_state.value.callPath) {
+            CallPath.WIFI -> "wifi"
+            CallPath.CELLULAR -> "cellular"
+            else -> network
+        } ?: return null
+        val level = link?.budget?.level ?: startLevel
+        return LinkMemory(address, path, estimate, packetTime.ms, level.name, System.currentTimeMillis())
+    }
+
     private fun closeLink() {
         statsJob?.cancel()
         recoveryJob?.cancel()
         offerTimeoutJob?.cancel()
         requestOfferJob?.cancel()
         val l = link ?: return
+        rememberRoute(l)
         link = null
         l.remoteVideoTrack?.removeSink(lipSyncSink)
         l.remoteAudio?.removeSink(voiceTap)

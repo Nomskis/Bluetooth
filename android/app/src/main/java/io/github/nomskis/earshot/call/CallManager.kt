@@ -145,6 +145,10 @@ class CallManager(
             val outgoing = calling?.let { OutgoingRing(it, current.displayName, inboxKey, withVideo) }
             this@CallManager.outgoing = outgoing
             calling?.let { settings.saveContact(it.copy(lastCallAtMillis = System.currentTimeMillis())) }
+            // Start where the last call with them, from this kind of network, got to.
+            val theirAddress = calling?.address ?: answering?.callerAddress
+            val network = LinkConditions.networkKind(appContext)
+            val memory = LinkMemories.find(settings.linkMemories(), theirAddress, network, System.currentTimeMillis())
             val session = CallSession(
                 context = appContext,
                 room = room,
@@ -160,6 +164,10 @@ class CallManager(
                 onContact = { contact -> scope.launch { settings.saveContact(contact) } },
                 outgoing = outgoing,
                 contactName = calling?.name ?: answering?.callerName,
+                remoteAddress = theirAddress,
+                startFrom = memory,
+                network = network,
+                onLearned = { learned -> scope.launch { settings.saveLinkMemory(learned) } },
             )
             _lastError.value = null
             _session.value = session
