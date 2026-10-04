@@ -39,4 +39,10 @@ object CallTuning {
 
     /** Cap video on 2.4 GHz Wi-Fi next to Bluetooth earbuds ([RadioPlan.wifiVideoCapKbps]). */
     const val RADIO_VIDEO_CAP = false
+
+    /**
+     * Second-quick path failover ([RtcEngine.FAILOVER_RECEIVE_TIMEOUT_MS] and the rest) even
+     * on a single network. Always on when mobile data stands by next to Wi-Fi.
+     */
+    const val FAST_FAILOVER_WITHOUT_STANDBY = false
 }

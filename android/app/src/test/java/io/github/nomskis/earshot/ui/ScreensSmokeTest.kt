@@ -221,7 +221,7 @@ class ScreensSmokeTest {
             EarshotTheme { UpdateCard(io.github.nomskis.earshot.update.AppUpdater.State.Available(release), onUpdate = { tapped++ }) }
         }
         compose.onNodeWithText("Update available").assertIsDisplayed()
-        compose.onNodeWithText("Build 104 is ready. It installs over this one.").assertIsDisplayed()
+        compose.onNodeWithText("Build 104").assertIsDisplayed()
         compose.onNodeWithText("Update").performClick()
         assertEquals(1, tapped)
     }
@@ -241,8 +241,8 @@ class ScreensSmokeTest {
                 )
             }
         }
-        compose.onNodeWithText("Sharing the radio with Bluetooth").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Mobile data as a backup during calls").performScrollTo().performClick()
+        compose.onNodeWithText("Quick replies").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Mobile data backup").performScrollTo().performClick()
         assertEquals(true, updated?.mobileDataBackup) // off by default; this turns it on
     }
 

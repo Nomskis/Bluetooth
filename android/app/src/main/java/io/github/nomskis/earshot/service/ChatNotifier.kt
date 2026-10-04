@@ -13,8 +13,8 @@ import androidx.core.app.RemoteInput
 import io.github.nomskis.earshot.MainActivity
 import io.github.nomskis.earshot.R
 import io.github.nomskis.earshot.call.CallSession
-import io.github.nomskis.earshot.call.Chat
 import io.github.nomskis.earshot.call.ChatMessage
+import io.github.nomskis.earshot.settings.QuickReplies
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -26,6 +26,10 @@ import kotlinx.coroutines.flow.map
  * quick replies you can tap from the notification or the lock screen.
  */
 class ChatNotifier(private val context: Context, private val replyIntent: Intent) {
+    /** Offered as one-tap answers in the notification (Settings, Quick replies). */
+    @Volatile
+    var quickReplies: List<String> = QuickReplies.DEFAULT
+
     private val manager = NotificationManagerCompat.from(context)
     private var lastShown: List<ChatMessage> = emptyList()
     private var peerName: String? = null
@@ -109,7 +113,7 @@ class ChatNotifier(private val context: Context, private val replyIntent: Intent
     private fun replyAction(): NotificationCompat.Action {
         val input = RemoteInput.Builder(KEY_REPLY)
             .setLabel(context.getString(R.string.chat_reply))
-            .setChoices(Chat.QUICK_REPLIES.toTypedArray())
+            .setChoices(quickReplies.toTypedArray())
             .build()
         // Mutable so Android can put the typed reply into it.
         val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0

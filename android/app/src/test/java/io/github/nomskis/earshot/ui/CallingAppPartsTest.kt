@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import io.github.nomskis.earshot.calls.CallRecord
 import io.github.nomskis.earshot.calls.IncomingRing
+import io.github.nomskis.earshot.settings.QuickReplies
 import io.github.nomskis.earshot.ui.theme.EarshotTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -63,8 +64,8 @@ class CallingAppPartsTest {
             EarshotTheme { IncomingCallScreen(ring, onAccept = {}, onAcceptVoiceOnly = {}, onDecline = {}, onReply = { replies += it }) }
         }
         compose.onNodeWithText("Message").performClick()
-        compose.onNodeWithText(QUICK_REPLIES.first()).performClick()
-        assertEquals(listOf(QUICK_REPLIES.first()), replies)
+        compose.onNodeWithText(QuickReplies.DEFAULT.first()).performClick()
+        assertEquals(listOf(QuickReplies.DEFAULT.first()), replies)
     }
 
     @Test

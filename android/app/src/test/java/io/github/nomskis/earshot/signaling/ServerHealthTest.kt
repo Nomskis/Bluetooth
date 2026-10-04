@@ -19,7 +19,7 @@ class ServerHealthTest {
     @Test
     fun saysWhenTheServerIsFarAndWhenThereIsNoRelay() {
         val far = ServerHealth.notes(roundTripMs = 340, relay = false)
-        assertTrue(far[0].contains("Frankfurt"))
+        assertTrue(far[0].contains("nearer"))
         assertTrue(far[1].startsWith("No relay"))
         val near = ServerHealth.notes(roundTripMs = 42, relay = true)
         assertEquals("42 ms away.", near[0])

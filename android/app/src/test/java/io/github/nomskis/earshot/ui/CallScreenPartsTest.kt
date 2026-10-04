@@ -90,8 +90,8 @@ class CallScreenPartsTest {
         compose.onNodeWithText("Network 25 ms, 0.4% packets lost (repaired where possible)").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Earbud game mode on").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Video held back 140 ms to match the earbuds (measured)").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Playing out loud now, so echo cancellation is on.").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Weak connection: your video is paused so your voice gets through. It comes back by itself.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Echo cancellation on (playing out loud)").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Weak connection: your video is paused").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -129,7 +129,7 @@ class CallScreenPartsTest {
         val paused = state.copy(remoteMedia = RemoteMedia(cameraOff = true, weakConnection = true))
         compose.setContent { EarshotTheme { RemotePlaceholder(paused, compact = false) } }
         compose.onNodeWithText(
-            "Sam's video is paused: the connection is too weak for it right now, so the voice gets through. It comes back by itself.",
+            "Video paused: weak connection",
         ).assertIsDisplayed()
     }
 
@@ -137,7 +137,7 @@ class CallScreenPartsTest {
     fun heldVoiceBannerOffersTheSpeaker() {
         var played = 0
         compose.setContent { EarshotTheme { OutputHeldBanner(name = "Sam", onPlayOutLoud = { played++ }) } }
-        compose.onNodeWithText("Your earbuds disconnected, so Sam's voice is paused. They can still hear you.").assertIsDisplayed()
+        compose.onNodeWithText("Earbuds disconnected. Sam's voice is paused.").assertIsDisplayed()
         compose.onNodeWithText("Play on speaker").performClick()
         assertEquals(1, played)
     }
@@ -226,9 +226,9 @@ class CallScreenPartsTest {
         var flips = 0
         var earbudMic = 0
         more(state.copy(flipped = true), onFlip = { flips++ }, onEarbudMic = { earbudMic++ })
-        compose.onNodeWithText("Stop mirroring my video").performClick()
-        compose.onNodeWithText("Use the earbuds' mic (call quality)").performClick()
-        compose.onNodeWithText("Replay the last 8 seconds").assertIsDisplayed()
+        compose.onNodeWithText("Mirror: on").performClick()
+        compose.onNodeWithText("Use earbuds' mic").performClick()
+        compose.onNodeWithText("Replay last 8 s").assertIsDisplayed()
         compose.onNodeWithText("Call details").assertIsDisplayed()
         assertEquals(1, flips)
         assertEquals(1, earbudMic)

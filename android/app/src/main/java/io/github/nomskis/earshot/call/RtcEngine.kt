@@ -389,16 +389,20 @@ class RtcEngine(
             // Ranks above network cost in ICE's choice, so a working mobile-data
             // path wins over Wi-Fi; without it Wi-Fi (cheaper) always wins.
             if (preferCellular) networkPreference = PeerConnection.AdapterType.CELLULAR
-            // Fail over in about a second instead of several. WebRTC's defaults
-            // check backup paths every 25 s and call a path dead after 5 s
-            // without an answer; at the gym, a Wi-Fi stall should move the call
-            // to its standby path (mobile data, or a relay) before the jitter
-            // buffer runs dry. Costs a few extra STUN pings per second.
-            iceConnectionReceivingTimeout = FAILOVER_RECEIVE_TIMEOUT_MS
-            iceBackupCandidatePairPingInterval = BACKUP_PING_INTERVAL_MS
-            stableWritableConnectionPingIntervalMs = STABLE_PING_INTERVAL_MS
-            iceUnwritableTimeMs = UNWRITABLE_TIME_MS
-            iceUnwritableMinChecks = UNWRITABLE_MIN_CHECKS
+            // Fail over in about a second instead of several, when there's a second network
+            // to fail over to. WebRTC's defaults check backup paths every 25 s and call a path
+            // dead after 5 s without an answer; at the gym, a Wi-Fi stall should move the call
+            // to mobile data before the jitter buffer runs dry. Costs a few extra STUN pings
+            // per second. On one network there's nowhere to go, and the quick timings only
+            // turn a mobile-data hiccup (round trips of 1.7 s happen) into "Reconnecting",
+            // so those calls keep WebRTC's own timings.
+            if (fixed.mobileDataNextToWifi || CallTuning.FAST_FAILOVER_WITHOUT_STANDBY) {
+                iceConnectionReceivingTimeout = FAILOVER_RECEIVE_TIMEOUT_MS
+                iceBackupCandidatePairPingInterval = BACKUP_PING_INTERVAL_MS
+                stableWritableConnectionPingIntervalMs = STABLE_PING_INTERVAL_MS
+                iceUnwritableTimeMs = UNWRITABLE_TIME_MS
+                iceUnwritableMinChecks = UNWRITABLE_MIN_CHECKS
+            }
         }
     }
 

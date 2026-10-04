@@ -57,6 +57,7 @@ class CallService : LifecycleService() {
                     return@collectLatest
                 }
                 coroutineScope {
+                    launch { appGraph.settings.settings.collect { chatNotifier.quickReplies = it.quickReplies } }
                     launch { chatNotifier.follow(session, appGraph.callScreenVisible) }
                     // Only what the notification shows: the call state also changes several
                     // times a second (talking cue, delay readout), and re-posting on each
@@ -157,7 +158,7 @@ class CallService : LifecycleService() {
         val open = PendingIntent.getActivity(
             this,
             0,
-            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra(MainActivity.EXTRA_SHOW_CALL, true),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val hangUp = PendingIntent.getService(

@@ -51,8 +51,7 @@ fun EarbudCard(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Earbud game mode", style = MaterialTheme.typography.titleSmall)
             Text(
-                "Classic Bluetooth has no standard way to ask earbuds for less delay, but many brands have " +
-                    "their own switch. Earshot can flip it for: ${EarbudDrivers.familyNames.joinToString(", ")}.",
+                "Works with ${EarbudDrivers.familyNames.joinToString(", ")}",
                 style = MaterialTheme.typography.bodySmall,
             )
             when {

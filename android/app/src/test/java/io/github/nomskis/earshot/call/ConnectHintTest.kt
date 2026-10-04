@@ -12,9 +12,9 @@ class ConnectHintTest {
     @Test
     fun withoutARelayItPointsAtTurn() {
         assertFalse(ConnectHint.hasRelay(listOf(stun)))
-        assertTrue(ConnectHint.forStuck(listOf(stun)).contains("TURN"))
+        assertTrue(ConnectHint.forStuck(listOf(stun)).contains("no relay"))
         assertTrue(ConnectHint.hasRelay(listOf(stun, turn)))
-        assertFalse(ConnectHint.forStuck(listOf(stun, turn)).contains("TURN"))
+        assertFalse(ConnectHint.forStuck(listOf(stun, turn)).contains("no relay"))
         assertTrue(ConnectHint.hasRelay(listOf(IceServerConfig(listOf("turns:relay.example.com:443?transport=tcp")))))
     }
 }

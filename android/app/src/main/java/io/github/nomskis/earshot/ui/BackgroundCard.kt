@@ -46,10 +46,6 @@ fun BackgroundCard(done: Boolean, onDone: () -> Unit) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Keep calls going with the screen off", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Your phone's battery manager can stop a call in your pocket. A minute here makes calls reliable.",
-                style = MaterialTheme.typography.bodySmall,
-            )
             steps.forEach { step ->
                 Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Icon(

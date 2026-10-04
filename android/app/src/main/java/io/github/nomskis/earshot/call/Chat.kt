@@ -27,7 +27,6 @@ object Chat {
     const val MAX_LENGTH = 1000
     /** The other side shows the chat only when our join message lists this. */
     const val CAPABILITY = "chat"
-    val QUICK_REPLIES = listOf("👍", "One sec", "Can't hear you", "Call you back", "❤️")
 
     @Serializable
     @JsonClassDiscriminator("kind")

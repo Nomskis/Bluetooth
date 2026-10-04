@@ -819,6 +819,12 @@ class CallSession(
             else -> LinkQuality.GOOD
         }
         val delay = delayTracker.update(entries, playoutMs, playoutMeasured, packetTime.ms).copy(sendSqueeze = squeeze)
+        val now = _state.value
+        qualityTracker.context(
+            theirNetwork = now.remoteMedia.network,
+            video = !now.sendsNoVideo || (now.hasRemoteVideo && !now.remoteMedia.cameraOff),
+            mouthToEarMs = delay.totalMs,
+        )
         followLinkReport(delay)
         // Earbuds can connect mid-call; keep the earbud-mic button honest.
         val micAvailable = profile.mode == AudioMode.HIFI && (_state.value.earbudMic || audioController.earbudMicAvailable())
@@ -1001,7 +1007,7 @@ class CallSession(
                 it.copy(
                     signalingOnline = false,
                     error = if (state.attempt >= 3 && it.phase == CallPhase.CONNECTING) {
-                        "Can't reach the server. Still trying… (a server on a free plan can take a minute to wake up)"
+                        "Can't reach the server. Still trying…"
                     } else {
                         it.error
                     },

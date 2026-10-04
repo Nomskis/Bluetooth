@@ -95,6 +95,39 @@ class CallQualityTest {
     }
 
     @Test
+    fun theReportHasBothSidesAndTheDelayAsHeard() {
+        val tracker = CallQualityTracker()
+        tracker.context(theirNetwork = null, video = false, mouthToEarMs = 400)
+        tracker.context(theirNetwork = "wifi", video = true, mouthToEarMs = 600)
+        // Video once is a video call; their network stays known when a later update doesn't say.
+        tracker.context(theirNetwork = null, video = false, mouthToEarMs = null)
+        val text = tracker.summary().copy(path = "direct", network = "cellular").report()
+        assertTrue(text.contains("Call: video"))
+        assertTrue(text.contains("Route: direct, this phone on cellular, theirs on wifi"))
+        assertTrue(text.contains("Their voice reached you after: 500 ms average"))
+        assertTrue(CallQuality().report().contains("Call: voice"))
+    }
+
+    @Test
+    fun aDirectCallLearnsWhatTheRelayWouldHaveDone() {
+        val tracker = CallQualityTracker()
+        val standby = mapOf(
+            // Relayed on both ends: what "Route through relay" gives.
+            "Q" to CallStats.Entry("candidate-pair", mapOf("state" to "succeeded", "localCandidateId" to "LR", "remoteCandidateId" to "RR", "currentRoundTripTime" to 0.07)),
+            // Relayed on one end only: not the same route, so not counted.
+            "S" to CallStats.Entry("candidate-pair", mapOf("state" to "succeeded", "localCandidateId" to "LR", "remoteCandidateId" to "R", "currentRoundTripTime" to 0.05)),
+            "LR" to CallStats.Entry("local-candidate", mapOf("networkType" to "cellular", "candidateType" to "relay")),
+            "RR" to CallStats.Entry("remote-candidate", mapOf("candidateType" to "relay")),
+        )
+        tracker.update(report(rtt = 0.26, received = 100, lost = 0, samples = 96_000, concealed = 0, jbDelay = 4_800.0, jbEmitted = 96_000) + standby)
+        val q = tracker.summary()
+        assertEquals(70, q.relayRttMsAvg)
+        assertTrue(q.report().contains("Relay round trip, checked on the side: 70 ms"))
+        // Already on the relay: nothing to compare.
+        assertTrue(!q.copy(path = "relay (udp)").report().contains("Relay round trip"))
+    }
+
+    @Test
     fun theReportSaysWhetherMobileDataCouldBeUsedAndWhy() {
         val tracker = CallQualityTracker()
         tracker.mobileData("used, no working Wi-Fi when the call connected")

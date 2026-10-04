@@ -11,10 +11,9 @@ object ConnectHint {
 
     fun forStuck(iceServers: List<IceServerConfig>): String =
         if (hasRelay(iceServers)) {
-            "This is taking a while. Check that both of you are online; switching one side between Wi-Fi and mobile data can help."
+            "Taking a while. Check you're both online."
         } else {
-            "This is taking a while. Some networks (mobile data, gym or office Wi-Fi) block direct calls, " +
-                "and this server has no TURN relay to get around that. Try both on home Wi-Fi, or add TURN to the server."
+            "Taking a while. This network may block calls, and the server has no relay."
         }
 
     fun hasRelay(iceServers: List<IceServerConfig>): Boolean =

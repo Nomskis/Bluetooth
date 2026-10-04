@@ -25,10 +25,10 @@ object CallReadiness {
     data class Step(val id: StepId, val title: String, val detail: String, val done: Boolean?)
 
     fun steps(brand: BackgroundHealth.Brand, sdk: Int, notificationsOn: Boolean, fullScreenOn: Boolean): List<Step> = buildList {
-        add(Step(StepId.NOTIFICATIONS, "Allow notifications", "Calls ring through a notification, like the phone app's.", notificationsOn))
+        add(Step(StepId.NOTIFICATIONS, "Allow notifications", "So calls can ring", notificationsOn))
         // Android 14 made full-screen calls something you can switch off per app.
         if (sdk >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            add(Step(StepId.FULL_SCREEN, "Allow full-screen calls", "Lets a call fill the lock screen with Accept and Decline.", fullScreenOn))
+            add(Step(StepId.FULL_SCREEN, "Allow full-screen calls", "So calls show on the lock screen", fullScreenOn))
         }
         if (brand == BackgroundHealth.Brand.XIAOMI) {
             add(

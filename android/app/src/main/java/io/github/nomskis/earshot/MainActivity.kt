@@ -44,6 +44,8 @@ class MainActivity : ComponentActivity() {
 
     private val pipListener = Consumer<PictureInPictureModeChangedInfo> { info ->
         inPictureInPicture.value = info.isInPictureInPictureMode
+        // The floating window shows the call, and opening it again lands on the call.
+        if (info.isInPictureInPictureMode) viewModel.showCall()
         publishVisibility()
     }
 
@@ -64,14 +66,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.callMinimized.collect { publishVisibility() } }
+        }
 
         setContent {
             EarshotTheme {
-                EarshotRoot(
-                    viewModel = viewModel,
-                    inPictureInPicture = inPictureInPicture.value,
-                    onLeaveCallScreen = ::leaveCallScreen,
-                )
+                EarshotRoot(viewModel = viewModel, inPictureInPicture = inPictureInPicture.value)
             }
         }
     }
@@ -110,7 +111,7 @@ class MainActivity : ComponentActivity() {
     private fun publishVisibility() {
         val displayOn = getSystemService(DisplayManager::class.java)
             ?.getDisplay(Display.DEFAULT_DISPLAY)?.state?.let { it == Display.STATE_ON } ?: true
-        appGraph.callScreenVisible.value = started && displayOn && !inPictureInPicture.value
+        appGraph.callScreenVisible.value = started && displayOn && !inPictureInPicture.value && !viewModel.callMinimized.value
     }
 
     override fun onDestroy() {
@@ -123,14 +124,6 @@ class MainActivity : ComponentActivity() {
         // Android 12+ enters picture-in-picture by itself (setAutoEnterEnabled).
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && viewModel.session.value != null) {
             enterPictureInPictureMode(pipParams())
-        }
-    }
-
-    private fun leaveCallScreen() {
-        if (packageManager.hasSystemFeature("android.software.picture_in_picture")) {
-            enterPictureInPictureMode(pipParams())
-        } else {
-            moveTaskToBack(true)
         }
     }
 
@@ -154,8 +147,14 @@ class MainActivity : ComponentActivity() {
      * optionally ?server=<https origin>, from a web invite page.
      */
     private fun handleIntent(intent: Intent?) {
-        // A message notification: straight to that conversation.
+        // The ongoing call's notification: back to the call.
+        if (intent?.getBooleanExtra(EXTRA_SHOW_CALL, false) == true) {
+            viewModel.showCall()
+            return
+        }
+        // A message notification: straight to that conversation (a call carries on in the bar).
         intent?.getStringExtra(MessageNotifications.EXTRA_CONVERSATION)?.let { address ->
+            viewModel.minimizeCall()
             viewModel.openConversation(address)
             return
         }
@@ -163,5 +162,10 @@ class MainActivity : ComponentActivity() {
         val serverParam = if (data.isHierarchical) data.getQueryParameter("server") else null
         val (room, server) = ServerUrls.invite(data.scheme, data.authority, data.pathSegments, serverParam) ?: return
         viewModel.offerRoom(RoomCodes.normalize(room) ?: return, server = server)
+    }
+
+    companion object {
+        /** Opens the call screen rather than wherever the app was. */
+        const val EXTRA_SHOW_CALL = "show_call"
     }
 }

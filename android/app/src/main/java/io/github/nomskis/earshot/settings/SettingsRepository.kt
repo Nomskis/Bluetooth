@@ -58,6 +58,7 @@ class SettingsRepository(private val context: Context) {
         val gameModeHintDone = booleanPreferencesKey("game_mode_hint_done")
         val voiceVolume = floatPreferencesKey("voice_volume")
         val lastRoom = stringPreferencesKey("last_room")
+        val quickReplies = stringPreferencesKey("quick_replies")
         val peerId = stringPreferencesKey("peer_id")
         val delayRuns = stringPreferencesKey("delay_runs")
         val inboxKey = stringPreferencesKey("inbox_key")
@@ -217,6 +218,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.gameModeHintDone] = next.gameModeHintDone
             prefs[Keys.voiceVolume] = next.voiceVolume
             prefs[Keys.lastRoom] = next.lastRoom
+            prefs[Keys.quickReplies] = QuickReplies.encode(next.quickReplies)
         }
     }
 
@@ -265,6 +267,7 @@ class SettingsRepository(private val context: Context) {
             gameModeHintDone = this[Keys.gameModeHintDone] ?: defaults.gameModeHintDone,
             voiceVolume = this[Keys.voiceVolume] ?: defaults.voiceVolume,
             lastRoom = this[Keys.lastRoom] ?: defaults.lastRoom,
+            quickReplies = QuickReplies.decode(this[Keys.quickReplies]),
         )
     }
 }

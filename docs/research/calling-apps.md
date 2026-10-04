@@ -27,7 +27,8 @@ are out of scope on purpose.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Mute, camera on/off, switch camera, hang up | ✅ | One row, hidden while you watch video |
+| Mute, camera on/off, switch camera, hang up | ✅ | One row that hides after a few seconds; a tap brings it back, and that tap can't hang up |
+| Use the rest of the app during a call | ✅ | A bar at the top goes back to the call |
 | Voice call to video call and back, in one tap | ✅ | No reconnecting |
 | Loudspeaker or earpiece, screen off at your ear | ✅ | Like the phone app |
 | Call timer, who's muted, weak connection | ✅ | |
@@ -35,6 +36,7 @@ are out of scope on purpose.
 | Picture-in-picture when you leave the app | ✅ | |
 | Ongoing call notification with Mute and Hang up | ✅ | Android's call style, with the timer |
 | Chat during the call | ✅ | Lands in the conversation too |
+| Your own quick replies | ✅ | Settings; used in the call's chat and when declining |
 | Survives switching Wi-Fi and mobile data | ✅ | |
 | Screen sharing | 🤔 | WhatsApp, Meet and Telegram have it |
 | Background blur, filters, reactions | ⛔ | Costs CPU and battery the call quality needs |
@@ -63,4 +65,4 @@ are out of scope on purpose.
 | Add someone with a link | ✅ | The link opens the app straight into the call |
 | Rename a contact | ✅ | |
 | No account, no phone number | ✅ | Your own server; see the README for why not phone numbers |
-| Updates inside the app | ✅ | |
+| Updates inside the app | ✅ | And Check for updates in Settings |

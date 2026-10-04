@@ -109,14 +109,14 @@ class ContactsAndCallingTest {
         var removed: Contact? = null
         home(listOf(salma), onRemove = { removed = it })
         compose.onNodeWithContentDescription("More for Salma").performClick()
-        compose.onNodeWithText("Remove from Earshot").performClick()
+        compose.onNodeWithText("Remove").performClick()
         assertEquals(salma, removed)
     }
 
     @Test
     fun beforeTheFirstCallItSaysHowPeopleGetHere() {
         home(emptyList())
-        compose.onNodeWithText("Tap Invite someone and send them the link", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Invite someone below", substring = true).assertIsDisplayed()
         compose.onNodeWithText("Invite someone").assertIsDisplayed()
     }
 
@@ -171,8 +171,8 @@ class ContactsAndCallingTest {
         assertEquals("Salma declined", text(Status.DECLINED))
         assertEquals("Salma is on another call", text(Status.BUSY))
         assertEquals("No answer from Salma", text(Status.NO_ANSWER))
-        assertTrue(text(Status.UNREACHABLE, keepsTrying = true)!!.contains("keeps trying"))
-        assertTrue(text(Status.UNREACHABLE)!!.contains("Send the invite link"))
+        assertEquals("Can't reach Salma. Still trying…", text(Status.UNREACHABLE, keepsTrying = true))
+        assertEquals("Can't reach Salma", text(Status.UNREACHABLE))
         // Not a call to a contact, or they're here: the usual texts.
         assertNull(callingText(calling))
         assertNull(text(Status.RINGING, state = calling.copy(remotePeer = PeerInfo(peerId = "p1", name = "Salma", seq = 1))))
@@ -200,7 +200,7 @@ class ContactsAndCallingTest {
         assertEquals(listOf(CallReadiness.StepId.NOTIFICATIONS, CallReadiness.StepId.FULL_SCREEN, CallReadiness.StepId.XIAOMI_LOCK_SCREEN), steps.map { it.id })
         var done = false
         compose.setContent { EarshotTheme { CallsReadyCard(InboxClient.State.LISTENING, setupDone = false, onSetupDone = { done = true }, stepsOverride = steps) } }
-        compose.onNodeWithText("Ready for calls, almost").assertIsDisplayed()
+        compose.onNodeWithText("Finish setting up calls").assertIsDisplayed()
         compose.onNodeWithText("Allow full-screen calls").assertIsDisplayed()
         compose.onNodeWithText("Show on lock screen and pop up").assertIsDisplayed()
         // Notifications are already on, so they're not listed.
@@ -222,8 +222,9 @@ class ContactsAndCallingTest {
         }
         compose.onNodeWithText("Done").performClick()
         assertTrue(done)
-        compose.onNodeWithText("Ready for calls").assertIsDisplayed()
+        // Ready: nothing left to say, so the card goes away.
         assertTrue(compose.onAllNodesWithText("Show on lock screen and pop up").fetchSemanticsNodes().isEmpty())
+        assertTrue(compose.onAllNodesWithText("Ready for calls").fetchSemanticsNodes().isEmpty())
     }
 
     @Test

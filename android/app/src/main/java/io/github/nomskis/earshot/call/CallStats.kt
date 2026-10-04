@@ -108,6 +108,19 @@ object CallStats {
         }
     }
 
+    /**
+     * The quickest round trip, in seconds, of a working path relayed on both ends: what the
+     * call would get with "Route through relay". WebRTC keeps checking such standby paths
+     * now and then (every 25 s by default), so a direct call learns it too.
+     */
+    fun relayedRoundTripSeconds(report: Map<String, Entry>): Double? = report.values.mapNotNull { entry ->
+        if (entry.type != "candidate-pair" || entry.members["state"] != "succeeded") return@mapNotNull null
+        val local = report[entry.members["localCandidateId"] as? String]?.members ?: return@mapNotNull null
+        val remote = report[entry.members["remoteCandidateId"] as? String]?.members ?: return@mapNotNull null
+        if (local["candidateType"] != "relay" || remote["candidateType"] != "relay") return@mapNotNull null
+        number(entry.members["currentRoundTripTime"])?.takeIf { it > 0 }
+    }.minOrNull()
+
     /** Every working candidate pair with its network and ping counters, for [PathSteering]. */
     fun candidatePairs(report: Map<String, Entry>): List<PathSteering.CandidatePair> = report.mapNotNull { (id, entry) ->
         if (entry.type != "candidate-pair" || entry.members["state"] != "succeeded") return@mapNotNull null

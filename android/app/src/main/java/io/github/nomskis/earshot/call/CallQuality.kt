@@ -15,6 +15,14 @@ data class CallQuality(
     val path: String? = null,
     /** This phone's network: "wifi", "cellular"... */
     val network: String? = null,
+    /** The other phone's, as it said. */
+    val theirNetwork: String? = null,
+    /** Either camera was on at some point. */
+    val video: Boolean = false,
+    /** From their mouth to your ear, averaged over the call. */
+    val mouthToEarMsAvg: Int? = null,
+    /** The round trip a path relayed on both ends had, while the call went another way. */
+    val relayRttMsAvg: Int? = null,
     /** Whether the call could use mobile data, and why ("kept off, next to working Wi-Fi", ...). */
     val mobileData: String? = null,
     val rttMsAvg: Int? = null,
@@ -62,9 +70,12 @@ data class CallQuality(
         appendLine("Earshot call report")
         durationSeconds?.let { appendLine("Length: ${it / 60} min ${it % 60} s") }
         appendLine("Quality: ${verdict.name.lowercase()}")
-        appendLine("Route: ${path ?: "?"}, this phone on ${network ?: "?"}")
+        appendLine("Call: ${if (video) "video" else "voice"}")
+        appendLine("Route: ${path ?: "?"}, this phone on ${network ?: "?"}" + (theirNetwork?.let { ", theirs on $it" } ?: ""))
         mobileData?.let { appendLine("Mobile data: $it") }
         appendLine("Round trip: ${rttMsAvg ?: "?"} ms average, ${rttMsMax ?: "?"} ms worst")
+        mouthToEarMsAvg?.let { appendLine("Their voice reached you after: $it ms average") }
+        relayRttMsAvg?.takeIf { path == "direct" }?.let { appendLine("Relay round trip, checked on the side: $it ms") }
         appendLine(
             "Their audio: ${audioLossPercent.pct()} lost on the way, ${concealedPercent.pct()} made up" +
                 (audioNacks?.let { ", $it resend requests" } ?: ""),
@@ -134,6 +145,12 @@ class CallQualityTracker {
     private var heightSum = 0.0
     private var path: String? = null
     private var network: String? = null
+    private var theirNetwork: String? = null
+    private var video = false
+    private var mouthToEarSum = 0.0
+    private var mouthToEarCount = 0
+    private var relayRttSum = 0.0
+    private var relayRttCount = 0
     private var mobileData: String? = null
     private var codec: String? = null
     private var samples = 0
@@ -151,6 +168,16 @@ class CallQualityTracker {
         reconnects++
     }
 
+    /** What the stats don't say: their network, whether there's video, the delay as heard. */
+    fun context(theirNetwork: String?, video: Boolean, mouthToEarMs: Int?) {
+        theirNetwork?.let { this.theirNetwork = it }
+        if (video) this.video = true
+        mouthToEarMs?.let {
+            mouthToEarSum += it
+            mouthToEarCount++
+        }
+    }
+
     /** Whether the latest connection could use mobile data, and why. */
     fun mobileData(use: String) {
         mobileData = use
@@ -165,6 +192,10 @@ class CallQualityTracker {
             rttSum += ms
             rttCount++
             rttMax = maxOf(rttMax, ms)
+        }
+        CallStats.relayedRoundTripSeconds(report)?.let { s ->
+            relayRttSum += s * 1000
+            relayRttCount++
         }
         CallStats.availableOutgoingBitrate(report)?.let { bps ->
             availableSum += bps
@@ -223,6 +254,10 @@ class CallQualityTracker {
         return CallQuality(
             path = path,
             network = network,
+            theirNetwork = theirNetwork,
+            video = video,
+            mouthToEarMsAvg = avg(mouthToEarSum, mouthToEarCount),
+            relayRttMsAvg = avg(relayRttSum, relayRttCount),
             mobileData = mobileData,
             rttMsAvg = avg(rttSum, rttCount),
             rttMsMax = rttMax.takeIf { rttCount > 0 }?.roundToInt(),
