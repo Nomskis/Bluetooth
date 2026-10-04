@@ -90,6 +90,13 @@ invite link. A decline, `busy` or no answer ends the call after a short
 message. If the server answers `ring` with `bad-request` (a server older than
 ringing), the app treats the contact as unreachable.
 
+When two people ring each other at once, each phone gets an `incoming` from
+the person it's ringing. Both settle it the same way, by comparing the two
+addresses as strings: the call from the lower address goes ahead. The phone
+with the lower address ignores the other ring; the other phone answers the
+winning ring with `accepted: true`, hangs up its own call (which cancels its
+ring) and joins the winner's room.
+
 ## Reconnecting
 
 If a socket closes without `leave`, the server keeps the peer's slot for

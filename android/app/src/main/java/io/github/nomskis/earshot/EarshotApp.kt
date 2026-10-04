@@ -45,6 +45,8 @@ class AppGraph(context: Context) {
         http,
         isBusy = { callManager.busy },
         startCall = { ring, withVideo -> callManager.answerCall(ring, withVideo) },
+        ringingOut = { callManager.ringingOut() },
+        switchTo = { ring, withVideo -> callManager.switchTo(ring, withVideo) },
     )
     /** A missed call's "Call back", waiting for the home screen to pick it up. */
     val callBack = MutableStateFlow<CallBackRequest?>(null)

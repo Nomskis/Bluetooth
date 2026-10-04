@@ -17,6 +17,7 @@ import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.calls.InboxKeys
 import io.github.nomskis.earshot.calls.IncomingRing
 import io.github.nomskis.earshot.calls.OutgoingRing
+import io.github.nomskis.earshot.calls.RingingOut
 import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.service.CallService
 import io.github.nomskis.earshot.settings.AppSettings
@@ -84,10 +85,32 @@ class CallManager(
     private var cleanup: Job? = null
 
     /** A call is being set up but its session doesn't exist yet (main thread only). */
-    private var starting = false
+    private val starting = MutableStateFlow(false)
+    /** The ring the current call sends, if it's a call to a contact. */
+    @Volatile
+    private var outgoing: OutgoingRing? = null
 
     /** On a call, or about to be. */
-    val busy: Boolean get() = _session.value != null || starting
+    val busy: Boolean get() = _session.value != null || starting.value
+
+    /** The contact the current call is ringing, while that ring is still going. */
+    fun ringingOut(): RingingOut? {
+        val ring = outgoing?.takeIf { it.alive } ?: return null
+        return RingingOut(ring.contact.address, ring.video)
+    }
+
+    /**
+     * We were calling each other at the same moment and their call won: leave ours
+     * (once it exists) and take theirs.
+     */
+    fun switchTo(ring: IncomingRing, withVideo: Boolean) {
+        scope.launch {
+            starting.first { !it }
+            _session.value?.hangUp()
+            _session.first { it == null }
+            answerCall(ring, withVideo)
+        }
+    }
 
     /** Joins [room] and waits for whoever has the link. */
     fun startCall(room: String, withVideo: Boolean) = begin(room, withVideo, calling = null, answering = null)
@@ -99,8 +122,8 @@ class CallManager(
     fun answerCall(ring: IncomingRing, withVideo: Boolean) = begin(ring.room, withVideo, calling = null, answering = ring)
 
     private fun begin(room: String, withVideo: Boolean, calling: Contact?, answering: IncomingRing?) {
-        if (_session.value != null || starting) return
-        starting = true
+        if (_session.value != null || starting.value) return
+        starting.value = true
         scope.launch {
             // A call ended a moment ago may still be restoring the earbuds; don't overlap.
             cleanup?.join()
@@ -108,7 +131,7 @@ class CallManager(
             val base = ServerUrls.normalizeBase(current.serverUrl)
             if (base == null) {
                 _lastError.value = "Add your server address in Settings first."
-                starting = false
+                starting.value = false
                 return@launch
             }
             // A direct call's room is single-use; the room box keeps the one you typed.
@@ -120,6 +143,7 @@ class CallManager(
             val inboxKey = settings.inboxKey()
             val me = Chat.Frame.Contact(current.displayName, InboxKeys.address(inboxKey))
             val outgoing = calling?.let { OutgoingRing(it, current.displayName, inboxKey, withVideo) }
+            this@CallManager.outgoing = outgoing
             calling?.let { settings.saveContact(it.copy(lastCallAtMillis = System.currentTimeMillis())) }
             val session = CallSession(
                 context = appContext,
@@ -139,7 +163,7 @@ class CallManager(
             )
             _lastError.value = null
             _session.value = session
-            starting = false
+            starting.value = false
             CallService.start(appContext)
             if (radioPlan.preferCellular || current.mobileDataBackup) cellular.acquire()
             watchNetwork(session, current)
@@ -204,6 +228,7 @@ class CallManager(
             if (end.error != null) _lastError.value = end.error
             unwatchNetwork()
             cellular.release()
+            if (this@CallManager.outgoing === outgoing) this@CallManager.outgoing = null
             if (_session.value === session) _session.value = null
             // Let a switch still in progress finish first, so end() knows what to undo.
             cleanup = scope.launch(NonCancellable) {

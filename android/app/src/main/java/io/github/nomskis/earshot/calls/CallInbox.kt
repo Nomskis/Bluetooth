@@ -39,6 +39,10 @@ class CallInbox(
     private val isBusy: () -> Boolean,
     /** Joins the caller's room to take an answered call. */
     private val startCall: (ring: IncomingRing, withVideo: Boolean) -> Unit,
+    /** The contact the current call is ringing, while that ring is still going. */
+    private val ringingOut: () -> RingingOut? = { null },
+    /** Leaves the current call for [ring]'s (we were calling each other at once). */
+    private val switchTo: (ring: IncomingRing, withVideo: Boolean) -> Unit = { _, _ -> },
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -53,6 +57,8 @@ class CallInbox(
     val status: StateFlow<InboxClient.State> = _status.asStateFlow()
 
     private var client: InboxClient? = null
+    /** Our own address, to settle who wins when two people call each other at once. */
+    private var myAddress: String? = null
     private var clientJob: Job? = null
     private var timeoutJob: Job? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -86,6 +92,7 @@ class CallInbox(
     private suspend fun listen(base: String) {
         stopListening()
         val key = settings.inboxKey()
+        myAddress = InboxKeys.address(key)
         val c = InboxClient(http, ServerUrls.webSocketUrl(base), key, scope, onMessage = { msg -> scope.launch { onMessage(msg) } })
         client = c
         clientJob = scope.launch { c.state.collect { _status.value = it } }
@@ -122,6 +129,7 @@ class CallInbox(
         val name = contacts.firstOrNull { it.address == message.from.address }?.name
             ?: message.from.name.ifBlank { "Someone" }
         val ring = IncomingRing(message.ringId, message.room, name, message.from.address, message.video)
+        if (crossed(ring)) return
         // Already on a call, or another one is ringing: say so, and leave a note.
         if (isBusy() || _ringing.value != null) {
             client?.send(ClientMessage.RingAnswer(ring.ringId, accepted = false, reason = "busy"))
@@ -140,6 +148,27 @@ class CallInbox(
                 CallNotifications.showMissed(appContext, ring, busy = false)
             }
         }
+    }
+
+    /**
+     * They're calling us while we're calling them. Without this both would hear "busy".
+     * Both phones settle it the same way: the call from the lower address goes ahead.
+     * If that's ours, theirs is ignored (they'll switch over to ours as soon as our ring
+     * reaches them); if it's theirs, we answer it and leave our own call.
+     */
+    private fun crossed(ring: IncomingRing): Boolean {
+        val out = ringingOut() ?: return false
+        val caller = ring.callerAddress ?: return false
+        val me = myAddress ?: return false
+        if (out.address != caller) return false
+        if (me < caller) {
+            Log.i(TAG, "Calling each other at once: ours goes ahead")
+            return true
+        }
+        Log.i(TAG, "Calling each other at once: taking theirs")
+        client?.send(ClientMessage.RingAnswer(ring.ringId, accepted = true))
+        switchTo(ring, out.video)
+        return true
     }
 
     /** Accepts the ringing call and starts it. Returns false if nothing is ringing. */

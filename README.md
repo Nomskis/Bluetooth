@@ -156,6 +156,8 @@ If you both have the Android app, that first call saves you to each other's
   or Earshot was force-stopped), Earshot keeps trying for a minute and offers
   the invite link instead.
 - A call you miss leaves a notification with **Call back**.
+- If you both tap call at the same moment, you don't both get "busy": the two
+  phones agree on one of the calls and you're connected.
 
 Ringing doesn't use Google's push service: while **Receive calls** is on
 (Settings), the app keeps a small connection to your own server open, with a
@@ -202,7 +204,7 @@ Android clients.
 | --- | --- |
 | Server | 58 unit and integration tests, including ringing (who can ring whom, first answer wins, cancel and timeout), hosted-TURN credentials and the browser client's voice detector, delay readout, chat and SDP tweaks |
 | Browser calls | 12 end-to-end tests: two real Chromium browsers calling each other through the server (video, audio, reloads, dropped connections, room full, camera-less join, 10 ms packets, redundant audio, HD voice, talking cue, text chat across a reload, the open-in-app link, home-screen install) |
-| Android app | 203 tests: protocol and chat against the shared examples, signaling reconnects against a scripted server, incoming calls end to end against a scripted server (ringing, accept, decline, busy, missed call), the outgoing ring's states, audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio, path-steering, heat and lip-sync planning, SDP tweaks, plus Robolectric tests that start the real app and render every screen. Android lint, debug and release builds |
+| Android app | 207 tests: protocol and chat against the shared examples, signaling reconnects against a scripted server, incoming calls end to end against a scripted server (ringing, accept, decline, busy, missed call, calling each other at once), the outgoing ring's states, audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio, path-steering, heat and lip-sync planning, SDP tweaks, plus Robolectric tests that start the real app and render every screen. Android lint, debug and release builds |
 | Android on a real phone | **Not yet.** The audio routing and the earbud drivers have to be confirmed on real hardware; the in-app audio check and the delay tuner are there for exactly that. |
 
 ## Trade-offs to know about

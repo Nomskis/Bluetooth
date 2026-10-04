@@ -44,6 +44,10 @@ class CallInboxTest {
     private var socket: WebSocket? = null
     private val started = mutableListOf<Pair<String, Boolean>>()
     private var busy = false
+    /** What our own call is ringing, for calls that cross. */
+    private var ringingOut: RingingOut? = null
+    private val switched = mutableListOf<Pair<String, Boolean>>()
+    private lateinit var myAddress: String
     private lateinit var inbox: CallInbox
 
     private val notifications get() = shadowOf(context.getSystemService(NotificationManager::class.java))
@@ -67,7 +71,16 @@ class CallInboxTest {
             settings.update { it.copy(serverUrl = server.url("/").toString(), receiveCalls = true) }
             settings.saveContact(Contact("Salma ❤️", SALMA_ADDRESS))
         }
-        inbox = CallInbox(context, settings, OkHttpClient(), isBusy = { busy }, startCall = { ring, video -> started += ring.room to video })
+        myAddress = InboxKeys.address(runBlocking { settings.inboxKey() })
+        inbox = CallInbox(
+            context,
+            settings,
+            OkHttpClient(),
+            isBusy = { busy },
+            startCall = { ring, video -> started += ring.room to video },
+            ringingOut = { ringingOut },
+            switchTo = { ring, video -> switched += ring.room to video },
+        )
         inbox.follow()
         // The phone connects and listens.
         assertTrue(waitFor { fromPhone.peek() != null })
@@ -81,9 +94,9 @@ class CallInboxTest {
         server.close()
     }
 
-    /** Runs the main looper (where the inbox works) until [condition] holds or 5 s pass. */
-    private fun waitFor(condition: () -> Boolean): Boolean {
-        val deadline = System.currentTimeMillis() + 5_000
+    /** Runs the main looper (where the inbox works) until [condition] holds or [timeoutMs] pass. */
+    private fun waitFor(timeoutMs: Long = 5_000, condition: () -> Boolean): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             shadowOf(Looper.getMainLooper()).idle()
             if (condition()) return true
@@ -92,11 +105,11 @@ class CallInboxTest {
         return false
     }
 
-    private fun ring(video: Boolean = true) {
+    private fun ring(video: Boolean = true, from: String = SALMA_ADDRESS, waitMs: Long = 5_000) {
         checkNotNull(socket).send(
-            """{"type":"incoming","ringId":"r-Zk3pQ81wLa","room":"calm-otter-4821","from":{"name":"Salma","address":"$SALMA_ADDRESS"},"video":$video}""",
+            """{"type":"incoming","ringId":"r-Zk3pQ81wLa","room":"calm-otter-4821","from":{"name":"Salma","address":"$from"},"video":$video}""",
         )
-        waitFor { inbox.ringing.value != null || fromPhone.peek() != null }
+        waitFor(waitMs) { inbox.ringing.value != null || fromPhone.peek() != null || switched.isNotEmpty() }
     }
 
     private fun nextFromPhone(): String {
@@ -146,6 +159,46 @@ class CallInboxTest {
         val missed = notifications.allNotifications.first { it.extras.getString("android.title") == "Missed call from Salma ❤️" }
         // They proved their address, so they can be rung back from the notification.
         assertEquals(listOf("Call back"), missed.actions.map { it.title.toString() })
+    }
+
+    @Test
+    fun callingEachOtherAtOnceTheirCallWinsWhenTheirAddressIsLower() {
+        val lower = "-".repeat(22)
+        assertTrue(lower < myAddress)
+        busy = true // we're on our own call, ringing them
+        ringingOut = RingingOut(lower, video = false)
+        ring(from = lower)
+        // Not "busy": we take their call and leave ours, keeping our choice of voice or video.
+        assertEquals(encodeClientMessage(ClientMessage.RingAnswer("r-Zk3pQ81wLa", accepted = true)), nextFromPhone())
+        assertEquals(listOf("calm-otter-4821" to false), switched)
+        assertNull(inbox.ringing.value)
+        assertTrue(notifications.allNotifications.none { it.extras.getString("android.title")?.startsWith("Missed call") == true })
+    }
+
+    @Test
+    fun callingEachOtherAtOnceOursWinsWhenOurAddressIsLower() {
+        val higher = "z".repeat(22)
+        assertTrue(myAddress < higher)
+        busy = true
+        ringingOut = RingingOut(higher, video = true)
+        // Their ring is left alone: they switch to ours when it reaches them.
+        ring(from = higher, waitMs = 1_000)
+        assertNull(fromPhone.peek())
+        assertTrue(switched.isEmpty())
+        assertNull(inbox.ringing.value)
+        // And their giving up on it later leaves no missed call.
+        checkNotNull(socket).send("""{"type":"ring-cancelled","ringId":"r-Zk3pQ81wLa","reason":"cancelled"}""")
+        waitFor(500) { false }
+        assertTrue(notifications.allNotifications.none { it.extras.getString("android.title")?.startsWith("Missed call") == true })
+    }
+
+    @Test
+    fun ringingSomeoneElseStillMeansBusy() {
+        busy = true
+        ringingOut = RingingOut("z".repeat(22), video = true)
+        ring() // from Salma, who isn't the one we're calling
+        assertEquals(encodeClientMessage(ClientMessage.RingAnswer("r-Zk3pQ81wLa", accepted = false, reason = "busy")), nextFromPhone())
+        assertTrue(switched.isEmpty())
     }
 
     private companion object {

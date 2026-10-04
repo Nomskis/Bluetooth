@@ -9,12 +9,15 @@ import io.github.nomskis.earshot.signaling.ServerMessage
  * wait in the room, and keeps track of what's happening so the call screen
  * can say it (calling, ringing, declined...).
  */
+/** Who this phone is ringing right now, and whether it's a video call. */
+data class RingingOut(val address: String, val video: Boolean)
+
 class OutgoingRing(
     val contact: Contact,
     private val myName: String,
     /** Our own inbox key: proves to them who's calling. */
     private val myInboxKey: String,
-    private val video: Boolean,
+    val video: Boolean,
     private val newRingId: () -> String = { Ids.random(9, "r") },
 ) {
     enum class Status {
@@ -30,11 +33,14 @@ class OutgoingRing(
         NO_ANSWER,
     }
 
+    // Changed on the call thread; read from the main thread by the inbox (see [alive]).
+    @Volatile
     var status: Status = Status.CALLING
         private set
 
     private var ringId: String? = null
     /** Stopped trying: the minute is up, or the server can't ring at all. */
+    @Volatile
     private var expired = false
 
     /** The call is over without them: declined, busy or not answered. */
@@ -44,8 +50,13 @@ class OutgoingRing(
     val keepsTrying: Boolean get() = status == Status.UNREACHABLE && !expired
 
     /** They've been in the room: from now on it's an ordinary call. */
+    @Volatile
     var joined = false
         private set
+
+    /** Still trying to reach them: not answered, not refused, not given up on. */
+    val alive: Boolean
+        get() = !joined && (status == Status.CALLING || status == Status.RINGING || keepsTrying)
 
     /** Why the call ended without them, for the home screen; null unless [gaveUp]. */
     val outcome: String?

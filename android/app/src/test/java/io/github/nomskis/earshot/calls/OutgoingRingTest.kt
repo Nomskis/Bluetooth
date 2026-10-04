@@ -140,6 +140,27 @@ class OutgoingRingTest {
     }
 
     @Test
+    fun aliveWhileStillTryingToReachThem() {
+        val ring = newRing()
+        assertTrue(ring.alive) // before the first ring even goes out
+        ring.ring("call-abc")
+        ring.onMessage(ServerMessage.RingStatus("r-1", "unreachable"))
+        assertTrue(ring.alive)
+        ring.timeOut()
+        assertFalse(ring.alive)
+
+        val answered = newRing()
+        answered.ring("call-abc")
+        answered.onJoined()
+        assertFalse(answered.alive)
+
+        val declined = newRing()
+        declined.ring("call-abc")
+        declined.onMessage(ServerMessage.RingAnswered("r-${next}", accepted = false, reason = "declined"))
+        assertFalse(declined.alive)
+    }
+
+    @Test
     fun aCallBackIsOnlyActedOnStraightAway() {
         val request = CallBackRequest(salma, video = false, atMillis = 1_000_000)
         assertTrue(request.isFresh(1_000_000 + 5_000))
