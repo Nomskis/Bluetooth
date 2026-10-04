@@ -44,6 +44,16 @@ object CallStats {
         return if (types.isEmpty()) null else "relay" in types
     }
 
+    /** Every working candidate pair with its network and ping counters, for [PathSteering]. */
+    fun candidatePairs(report: Map<String, Entry>): List<PathSteering.CandidatePair> = report.mapNotNull { (id, entry) ->
+        if (entry.type != "candidate-pair" || entry.members["state"] != "succeeded") return@mapNotNull null
+        val local = report[entry.members["localCandidateId"] as? String] ?: return@mapNotNull null
+        val network = local.members["networkType"] as? String ?: return@mapNotNull null
+        val sent = number(entry.members["requestsSent"]) ?: return@mapNotNull null
+        val received = number(entry.members["responsesReceived"]) ?: return@mapNotNull null
+        PathSteering.CandidatePair(id, network, sent, received)
+    }
+
     private fun number(value: Any?): Double? = (value as? Number)?.toDouble()
 
     internal fun selectedPair(report: Map<String, Entry>): Entry? {

@@ -133,6 +133,8 @@ class CallSession(
     /** The network seemed to choke on priority-marked packets; leave them unmarked for this call. */
     private var markingBroken = false
     private var stuckJob: Job? = null
+    /** Leaves Wi-Fi that's up but losing packets, for mobile data on standby. */
+    private val steering = PathSteering()
 
     /** One RTCPeerConnection and everything tied to it. */
     private class Link(val pc: PeerConnection, val session: String, var tracks: SendTracks) {
@@ -448,7 +450,7 @@ class CallSession(
         radioPlan = plan
         val l = link
         if (l != null) {
-            if (old.preferCellular != plan.preferCellular) engine.setPreferCellular(l.pc, iceServers, plan.preferCellular)
+            if (old.preferCellular != plan.preferCellular) engine.setPreferCellular(l.pc, iceServers, plan.preferCellular || steering.prefersCellular)
             applyVideoCap(l)
             if (l.isHealthy) applyPacketPriority(l)
             // The cap on what they send us travels in the SDP; renegotiate if we're the one who offers.
@@ -461,8 +463,22 @@ class CallSession(
         _state.update { it.copy(radioNote = radioNote(plan, it.callPath)) }
     }
 
-    private fun radioNote(plan: RadioPlan, path: CallPath?): String? =
-        RadioPlan.describe(plan, path) ?: if (path == CallPath.CELLULAR) "Wi-Fi stalled, so the call moved to mobile data" else null
+    private fun radioNote(plan: RadioPlan, path: CallPath?): String? = when {
+        steering.prefersCellular && path == CallPath.CELLULAR -> "Wi-Fi here keeps dropping packets, so the call moved to mobile data"
+        steering.prefersCellular -> "Wi-Fi here keeps dropping packets; moving the call to mobile data"
+        else -> RadioPlan.describe(plan, path) ?: if (path == CallPath.CELLULAR) "Wi-Fi stalled, so the call moved to mobile data" else null
+    }
+
+    /** The radio plan's wish (2.4 GHz option) or the steering's (bad Wi-Fi). */
+    private val preferCellular: Boolean get() = radioPlan.preferCellular || steering.prefersCellular
+
+    private fun steer(l: Link, entries: Map<String, CallStats.Entry>) {
+        if (!settings.mobileDataBackup) return
+        val prefer = steering.update(CallStats.candidatePairs(entries), SystemClock.elapsedRealtime()) ?: return
+        Log.i(TAG, if (prefer) "Wi-Fi is losing pings and mobile data isn't; preferring mobile data" else "Wi-Fi has recovered; letting ICE choose again")
+        engine.setPreferCellular(l.pc, iceServers, preferCellular)
+        _state.update { it.copy(radioNote = radioNote(radioPlan, it.callPath)) }
+    }
 
     /** What we ask them to cap their video at. When mobile data is preferred we don't, so it isn't held back there. */
     private fun RadioPlan.remoteVideoCap(): Int? = if (preferCellular) null else wifiVideoCapKbps
@@ -498,6 +514,7 @@ class CallSession(
         // Earbuds can connect mid-call; keep the earbud-mic button honest.
         val micAvailable = profile.mode == AudioMode.HIFI && (_state.value.earbudMic || audioController.earbudMicAvailable())
         _state.update { it.copy(delay = delay, earbudMicAvailable = micAvailable) }
+        steer(l, entries)
         val path = RadioPlan.pathFor(CallStats.selectedNetworkType(entries)) ?: return
         if (path == _state.value.callPath) return
         Log.i(TAG, "Media now flows over $path")
@@ -566,7 +583,7 @@ class CallSession(
 
     private suspend fun onJoined(message: ServerMessage.Joined) {
         // A rejoin brings fresh TURN credentials; a long call's next ICE restart should use them.
-        if (message.iceServers != iceServers) link?.let { engine.updateIceServers(it.pc, message.iceServers, radioPlan.preferCellular) }
+        if (message.iceServers != iceServers) link?.let { engine.updateIceServers(it.pc, message.iceServers, preferCellular) }
         iceServers = message.iceServers
         mySeq = message.seq
         val peer = message.peers.firstOrNull()
@@ -829,7 +846,7 @@ class CallSession(
 
     private fun createLink(session: String): Link {
         val observer = LinkObserver()
-        val pc = engine.createPeerConnection(iceServers, observer, radioPlan.preferCellular)
+        val pc = engine.createPeerConnection(iceServers, observer, preferCellular)
             ?: error("WebRTC could not create a peer connection")
         val tracks = engine.createSendTracks()
         tracks.audio.setEnabled(!_state.value.micMuted)

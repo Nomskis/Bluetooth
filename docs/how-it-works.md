@@ -152,6 +152,17 @@ Wi-Fi as the cheaper network, moves to mobile data when Wi-Fi stalls, and
 comes back when it recovers; until then mobile data only carries connection
 checks.
 
+Crowded gym Wi-Fi more often degrades than stalls: it drops packets but never
+goes silent, so ICE never leaves it. Those connection checks are a fair test
+of each path, though, so Earshot compares them
+([`call/PathSteering.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/PathSteering.kt)):
+when the Wi-Fi path loses a fifth of its checks over ten seconds while the
+mobile-data path loses almost none, the problem is this phone's Wi-Fi rather
+than the other side's network, and the call prefers mobile data. It stays
+there at least a minute, then goes back once Wi-Fi's checks come through
+cleanly again (or if mobile data gets as bad). When both paths lose checks,
+nothing moves: the trouble is on the other end.
+
 ## Lip sync
 
 WebRTC lines video up with audio assuming the audio takes a fixed time to
