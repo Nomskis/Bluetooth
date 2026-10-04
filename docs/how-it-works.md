@@ -103,7 +103,7 @@ are in [research/latency.md](research/latency.md); in short:
 | What | How | Works with |
 | --- | --- | --- |
 | Shorter network path | 10 ms Opus packets (`a=ptime:10`), redundant audio (RED) preferred, a jitter buffer that shrinks quickly (`audioJitterBufferFastAccelerate`) | everything |
-| Ride out bad Wi-Fi | Each audio packet repeats the 3 before it, lost voice asked for again (NACK), a jitter buffer sized for spiky networks, VP8 temporal layers, Wi-Fi kept out of power save (see below) | everything |
+| Ride out bad Wi-Fi | Each audio packet repeats the 3 before it, lost voice asked for again (NACK), longer packets while gaps outrun the copies, voice first when bandwidth is short, a jitter buffer sized for spiky networks, VP8 temporal layers, Wi-Fi kept out of power save (see below) | everything |
 | Fast playback path | `PERFORMANCE_MODE_LOW_LATENCY` with a self-adjusting buffer (`setUseLowLatency`), game-audio label | everything; low-latency Bluetooth where the phone supports it |
 | Measure it | The sonar meter in the delay tuner: chirps through an earbud held to the mic, matched filter, calibrated against the phone speaker | everything |
 | See them talk first | A voice detector on their decoded audio, 100–250 ms ahead of your ears: the call screen glows, music dips (`AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`), 8-second replay | everything |
@@ -163,6 +163,23 @@ against the WebRTC source the app ships with
   Coming back is a probe: video resumes after 20 s, and the voice steps back
   up the same way; one that doesn't hold makes the next try wait twice as
   long, up to almost three minutes.
+- **Longer packets when the copies can't keep up.** 10 ms packets each
+  carrying the three before them repair gaps up to 30 ms. Weak Wi-Fi and
+  mobile data at the far end of a long international path lose longer runs,
+  and then NetEq has to conceal what's missing. Each side watches the voice
+  it receives: when packets go missing *and* audio still has to be concealed
+  after RED, Opus FEC and resends have done what they can, it asks the other
+  side for 20 ms packets, then 40 ms (`a=ptime`, which WebRTC senders take as
+  Opus's frame length). The same three copies then cover 60 or 120 ms, at
+  half or a quarter of the packet rate, for 10 or 30 ms more delay. After a
+  calm minute it steps back down; a step down that doesn't hold makes the
+  next wait twice as long
+  ([`call/PacketTime.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/PacketTime.kt),
+  [`web/js/ptime.js`](../web/js/ptime.js)). What we ask for travels in our
+  description, so the offering side renegotiates in place, without
+  restarting ICE, and the answering side asks it to (`request-offer` with
+  `iceRestart: false`). The browser tests run it over a simulated link that
+  loses 100 ms of voice every second, both ways round.
 - **A jitter buffer sized for spikes.** WebRTC sizes the audio buffer to
   absorb 95% of the delay spikes it has seen; Earshot asks for 97%
   (`WebRTC-Audio-NetEqDelayManagerConfig/quantile:0.97/`), so a jittery

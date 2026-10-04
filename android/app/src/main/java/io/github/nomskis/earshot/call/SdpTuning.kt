@@ -11,7 +11,14 @@ object SdpTuning {
      * 20 ms. Each packet waits half as long to fill before it's sent, which
      * saves about 10 ms per direction for a little more packet overhead.
      */
-    fun preferLowLatencyAudio(sdp: String): String {
+    fun preferLowLatencyAudio(sdp: String): String = askForPacketTime(sdp, 10)
+
+    /**
+     * Asks the other side to send audio packets of [ms] (a=ptime, which WebRTC
+     * senders take from the description they receive as Opus's frame length).
+     * Longer ones on a rough link: see [PacketTime].
+     */
+    fun askForPacketTime(sdp: String, ms: Int): String {
         val out = StringBuilder(sdp.length + 16)
         var inAudio = false
         val lines = sdp.split("\r\n")
@@ -20,7 +27,7 @@ object SdpTuning {
             if (line.startsWith("m=")) {
                 inAudio = line.startsWith("m=audio")
                 out.append(line).append("\r\n")
-                if (inAudio) out.append("a=ptime:10").append("\r\n")
+                if (inAudio) out.append("a=ptime:$ms").append("\r\n")
             } else if (!(inAudio && line.startsWith("a=ptime:"))) {
                 out.append(line)
                 if (!isLast) out.append("\r\n")

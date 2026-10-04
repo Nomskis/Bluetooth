@@ -94,6 +94,16 @@ class ProtocolFixturesTest {
     }
 
     @Test
+    fun aRequestToRenegotiateInPlaceSaysSo() {
+        val text = File(fixtures, "client/signal-request-offer-renegotiate.json").readText()
+        val request = ProtocolJson.decodeFromString(ClientMessage.serializer(), text) as ClientMessage.Signal
+        assertEquals(SignalData.RequestOffer("s-3HkLtQnPb", iceRestart = false), request.data)
+        // Without the field it's the old meaning: restart ICE.
+        val plain = encodeClientMessage(ClientMessage.Signal("abcdefgh", SignalData.RequestOffer("s-1")))
+        assertEquals("""{"type":"signal","to":"abcdefgh","data":{"kind":"request-offer","session":"s-1"}}""", plain)
+    }
+
+    @Test
     fun simpleMessagesEncodeAsTheServerExpects() {
         assertEquals("""{"type":"leave"}""", encodeClientMessage(ClientMessage.Leave))
         assertEquals("""{"type":"ping"}""", encodeClientMessage(ClientMessage.Ping))

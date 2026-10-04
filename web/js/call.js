@@ -19,6 +19,7 @@
  */
 
 import { CHAT_CAPABILITY, CHAT_CHANNEL, ChatLog } from './chat.js';
+import { PacketTime, inboundAudioCounters } from './ptime.js';
 import {
   firstAudioCodec,
   opusHasNack,
@@ -32,6 +33,12 @@ import {
 const ICE_RECOVERY_DELAY_MS = 4000;
 const OFFER_TIMEOUT_MS = 10_000;
 const REQUEST_OFFER_DELAY_MS = 1500;
+const ADAPT_INTERVAL_MS = 2000;
+/** A renegotiation for a new packet length that didn't take is tried again after this. */
+const RENEGOTIATE_RETRY_MS = 15_000;
+
+/** Listed in our join message: we answer request-offer with iceRestart false by renegotiating in place. */
+export const RENEGOTIATE_CAPABILITY = 'renegotiate';
 
 export function randomId(prefix = '', bytes = 9) {
   const raw = crypto.getRandomValues(new Uint8Array(bytes));
@@ -43,9 +50,13 @@ function isHealthy(pc) {
   return pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed';
 }
 
-/** Our tweaks to every description we send: 10 ms packets, HD voice, and resends of lost voice. */
-function tune(sdp) {
-  return requestAudioResends(preferHdVoice(preferLowLatencyAudio(sdp)));
+/** Our tweaks to every description we send: the packet length we want, HD voice, and resends of lost voice. */
+function tune(sdp, ptime) {
+  return requestAudioResends(preferHdVoice(preferLowLatencyAudio(sdp, ptime)));
+}
+
+function iceUfrag(sdp) {
+  return sdp?.match(/^a=ice-ufrag:(\S+)/m)?.[1] ?? null;
 }
 
 export class CallEngine extends EventTarget {
@@ -67,6 +78,12 @@ export class CallEngine extends EventTarget {
   #requestOfferTimer = null;
   #lastOfferReceivedAt = 0;
   #lastPeerId = null;
+  /** The audio packet length we ask for; lives across reconnects, like the network it reflects. */
+  #packetTime = new PacketTime();
+  /** What the last description we sent on this connection asked for. */
+  #askedPacketMs = null;
+  #renegotiatedAt = 0;
+  #adaptTimer = null;
   chat = new ChatLog({ newId: () => randomId('m') });
 
   /**
@@ -134,10 +151,22 @@ export class CallEngine extends EventTarget {
   /** What the current connection negotiated; for diagnostics and tests. */
   get negotiated() {
     const remote = this.#pc?.currentRemoteDescription?.sdp;
-    return { audioCodec: firstAudioCodec(remote), opusBitrate: opusMaxAverageBitrate(remote), audioNack: opusHasNack(remote) };
+    return {
+      audioCodec: firstAudioCodec(remote),
+      opusBitrate: opusMaxAverageBitrate(remote),
+      audioNack: opusHasNack(remote),
+      iceUfrag: iceUfrag(this.#pc?.currentLocalDescription?.sdp),
+    };
+  }
+
+  /** The audio packet length (ms) we ask the other side for: 10 normally, longer on a rough link. */
+  get packetTimeMs() {
+    return this.#packetTime.ms;
   }
 
   hangUp() {
+    clearInterval(this.#adaptTimer);
+    this.#adaptTimer = null;
     this.#closePeer();
     this.#remote = null;
     this.#signaling.close();
@@ -262,7 +291,8 @@ export class CallEngine extends EventTarget {
     if (this.#pc !== pc) return;
     await pc.setLocalDescription(answer);
     if (this.#pc !== pc) return;
-    this.#sendSignal({ kind: 'answer', session: this.#session, sdp: tune(pc.localDescription.sdp) });
+    this.#sendSignal({ kind: 'answer', session: this.#session, sdp: tune(pc.localDescription.sdp, this.#packetTime.ms) });
+    this.#askedPacketMs = this.#packetTime.ms;
     await this.#flushCandidates(pc);
   }
 
@@ -287,7 +317,12 @@ export class CallEngine extends EventTarget {
   async #onRequestOffer(data) {
     if (!this.#isOfferer()) return;
     const pc = this.#pc;
-    if (pc && data.session === this.#session && pc.signalingState === 'stable' && pc.remoteDescription) {
+    const stable = pc && data.session === this.#session && pc.signalingState === 'stable' && pc.remoteDescription;
+    if (data.iceRestart === false) {
+      // They want to change what they ask for on a working connection: renegotiate in place.
+      // Mid-negotiation or an old session, they ask again later.
+      if (stable && isHealthy(pc)) await this.#sendOffer(pc, false);
+    } else if (stable) {
       await this.#sendOffer(pc, true);
     } else {
       await this.#startSession();
@@ -344,16 +379,54 @@ export class CallEngine extends EventTarget {
     if (this.#pc !== pc) return;
     await pc.setLocalDescription(offer);
     if (this.#pc !== pc) return;
-    this.#sendSignal({ kind: 'offer', session, sdp: tune(pc.localDescription.sdp) });
+    this.#sendSignal({ kind: 'offer', session, sdp: tune(pc.localDescription.sdp, this.#packetTime.ms) });
+    this.#askedPacketMs = this.#packetTime.ms;
+    this.#armOfferTimeout(pc, session);
+  }
+
+  #armOfferTimeout(pc, session) {
     clearTimeout(this.#offerTimer);
     this.#offerTimer = setTimeout(() => {
       this.#enqueue(async () => {
-        if (this.#pc === pc && pc.signalingState === 'have-local-offer') {
+        if (this.#pc !== pc || pc.signalingState !== 'have-local-offer') return;
+        if (isHealthy(pc)) {
+          // A renegotiation whose answer got lost; the call itself is fine, so don't tear it down.
+          console.warn('[earshot] no answer, sending the offer again');
+          this.#sendSignal({ kind: 'offer', session, sdp: tune(pc.localDescription.sdp, this.#packetTime.ms) });
+          this.#armOfferTimeout(pc, session);
+        } else {
           console.warn('[earshot] no answer, starting over');
           await this.#startSession();
         }
       });
     }, OFFER_TIMEOUT_MS);
+  }
+
+  /**
+   * Longer audio packets from them while their audio arrives with gaps the
+   * redundant copies can't cover, shorter again once it's calm (ptime.js).
+   * What we ask for travels in our description, so a change renegotiates,
+   * without restarting ICE.
+   */
+  async #adapt() {
+    const pc = this.#pc;
+    if (!pc || !isHealthy(pc)) return;
+    const stats = [...(await pc.getStats()).values()];
+    const counters = inboundAudioCounters(stats);
+    const now = Date.now();
+    if (counters && this.#packetTime.update(counters, now)) {
+      console.info(`[earshot] asking for ${this.#packetTime.ms} ms audio packets`);
+    }
+    if (this.#askedPacketMs === null || this.#askedPacketMs === this.#packetTime.ms) return;
+    if (now - this.#renegotiatedAt < RENEGOTIATE_RETRY_MS) return;
+    // As the answerer we can only ask for an offer, and only peers that renegotiate in place.
+    if (!this.#isOfferer() && !this.#remote?.client?.capabilities?.includes?.(RENEGOTIATE_CAPABILITY)) return;
+    this.#renegotiatedAt = now;
+    this.#enqueue(async () => {
+      if (this.#pc !== pc || !isHealthy(pc) || pc.signalingState !== 'stable' || !pc.remoteDescription) return;
+      if (this.#isOfferer()) await this.#sendOffer(pc, false);
+      else this.#sendSignal({ kind: 'request-offer', session: this.#session, iceRestart: false });
+    });
   }
 
   async #flushCandidates(pc) {
@@ -400,6 +473,7 @@ export class CallEngine extends EventTarget {
       this.#recoveryTimer = null;
       this.#setStatus('connected');
       this.#sendMediaState();
+      this.#adaptTimer ??= setInterval(() => this.#adapt().catch((err) => console.warn('[earshot] stats', err)), ADAPT_INTERVAL_MS);
     } else if (state === 'disconnected') {
       this.#setStatus('reconnecting');
       clearTimeout(this.#recoveryTimer);
@@ -431,6 +505,7 @@ export class CallEngine extends EventTarget {
     }
     this.#session = null;
     this.#pendingCandidates = [];
+    this.#askedPacketMs = null;
     if (this.#remoteStream) {
       this.#remoteStream = null;
       this.dispatchEvent(new CustomEvent('remote-stream', { detail: null }));

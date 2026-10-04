@@ -36,6 +36,17 @@ object CallStats {
         return received to lost
     }
 
+    /** Cumulative counters for her audio, for [PacketTime]; null until all are reported. */
+    fun inboundAudioCounters(report: Map<String, Entry>): PacketTime.Counters? {
+        val inbound = report.values.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "audio" } ?: return null
+        return PacketTime.Counters(
+            packetsReceived = number(inbound.members["packetsReceived"]) ?: return null,
+            packetsLost = number(inbound.members["packetsLost"]) ?: return null,
+            concealedSamples = number(inbound.members["concealedSamples"]) ?: return null,
+            totalSamples = number(inbound.members["totalSamplesReceived"]) ?: return null,
+        )
+    }
+
     /** WebRTC's estimate of what we can send, bits per second (RTCIceCandidatePairStats.availableOutgoingBitrate). */
     fun availableOutgoingBitrate(report: Map<String, Entry>): Double? =
         number(selectedPair(report)?.members?.get("availableOutgoingBitrate"))

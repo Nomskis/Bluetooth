@@ -15,6 +15,7 @@ import io.github.nomskis.earshot.calls.OutgoingRing
 import io.github.nomskis.earshot.calls.Ringback
 import io.github.nomskis.earshot.settings.AudioMode
 import io.github.nomskis.earshot.settings.AppSettings
+import io.github.nomskis.earshot.signaling.Capabilities
 import io.github.nomskis.earshot.signaling.CandidatePayload
 import io.github.nomskis.earshot.signaling.ClientInfo
 import io.github.nomskis.earshot.signaling.ClientMessage
@@ -148,6 +149,8 @@ class CallSession(
     private var stuckJob: Job? = null
     /** Leaves Wi-Fi that's up but losing packets, for mobile data on standby. */
     private val steering = PathSteering()
+    /** The audio packet length we ask the other side for; lives across reconnects, like the network it reflects. */
+    private val packetTime = PacketTime()
     private val ringback = Ringback(
         if (profile.mode == AudioMode.HIFI) android.media.AudioManager.STREAM_MUSIC else android.media.AudioManager.STREAM_VOICE_CALL,
     )
@@ -170,6 +173,10 @@ class CallSession(
         var audioBytes: Double? = null
         var audioPackets: Double? = null
         var bytesAt = 0L
+        /** The audio packet length the last description we sent asked for. */
+        var askedPacketMs: Int? = null
+        /** When we last renegotiated for a new packet length, to retry a lost one now and then. */
+        var renegotiatedAt = 0L
 
         val isHealthy: Boolean
             get() = pc.iceConnectionState().let {
@@ -202,6 +209,7 @@ class CallSession(
         data class SetEarbudMic(val on: Boolean) : Event
         data class SetLipSync(val plan: LipSync.Plan?, val playoutMs: Double?, val measured: Boolean) : Event
         class Stats(val link: Link, val report: RTCStatsReport) : Event
+        class Renegotiate(val link: Link) : Event
         class ChatChannelState(val link: Link, val open: Boolean) : Event
         class ChatIncoming(val link: Link, val text: String) : Event
         data class SendChat(val text: String) : Event
@@ -302,7 +310,7 @@ class CallSession(
             client = ClientInfo(
                 platform = "android",
                 version = BuildConfig.VERSION_NAME,
-                capabilities = listOf("hifi-audio", Chat.CAPABILITY),
+                capabilities = listOf("hifi-audio", Chat.CAPABILITY, Capabilities.RENEGOTIATE),
             ),
         )
         signaling = SignalingClient(http, wsUrl, join, scope)
@@ -344,10 +352,19 @@ class CallSession(
             is Event.OfferTimeout -> {
                 val l = event.link
                 if (l === link && l.pc.signalingState() == SignalingState.HAVE_LOCAL_OFFER) {
-                    Log.w(TAG, "No answer to our offer, starting over")
-                    startSession()
+                    val offer = l.pc.localDescription
+                    if (l.isHealthy && offer != null) {
+                        // A renegotiation whose answer got lost; the call itself is fine, so don't tear it down.
+                        Log.w(TAG, "No answer to our offer; sending it again")
+                        sendSignal(SignalData.Offer(l.session, tune(offer.description)))
+                        armOfferTimeout(l)
+                    } else {
+                        Log.w(TAG, "No answer to our offer, starting over")
+                        startSession()
+                    }
                 }
             }
+            is Event.Renegotiate -> renegotiate(event.link)
             is Event.RequestOfferDue -> {
                 if (lastOfferReceivedAt > event.askedAt) return
                 if (link?.isHealthy == true) return
@@ -575,11 +592,12 @@ class CallSession(
 
     private fun onStats(l: Link, report: RTCStatsReport) {
         val entries = report.statsMap.mapValues { (_, s) -> CallStats.Entry(s.type, s.members) }
-        val delay = delayTracker.update(entries, playoutMs, playoutMeasured)
+        val delay = delayTracker.update(entries, playoutMs, playoutMeasured, packetTime.ms)
         // Earbuds can connect mid-call; keep the earbud-mic button honest.
         val micAvailable = profile.mode == AudioMode.HIFI && (_state.value.earbudMic || audioController.earbudMicAvailable())
         _state.update { it.copy(delay = delay, earbudMicAvailable = micAvailable) }
         followMediaBudget(l, entries)
+        followPacketTime(l, entries)
         steer(l, entries)
         val path = RadioPlan.pathFor(CallStats.selectedNetworkType(entries)) ?: return
         if (path == _state.value.callPath) return
@@ -602,6 +620,8 @@ class CallSession(
         val lastPackets = l.audioPackets
         // On the wire: what WebRTC counts, plus IP, UDP and the SRTP tag on each packet.
         val audioBps = if (bytes != null && packets != null && lastBytes != null && lastPackets != null && l.bytesAt > 0 && seconds > 0) {
+            // Fewer when they've asked for longer packets; resends add a few.
+            l.budget.packetsPerSecond = ((packets - lastPackets) / seconds).coerceIn(MIN_PACKET_RATE, MAX_PACKET_RATE)
             ((bytes - lastBytes) + (packets - lastPackets) * MediaBudget.TRANSPORT_OVERHEAD_BYTES) * 8 / seconds
         } else {
             null
@@ -621,6 +641,30 @@ class CallSession(
             _state.update { it.copy(videoPausedForVoice = l.budget.videoPaused) }
             sendMediaState()
         }
+    }
+
+    /**
+     * Longer audio packets from them while their audio arrives with gaps RED can't
+     * cover, shorter again once it's calm ([PacketTime]). What we ask for travels in
+     * our description, so a change means renegotiating, without restarting ICE.
+     */
+    private fun followPacketTime(l: Link, entries: Map<String, CallStats.Entry>) {
+        val now = SystemClock.elapsedRealtime()
+        val counters = CallStats.inboundAudioCounters(entries)
+        if (counters != null && packetTime.update(counters, now)) {
+            Log.i(TAG, "Asking for ${packetTime.ms} ms audio packets")
+        }
+        if (l.askedPacketMs == null || l.askedPacketMs == packetTime.ms) return
+        if (now - l.renegotiatedAt < RENEGOTIATE_RETRY_MS) return
+        // As the answerer we can only ask for an offer, and only peers that renegotiate in place.
+        if (!isOfferer() && remote?.client?.capabilities?.contains(Capabilities.RENEGOTIATE) != true) return
+        l.renegotiatedAt = now
+        post(Event.Renegotiate(l))
+    }
+
+    private suspend fun renegotiate(l: Link) {
+        if (l !== link || !l.isHealthy || l.pc.signalingState() != SignalingState.STABLE || l.pc.remoteDescription == null) return
+        if (isOfferer()) sendOffer(l, iceRestart = false) else sendSignal(SignalData.RequestOffer(l.session, iceRestart = false))
     }
 
     private fun watchStats(l: Link) {
@@ -802,6 +846,11 @@ class CallSession(
         l.pc.awaitSetLocal(offer)
         if (link !== l) return
         sendSignal(SignalData.Offer(l.session, tune(offer.description)))
+        l.askedPacketMs = packetTime.ms
+        armOfferTimeout(l)
+    }
+
+    private fun armOfferTimeout(l: Link) {
         offerTimeoutJob?.cancel()
         offerTimeoutJob = scope.launch {
             delay(OFFER_TIMEOUT_MS)
@@ -833,12 +882,13 @@ class CallSession(
         l.pc.awaitSetLocal(answer)
         if (link !== l) return
         sendSignal(SignalData.Answer(l.session, tune(answer.description)))
+        l.askedPacketMs = packetTime.ms
         flushCandidates(l)
     }
 
     /** Our tweaks to every description we send. */
     private fun tune(sdp: String): String = SdpTuning.capVideoBandwidth(
-        SdpTuning.requestAudioResends(SdpTuning.preferHdVoice(SdpTuning.preferLowLatencyAudio(sdp))),
+        SdpTuning.requestAudioResends(SdpTuning.preferHdVoice(SdpTuning.askForPacketTime(sdp, packetTime.ms))),
         radioPlan.remoteVideoCap(),
     )
 
@@ -865,12 +915,14 @@ class CallSession(
     private suspend fun onRequestOffer(data: SignalData.RequestOffer) {
         if (!isOfferer()) return
         val l = link
-        if (l != null && data.session == l.session && l.pc.signalingState() == SignalingState.STABLE &&
+        val stable = l != null && data.session == l.session && l.pc.signalingState() == SignalingState.STABLE &&
             l.pc.remoteDescription != null
-        ) {
-            sendOffer(l, iceRestart = true)
-        } else {
-            startSession()
+        when {
+            // They want to change what they ask for on a working connection: renegotiate in place.
+            // If we're mid-negotiation or it's an old session, they ask again later.
+            data.iceRestart == false -> if (stable && l!!.isHealthy) sendOffer(l, iceRestart = false)
+            stable -> sendOffer(l!!, iceRestart = true)
+            else -> startSession()
         }
     }
 
@@ -1171,5 +1223,10 @@ class CallSession(
         const val GAVE_UP_LINGER_MS = 3_000L
         /** How often to try again while their phone can't be reached. */
         const val RING_RETRY_MS = 5_000L
+        /** A renegotiation for a new packet length that didn't take is tried again after this. */
+        const val RENEGOTIATE_RETRY_MS = 15_000L
+        /** Voice packets per second, 120 ms to 10 ms packets. */
+        const val MIN_PACKET_RATE = 8.0
+        const val MAX_PACKET_RATE = 100.0
     }
 }

@@ -7,8 +7,9 @@
  * Asks the other side to send 10 ms audio packets instead of the default 20 ms.
  * Each packet then waits half as long to fill before it's sent, which saves
  * about 10 ms of delay per direction for a little more packet overhead.
+ * [ptime] asks for another length: longer ones on a rough link (see ptime.js).
  */
-export function preferLowLatencyAudio(sdp) {
+export function preferLowLatencyAudio(sdp, ptime = 10) {
   const lines = sdp.split('\r\n');
   const out = [];
   let inAudio = false;
@@ -16,7 +17,7 @@ export function preferLowLatencyAudio(sdp) {
     if (line.startsWith('m=')) {
       inAudio = line.startsWith('m=audio');
       out.push(line);
-      if (inAudio) out.push('a=ptime:10');
+      if (inAudio) out.push(`a=ptime:${ptime}`);
       continue;
     }
     // Drop any existing ptime in the audio section; ours replaces it.

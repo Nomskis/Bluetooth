@@ -36,7 +36,9 @@ this list works with every pair of classic Bluetooth earbuds:
 - **Leaner network path.** 10 ms audio packets instead of 20, redundant audio
   (RED) so a lost packet is repaired without the jitter buffer growing, lost
   voice asked for again when there's time for a resend, and a jitter buffer
-  that shrinks right back after a hiccup.
+  that shrinks right back after a hiccup. On a link that loses longer runs
+  than the copies cover, each side asks for longer packets until it's calm
+  again, without reconnecting.
 - **Android's low-latency path.** Their voice is played on Android's fast audio
   path and labelled as game audio, which on phones that support it switches
   the Bluetooth link into its low-latency mode by itself.

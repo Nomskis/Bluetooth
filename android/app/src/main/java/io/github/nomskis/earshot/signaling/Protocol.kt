@@ -189,10 +189,15 @@ sealed interface SignalData {
     @SerialName("candidate")
     data class Candidate(val session: String, val candidate: CandidatePayload) : SignalData
 
-    /** Sent by the answering side when it needs a (new) offer. */
+    /**
+     * Sent by the answering side when it needs a (new) offer. [iceRestart] false: the
+     * connection is fine, it just wants to change what it asks for (packet time), so
+     * an offer on the same session without restarting ICE. Only sent to peers that
+     * list [Capabilities.RENEGOTIATE]; older ones would restart ICE.
+     */
     @Serializable
     @SerialName("request-offer")
-    data class RequestOffer(val session: String? = null) : SignalData
+    data class RequestOffer(val session: String? = null, val iceRestart: Boolean? = null) : SignalData
 
     @Serializable
     @SerialName("media-state")
@@ -206,6 +211,12 @@ sealed interface SignalData {
         /** Video is paused because the connection can't carry it next to the voice (cameraOff is true too). */
         val weakConnection: Boolean? = null,
     ) : SignalData
+}
+
+/** What a client lists in its join message's capabilities. */
+object Capabilities {
+    /** Answers `request-offer` with `iceRestart: false` by renegotiating in place. */
+    const val RENEGOTIATE = "renegotiate"
 }
 
 object ErrorCodes {

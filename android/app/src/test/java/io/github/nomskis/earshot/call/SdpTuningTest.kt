@@ -44,6 +44,15 @@ class SdpTuningTest {
     }
 
     @Test
+    fun asksForLongerPacketsOnARoughLink() {
+        val tuned = SdpTuning.askForPacketTime(SdpTuning.preferLowLatencyAudio(offer), 40)
+        val lines = tuned.split("\r\n")
+        assertEquals("a=ptime:40", lines[lines.indexOfFirst { it.startsWith("m=audio") } + 1])
+        assertEquals(1, lines.count { it.startsWith("a=ptime:") })
+        assertEquals(SdpTuning.preferLowLatencyAudio(offer), SdpTuning.askForPacketTime(tuned, 10))
+    }
+
+    @Test
     fun isIdempotent() {
         val once = SdpTuning.preferLowLatencyAudio(offer)
         assertEquals(once, SdpTuning.preferLowLatencyAudio(once))

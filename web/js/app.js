@@ -1,4 +1,4 @@
-import { CallEngine, randomId } from './call.js';
+import { CallEngine, RENEGOTIATE_CAPABILITY, randomId } from './call.js';
 import { CHAT_CAPABILITY, QUICK_REPLIES } from './chat.js';
 import { DelayTracker, isWeak } from './delay.js';
 import { generateRoomCode, normalizeRoom } from './rooms.js';
@@ -215,7 +215,7 @@ function startCall(room, name, stream) {
     room,
     peerId: tabPeerId(),
     name,
-    client: { platform: 'web', version: VERSION, capabilities: [CHAT_CAPABILITY] },
+    client: { platform: 'web', version: VERSION, capabilities: [CHAT_CAPABILITY, RENEGOTIATE_CAPABILITY] },
   });
   engine = new CallEngine(signaling, stream);
 

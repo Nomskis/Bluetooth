@@ -154,9 +154,15 @@ class MediaBudget(private val redundancy: Int = WebRtcTuning.RED_REDUNDANCY) {
         return true
     }
 
+    /**
+     * Voice packets we send per second: 100 at the usual 10 ms, fewer when the other side
+     * asks for longer packets on a rough link ([PacketTime]).
+     */
+    var packetsPerSecond: Double = PACKETS_PER_SECOND.toDouble()
+
     /** Roughly what [level] costs on the wire: the voice and its copies, plus each packet's headers. */
     fun wireBps(level: Level): Double =
-        (1 + redundancy) * level.opusBps.toDouble() + PACKETS_PER_SECOND * (HEADER_BYTES + 4 * redundancy + 1) * 8
+        (1 + redundancy) * level.opusBps.toDouble() + packetsPerSecond * (HEADER_BYTES + 4 * redundancy + 1) * 8
 
     private fun setLevel(next: Level, nowMs: Long) {
         level = next

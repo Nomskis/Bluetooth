@@ -40,6 +40,9 @@ data class DelayBreakdown(
          * encode time; the other side sends 10 ms packets because we ask.
          */
         const val SENDER_ESTIMATE_MS = 30
+
+        /** The same with the packet length we ask for: longer on a rough link ([PacketTime]). */
+        fun senderEstimateMs(packetMs: Int): Int = SENDER_ESTIMATE_MS - 10 + packetMs
         const val WEAK_LOSS_PERCENT = 8.0
         const val WEAK_NETWORK_MS = 300
         const val WEAK_BUFFER_MS = 250
@@ -59,8 +62,11 @@ class DelayTracker {
     private var lastLost: Double? = null
     private var lossPercent: Double? = null
 
-    /** [playoutMs] is the app-to-ear figure in use, [measured] whether it came from the delay tuner. */
-    fun update(report: Map<String, CallStats.Entry>, playoutMs: Double?, measured: Boolean): DelayBreakdown {
+    /**
+     * [playoutMs] is the app-to-ear figure in use, [measured] whether it came from the delay tuner,
+     * [packetMs] the audio packet length we ask them for.
+     */
+    fun update(report: Map<String, CallStats.Entry>, playoutMs: Double?, measured: Boolean, packetMs: Int = 10): DelayBreakdown {
         val rtt = CallStats.roundTripSeconds(report)
         val (delay, emitted) = CallStats.audioJitterBuffer(report) ?: (null to null)
         if (delay != null && emitted != null) {
@@ -85,7 +91,7 @@ class DelayTracker {
             lastLost = lost
         }
         return DelayBreakdown(
-            senderMs = DelayBreakdown.SENDER_ESTIMATE_MS,
+            senderMs = DelayBreakdown.senderEstimateMs(packetMs),
             networkMs = rtt?.let { (it * 1000 / 2).roundToInt() },
             jitterBufferMs = jitterMs,
             playoutMs = playoutMs?.roundToInt(),

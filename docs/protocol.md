@@ -25,7 +25,8 @@ format has to update the examples and keep both sides passing.
   tab).
 - `client`: `{ "platform": "android" | "web" | ..., "version": "0.1.0", "capabilities": ["hifi-audio", "chat"] }`.
   `chat` means the client has text chat (below); clients show the chat only
-  when the other side lists it.
+  when the other side lists it. `renegotiate` means it answers
+  `request-offer` with `iceRestart: false` by renegotiating in place.
 
 ## Server → client
 
@@ -119,7 +120,7 @@ a `4000` close.
 | `offer` | `session`, `sdp` | the offerer |
 | `answer` | `session`, `sdp` | the answerer |
 | `candidate` | `session`, `candidate: { candidate, sdpMid, sdpMLineIndex, usernameFragment? }` | both |
-| `request-offer` | `session` (may be null) | the answerer, when it needs a fresh offer |
+| `request-offer` | `session` (may be null), `iceRestart?` | the answerer, when it needs a fresh offer |
 | `media-state` | `micMuted`, `cameraOff`, `audioMode?` (`hifi`, `headset`, `standard`), `inPocket?`, `weakConnection?` | both, after connecting and on every change |
 
 `inPocket: true` (with `cameraOff: true`) means the camera paused itself
@@ -127,6 +128,13 @@ because the phone's proximity sensor is covered, a pocket usually; show that
 rather than "camera off". `weakConnection: true` (with `cameraOff: true`)
 means the camera is on but the sender paused its video because the
 connection can't carry it next to the voice; it resumes by itself.
+
+`request-offer` with `iceRestart: false` means the connection is fine and
+the answerer only wants to change what it asks for (the audio packet length,
+on a rough link): the offerer renegotiates on the same session without
+restarting ICE, and ignores the request while it's mid-negotiation (the
+answerer asks again). Answerers only send it to peers whose `client.capabilities`
+list `renegotiate`; older offerers would restart ICE instead.
 
 Ignore kinds you don't know; newer clients may send more.
 
@@ -151,7 +159,9 @@ implement the same algorithm:
 - **Recovering.** If ICE reports `disconnected` for 4 s, or `failed`, the
   offerer sends an ICE-restart offer on the same session; the answerer sends
   `request-offer` with its session id. If an offer gets no answer within
-  10 s, the offerer starts a new session.
+  10 s, the offerer starts a new session, unless the connection is still
+  working (a renegotiation whose answer got lost): then it sends the offer
+  again.
 - **Media.** The offerer always offers to receive audio and video, even if it
   sends no camera itself, so the other side can still send video.
 - **Chat.** Both sides create the chat data channel on every new

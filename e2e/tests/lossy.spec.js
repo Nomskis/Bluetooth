@@ -48,3 +48,49 @@ test('lost voice packets are asked for again and resent', async ({ browser }) =>
   await b.context.close();
   link.close();
 });
+
+/** Audio packets [page] sends per second, over two seconds. */
+async function audioPacketsPerSecond(page) {
+  const before = (await rtpStats(page, 'outbound-rtp', 'audio'))?.packetsSent ?? 0;
+  await page.waitForTimeout(2000);
+  const after = (await rtpStats(page, 'outbound-rtp', 'audio'))?.packetsSent ?? 0;
+  return (after - before) / 2;
+}
+
+/**
+ * The voice from [from] loses 100 ms out of every second, resends included
+ * (the rule is on the RTP timestamp, which a resend keeps): longer than the
+ * redundant copies of 10 ms packets can cover.
+ */
+function dropRunsOfVoiceFrom(link, from) {
+  link.drop = (p) => p.from === from && AUDIO_PAYLOAD_TYPES.has(p.pt) && p.timestamp % 48_000 < 4_800;
+}
+
+for (const { rough, role } of [
+  { rough: 'B', role: 'the answering side asks for an offer' },
+  { rough: 'A', role: 'the offering side renegotiates itself' },
+]) {
+  test(`voice that keeps losing runs gets longer packets, without restarting the connection (${role})`, async ({ browser }) => {
+    const link = await createLossyLink();
+    const { a, b } = await callThrough(browser, link, 'ptime');
+    const sides = { A: a, B: b };
+    const sender = sides[rough];
+    const receiver = sides[rough === 'A' ? 'B' : 'A'];
+    const ufrags = await Promise.all([a, b].map((s) => s.page.evaluate(() => window.earshot.engine.negotiated.iceUfrag)));
+    expect(ufrags.every(Boolean)).toBe(true);
+    expect(await audioPacketsPerSecond(sender.page)).toBeGreaterThan(85);
+
+    dropRunsOfVoiceFrom(link, rough);
+    await expect.poll(() => receiver.page.evaluate(() => window.earshot.engine.packetTimeMs), { timeout: 20_000 }).toBe(20);
+    // The sender switches to 20 ms packets: about 50 a second instead of 100.
+    link.drop = () => false;
+    await expect.poll(() => audioPacketsPerSecond(sender.page), { timeout: 15_000 }).toBeLessThan(65);
+    // Renegotiated in place: same ICE credentials, still connected.
+    expect(await Promise.all([a, b].map((s) => s.page.evaluate(() => window.earshot.engine.negotiated.iceUfrag)))).toEqual(ufrags);
+    for (const side of [a, b]) expect(await side.page.evaluate(() => window.earshot.engine.status)).toBe('connected');
+
+    await a.context.close();
+    await b.context.close();
+    link.close();
+  });
+}
