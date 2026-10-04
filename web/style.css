@@ -87,11 +87,6 @@ input:not([type='checkbox']) {
   font-size: 1.6rem;
 }
 
-.tagline {
-  margin: 0.2rem 0 0;
-  color: var(--muted);
-}
-
 .card {
   background: var(--surface);
   border-radius: var(--radius);

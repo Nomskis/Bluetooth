@@ -53,13 +53,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import io.github.nomskis.earshot.R
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.audio.CodecInfo
 import io.github.nomskis.earshot.call.RoomCodes
@@ -108,6 +106,9 @@ fun HomeScreen(
     var withVideo by rememberSaveable { mutableStateOf(true) }
     // Until a name is set, ask for it here (it stays while you type); Settings has it too.
     val askName by rememberSaveable { mutableStateOf(settings.displayName.isBlank()) }
+    // What's typed lives here, not in the stored name: that one is trimmed, so
+    // following it would swallow each space as it's typed.
+    var name by rememberSaveable { mutableStateOf(settings.displayName) }
     var permissionError by remember { mutableStateOf<String?>(null) }
 
     // A silent probe for Android's own estimate of these earbuds' delay, once per pair,
@@ -197,12 +198,6 @@ fun HomeScreen(
                 .padding(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(
-                stringResource(R.string.tagline),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
             if (serverBase == null) {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -245,8 +240,12 @@ fun HomeScreen(
 
             if (askName) {
                 OutlinedTextField(
-                    value = settings.displayName,
-                    onValueChange = { name -> onUpdateSettings { it.copy(displayName = name.take(MAX_NAME_LENGTH)) } },
+                    value = name,
+                    onValueChange = { typed ->
+                        val next = typed.take(MAX_NAME_LENGTH)
+                        name = next
+                        onUpdateSettings { it.copy(displayName = next) }
+                    },
                     label = { Text("Your name") },
                     placeholder = { Text("Shown to the other person") },
                     singleLine = true,
