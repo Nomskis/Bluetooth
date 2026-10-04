@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.ui.platform.LocalContext
 import io.github.nomskis.earshot.calls.CallRecord
+import io.github.nomskis.earshot.signaling.ServerHealth
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -111,7 +112,7 @@ fun SettingsScreen(
                 when (serverCheck) {
                     ServerCheck.Idle -> Unit
                     ServerCheck.Checking -> Text("Checking…", style = MaterialTheme.typography.bodySmall)
-                    ServerCheck.Ok -> {
+                    is ServerCheck.Ok -> {
                         Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Accent)
                         Spacer(Modifier.width(6.dp))
                         Text("Server is reachable", style = MaterialTheme.typography.bodySmall)
@@ -122,6 +123,9 @@ fun SettingsScreen(
                         Text(serverCheck.reason, style = MaterialTheme.typography.bodySmall)
                     }
                 }
+            }
+            (serverCheck as? ServerCheck.Ok)?.let { ok ->
+                ServerHealth.notes(ok.roundTripMs, ok.relay).forEach { Hint(it) }
             }
             Hint("Run your own server (see docs/deploy.md). The invite links you send point at this address.")
 

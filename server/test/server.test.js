@@ -88,7 +88,7 @@ describe('earshot server', () => {
   it('answers health checks', async () => {
     const res = await fetch(`${baseUrl}/healthz`);
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { status: 'ok' });
+    assert.deepEqual(await res.json(), { status: 'ok', relay: false });
   });
 
   it('serves the web client for / and room links', async () => {

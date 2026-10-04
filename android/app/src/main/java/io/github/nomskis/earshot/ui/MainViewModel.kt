@@ -32,6 +32,7 @@ import io.github.nomskis.earshot.calls.InboxClient
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.DelayRun
 import io.github.nomskis.earshot.settings.InterruptedCall
+import io.github.nomskis.earshot.signaling.ServerHealth
 import io.github.nomskis.earshot.signaling.ServerUrls
 import io.github.nomskis.earshot.turbo.BluetoothOutputDiagnostics
 import io.github.nomskis.earshot.turbo.CodecStatus
@@ -52,7 +53,8 @@ import java.util.concurrent.TimeUnit
 sealed interface ServerCheck {
     data object Idle : ServerCheck
     data object Checking : ServerCheck
-    data object Ok : ServerCheck
+    /** [roundTripMs]: how far away it is; [relay]: whether calls can fall back to a relay (null: older server). */
+    data class Ok(val roundTripMs: Long? = null, val relay: Boolean? = null) : ServerCheck
     data class Failed(val reason: String) : ServerCheck
 }
 
@@ -454,13 +456,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _serverCheck.value = withContext(Dispatchers.IO) {
                 runCatching {
-                    graph.http.newCall(Request.Builder().url("$base/healthz").build()).execute().use { response ->
-                        if (response.isSuccessful && response.body.string().contains("ok")) {
-                            ServerCheck.Ok
-                        } else {
-                            ServerCheck.Failed("The server answered with HTTP ${response.code}.")
-                        }
+                    val request = Request.Builder().url("$base/healthz").build()
+                    // The first request may have to wake a sleeping server; time the ones after it,
+                    // on the same connection, for how far away it is.
+                    val first = graph.http.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) return@runCatching ServerCheck.Failed("The server answered with HTTP ${response.code}.")
+                        ServerHealth.parse(response.body.string())
                     }
+                    if (!first.ok) return@runCatching ServerCheck.Failed("That address answers, but it isn't an Earshot server.")
+                    val roundTrip = (1..3).mapNotNull {
+                        val start = SystemClock.elapsedRealtime()
+                        runCatching { graph.http.newCall(request).execute().close() }.getOrNull()?.let { SystemClock.elapsedRealtime() - start }
+                    }.minOrNull()
+                    ServerCheck.Ok(roundTrip, first.relay)
                 }.getOrElse { ServerCheck.Failed(it.message ?: it.javaClass.simpleName) }
             }
         }
