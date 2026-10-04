@@ -71,6 +71,9 @@ describe('earshot server', () => {
     fs.writeFileSync(path.join(webRoot, 'index.html'), '<!doctype html><title>Earshot</title>');
     fs.mkdirSync(path.join(webRoot, 'js'));
     fs.writeFileSync(path.join(webRoot, 'js', 'app.js'), 'console.log(1)');
+    // The real one, which Android checks before it opens room links in the app.
+    fs.mkdirSync(path.join(webRoot, '.well-known'));
+    fs.copyFileSync(new URL('../../web/.well-known/assetlinks.json', import.meta.url), path.join(webRoot, '.well-known', 'assetlinks.json'));
     fs.writeFileSync(path.join(os.tmpdir(), 'earshot-secret.txt'), 'secret');
 
     const config = { ...loadConfig({}), webRoot, reconnectGraceMs: 200, heartbeatMs: 60_000 };
@@ -101,6 +104,25 @@ describe('earshot server', () => {
     }
     const js = await fetch(`${baseUrl}/js/app.js`);
     assert.match(js.headers.get('content-type'), /javascript/);
+  });
+
+  it('opens the web client for a mangled room link instead of "Not found"', async () => {
+    for (const p of ['//r/blue-otter-42', '/blue-otter-42', '/healthz/r/blue-otter-42', '/r/blue-otter-42/extra']) {
+      const res = await fetch(baseUrl + p);
+      assert.equal(res.status, 200, p);
+      assert.match(res.headers.get('content-type'), /text\/html/, p);
+    }
+    // A file that isn't there is still missing.
+    assert.equal((await fetch(`${baseUrl}/js/nothing-here.js`)).status, 404);
+  });
+
+  it('lets Android open room links in the app', async () => {
+    const res = await fetch(`${baseUrl}/.well-known/assetlinks.json`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type'), /application\/json/);
+    const [statement] = await res.json();
+    assert.deepEqual(statement.relation, ['delegate_permission/common.handle_all_urls']);
+    assert.equal(statement.target.package_name, 'io.github.nomskis.earshot.debug');
   });
 
   it('does not serve files outside the web root', async () => {

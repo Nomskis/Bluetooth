@@ -77,6 +77,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="earshot" android:host="join" />
             </intent-filter>
+            <!-- An invite link on our server opens the app instead of the web page. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="${roomLinkHost}" android:pathPrefix="/r/" />
+            </intent-filter>
         </activity>
 
         <!-- Lets Shizuku hand Earshot its binder (Turbo). -->

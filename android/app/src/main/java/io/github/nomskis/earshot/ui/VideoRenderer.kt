@@ -42,7 +42,8 @@ fun VideoRenderer(
                 )
             },
             onRelease = { renderer ->
-                sink.setTarget(null)
+                // Swapping the big and small video makes the new renderer before the old one goes.
+                sink.clearTarget(renderer)
                 renderer.release()
             },
         )

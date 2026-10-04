@@ -229,9 +229,10 @@ fun SettingsScreen(
             Toggle("Keep the screen on during calls", settings.keepScreenOn) { v -> onUpdate { it.copy(keepScreenOn = v) } }
             Toggle("Screen off in your pocket", settings.pocketGuard) { v -> onUpdate { it.copy(pocketGuard = v) } }
             Hint(
-                "Uses the proximity sensor, like a phone call, so a pocket can't mute or hang up. The camera pauses too, " +
-                    "so the other side sees \"phone in pocket\" instead of a black picture, and the Wi-Fi airtime goes back to your earbuds. " +
-                    "Turn off if the screen goes dark while the phone is propped up.",
+                "Uses the proximity sensor, like a phone call, so a pocket can't mute or hang up; never while video is on " +
+                    "the screen. The camera pauses too, so the other side sees \"phone in pocket\" instead of a black picture, " +
+                    "and the Wi-Fi airtime goes back to your earbuds. Off by default: on many phones a hand near the top of " +
+                    "the screen sets the sensor off.",
             )
 
             HorizontalDivider()

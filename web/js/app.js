@@ -97,7 +97,10 @@ function showLobbyError(text) {
 
 // --- Lobby -------------------------------------------------------------------
 
-const roomFromPath = location.pathname.match(/^\/r\/([^/]+)\/?$/);
+// Room links are /r/<room>; one that got mangled on its way (a doubled slash, a
+// stray path in front, the room without /r/) still finds its room.
+const roomFromPath =
+  location.pathname.match(/\/r\/([^/]+)\/?$/) ?? location.pathname.match(/^\/+([A-Za-z0-9-]{3,64})\/?$/);
 // An invite link names the room; otherwise offer the last one (handy from the home screen).
 ui.roomInput.value = roomFromPath ? decodeURIComponent(roomFromPath[1]) : (storage('localStorage')?.getItem('earshot.lastRoom') ?? '');
 ui.nameInput.value = storage('localStorage')?.getItem('earshot.name') ?? '';
@@ -105,6 +108,8 @@ ui.nameInput.value = storage('localStorage')?.getItem('earshot.name') ?? '';
 // On Android, offer the app: it keeps Bluetooth earbuds on the music link,
 // which a browser can't. Without the app installed, Chrome stays on this page.
 const openApp = $('open-app');
+// Without the app, the invite opens here: offer it, so the call can ring next time.
+$('get-app').hidden = !/Android/i.test(navigator.userAgent);
 function updateOpenApp() {
   const room = normalizeRoom(ui.roomInput.value);
   openApp.hidden = !(room && /Android/i.test(navigator.userAgent));

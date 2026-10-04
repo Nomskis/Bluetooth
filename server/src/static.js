@@ -38,6 +38,15 @@ function isAppRoute(pathname) {
 }
 
 /**
+ * A room link that got mangled on its way (a doubled slash, the room without
+ * /r/, a stray path in front) still opens the web client, which finds the room
+ * in it, rather than a bare "Not found". Anything that names a file doesn't.
+ */
+function isLooseAppRoute(pathname) {
+  return !/\.[A-Za-z0-9]+$/.test(pathname) && !pathname.startsWith('/.well-known/');
+}
+
+/**
  * Minimal static file handler for the web client. Returns false when the
  * request was not handled so the caller can send a 404.
  */
@@ -62,15 +71,22 @@ export function createStaticHandler(webRoot) {
     if (filePath !== root && !filePath.startsWith(root + path.sep)) return false;
 
     let body;
+    let served = filePath;
     try {
       const stat = await fs.stat(filePath);
-      if (!stat.isFile()) return false;
+      if (!stat.isFile()) throw new Error('not a file');
       body = await fs.readFile(filePath);
     } catch {
-      return false;
+      if (!isLooseAppRoute(pathname)) return false;
+      served = path.join(root, 'index.html');
+      try {
+        body = await fs.readFile(served);
+      } catch {
+        return false;
+      }
     }
 
-    const ext = path.extname(filePath).toLowerCase();
+    const ext = path.extname(served).toLowerCase();
     res.writeHead(200, {
       ...SECURITY_HEADERS,
       'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream',

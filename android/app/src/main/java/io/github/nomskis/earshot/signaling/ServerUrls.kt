@@ -42,6 +42,17 @@ object ServerUrls {
     fun inviteLink(base: String, room: String): String =
         "$base/r/${URLEncoder.encode(room, "UTF-8")}"
 
+    /**
+     * The room, and the server it's on, that an opened link invites to: the invite
+     * link itself (https://<server>/r/<room>), or earshot://join/<room>?server=<origin>
+     * from the web invite page. Null for anything else.
+     */
+    fun invite(scheme: String?, authority: String?, path: List<String>, serverParam: String?): Pair<String, String?>? = when {
+        scheme == "earshot" && authority == "join" -> path.firstOrNull()?.let { it to serverParam }
+        scheme == "https" && authority != null && path.size == 2 && path[0] == "r" -> path[1] to "https://$authority"
+        else -> null
+    }
+
     fun isSecure(base: String): Boolean = base.startsWith("https://")
 
     private fun isLocalHost(host: String): Boolean {

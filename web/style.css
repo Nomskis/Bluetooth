@@ -335,6 +335,18 @@ input:not([type='checkbox']) {
   display: none;
 }
 
+.get-app {
+  display: block;
+  margin-top: 0.6rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.get-app[hidden] {
+  display: none;
+}
+
 /* --- Chat ---------------------------------------------------------------- */
 
 .control {

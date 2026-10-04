@@ -45,6 +45,12 @@ class ProxyVideoSink : VideoSink {
         target = sink
     }
 
+    /** Unplugs [sink] if it's still the one attached; a renderer that replaced it stays. */
+    @Synchronized
+    fun clearTarget(sink: VideoSink) {
+        if (target === sink) target = null
+    }
+
     @Synchronized
     override fun onFrame(frame: VideoFrame) {
         target?.onFrame(frame)

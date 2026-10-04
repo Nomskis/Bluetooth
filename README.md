@@ -170,16 +170,21 @@ cd android
 ./gradlew assembleOptimized    # needs the Android SDK; output in app/build/outputs/apk/optimized/
 ```
 
-In the app, open **Settings** and enter your server address (for example
-`https://calls.example.com`). For a test server on a laptop on the same Wi-Fi
-without https (`192.168.1.20:8080`), use the debug APK; only it allows plain
-http.
+earshot.apk comes set to the server in `android/gradle.properties`
+(`earshot.defaultServerUrl`), so nobody types an address; for your own server,
+change that line (or **Settings › Server address** on the phone). The debug
+APK starts with none. For a test server on a laptop on the same Wi-Fi without
+https (`192.168.1.20:8080`), use the debug APK; only it allows plain http.
 
 ### 3. Call someone
 
-The first time, pick a room code (or tap the dice), tap **Send invite link**,
-and join. The other person opens the link in their browser, or uses the
-Android app with the same room code.
+The first time, tap **Invite someone**: the call starts and your phone's share
+menu opens, so you can send the link on WhatsApp or anywhere. On a phone with
+the app, the link opens Earshot straight away (the server's
+`/.well-known/assetlinks.json` vouches for it) with **You're invited to a
+call**: one tap on **Join**. Without the app, it opens the call in the browser,
+with a link to download the app. A room code still works too (**Join with a
+room code**).
 
 If you both have the Android app, that first call saves you to each other's
 **Call** list on the home screen. From then on it works like a phone call:
@@ -239,9 +244,9 @@ Android clients.
 
 | Tested | How |
 | --- | --- |
-| Server | 67 unit and integration tests, including ringing (who can ring whom, first answer wins, cancel and timeout, connecting while it rings), hosted-TURN credentials and the browser client's voice detector, delay readout (which way it's weak), chat, packet-length policy and SDP tweaks |
+| Server | 69 unit and integration tests, including mangled invite links still opening the call, the app-link file, ringing (who can ring whom, first answer wins, cancel and timeout, connecting while it rings), hosted-TURN credentials and the browser client's voice detector, delay readout (which way it's weak), chat, packet-length policy and SDP tweaks |
 | Browser calls | 16 end-to-end tests: two real Chromium browsers calling each other through the server (video, audio, reloads, dropped connections, room full, camera-less join, 10 ms packets, fewer packets next to earbuds, redundant audio, HD voice, talking cue, text chat across a reload, the open-in-app link, home-screen install), three of them over a simulated bad connection, a relay that drops packets (lost voice resent; longer packets asked for and renegotiated in place, both ways round) |
-| Android app | 286 tests: protocol and chat against the shared examples, signaling reconnects against a scripted server, incoming calls end to end against a scripted server (ringing, accept, decline, busy, missed call, calling each other at once, which calls connect while they ring, a caller ringing again after reconnecting), the outgoing ring's states (including a phone that joined while still ringing), audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio, path-steering, voice-first bandwidth sharing, packet length, relay route, heat and lip-sync planning, which way the connection is weak, the bad-Wi-Fi tuning, keeping calls off mobile data next to working Wi-Fi, call history and call reports, SDP tweaks, plus Robolectric tests that start the real app and render every screen. Android lint, debug and release builds |
+| Android app | 290 tests: protocol and chat against the shared examples, signaling reconnects against a scripted server, incoming calls end to end against a scripted server (ringing, accept, decline, busy, missed call, calling each other at once, which calls connect while they ring, a caller ringing again after reconnecting), opening invite links, the outgoing ring's states (including a phone that joined while still ringing), audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio, path-steering, voice-first bandwidth sharing, packet length, relay route, heat and lip-sync planning, which way the connection is weak, the bad-Wi-Fi tuning, keeping calls off mobile data next to working Wi-Fi, call history and call reports, SDP tweaks, plus Robolectric tests that start the real app and render every screen. Android lint, debug and release builds |
 | Android on a real phone | **Not yet.** The audio routing and the earbud drivers have to be confirmed on real hardware; the in-app audio check and the delay tuner are there for exactly that. |
 
 ## Trade-offs to know about

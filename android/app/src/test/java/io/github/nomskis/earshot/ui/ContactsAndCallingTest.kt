@@ -79,15 +79,10 @@ class ContactsAndCallingTest {
                     onConsumePendingRoom = {},
                     onDismissError = {},
                     onUpdateSettings = {},
-                    delayRuns = emptyList(),
-                    estimate = null,
-                    onEstimate = {},
                     earbuds = EarbudInfo(),
                     onDetectEarbuds = {},
-                    codec = null,
                     onJoin = { _, _ -> },
                     onOpenSettings = {},
-                    onOpenTuner = {},
                     contacts = contacts,
                     onCallContact = onCall,
                     onRemoveContact = onRemove,
@@ -121,9 +116,8 @@ class ContactsAndCallingTest {
     @Test
     fun beforeTheFirstCallItSaysHowPeopleGetHere() {
         home(emptyList())
-        // The room comes first; the explanation sits below it.
-        compose.onNodeWithText("Join call").assertIsDisplayed()
-        compose.onNodeWithText("Have one call together", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Tap Invite someone and send them the link", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Invite someone").assertIsDisplayed()
     }
 
     @Test

@@ -30,4 +30,18 @@ class ServerUrlsTest {
         assertEquals("ws://192.168.1.20:8080/ws", ServerUrls.webSocketUrl("http://192.168.1.20:8080"))
         assertEquals("https://calls.example.com/r/calm-otter-4821", ServerUrls.inviteLink("https://calls.example.com", "calm-otter-4821"))
     }
+
+    @Test
+    fun anOpenedInviteLinkNamesItsRoomAndServer() {
+        assertEquals(
+            "calm-otter-4821" to "https://earshot-wiee.onrender.com",
+            ServerUrls.invite("https", "earshot-wiee.onrender.com", listOf("r", "calm-otter-4821"), null),
+        )
+        assertEquals(
+            "calm-otter-4821" to "https://calls.example.com",
+            ServerUrls.invite("earshot", "join", listOf("calm-otter-4821"), "https://calls.example.com"),
+        )
+        assertNull(ServerUrls.invite("https", "earshot-wiee.onrender.com", listOf("healthz"), null))
+        assertNull(ServerUrls.invite("http", "evil.example", listOf("r", "x"), null))
+    }
 }

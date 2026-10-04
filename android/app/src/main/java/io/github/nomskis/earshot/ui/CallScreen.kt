@@ -60,7 +60,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -68,7 +67,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -108,7 +109,6 @@ fun CallScreen(
     }
     // Back keeps the call running; the notification brings you back.
     BackHandler(onBack = onLeaveScreen)
-    PocketGuard(enabled = pocketGuard && !inPictureInPicture)
 
     // Chat: what's unread, and their latest message as a bubble while it's closed.
     var chatOpen by rememberSaveable(session) { mutableStateOf(false) }
@@ -131,6 +131,9 @@ fun CallScreen(
     }
 
     val showRemoteVideo = state.hasRemoteVideo && !state.remoteMedia.cameraOff
+    val showOwnVideo = state.hasCamera && !state.cameraOff && !state.cameraPaused
+    // Never while there's video on the screen: you're looking at it.
+    PocketGuard(enabled = pocketGuard && !inPictureInPicture && !showRemoteVideo && !showOwnVideo)
     // The head-start cue: lights up as her voice enters the phone, before the
     // Bluetooth delay lets you hear it, so you know not to talk over her.
     val glow by animateFloatAsState(
@@ -139,12 +142,21 @@ fun CallScreen(
         label = "speaking glow",
     )
 
+    // Tap the small video to swap: yours big, theirs small. Only while both are there to swap.
+    var swapped by rememberSaveable(session) { mutableStateOf(false) }
+    val ownVideoBig = swapped && showRemoteVideo && showOwnVideo && !chatOpen && !inPictureInPicture
+    var area by remember { mutableStateOf(IntSize.Zero) }
+
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(Color.Black)
+            .onSizeChanged { area = it },
     ) {
-        if (showRemoteVideo) {
+        if (ownVideoBig) {
+            // The frames as sent, Flip included: what you see is what they see.
+            VideoRenderer(sink = session.localPreview, eglContext = session.eglContext, modifier = Modifier.fillMaxSize())
+        } else if (showRemoteVideo) {
             VideoRenderer(
                 sink = session.remoteVideo,
                 eglContext = session.eglContext,
@@ -166,19 +178,14 @@ fun CallScreen(
 
         TopBar(state, route, listOfNotNull(earbudBoost?.text, turboNote), Modifier.align(Alignment.TopCenter))
 
-        if (state.hasCamera && !state.cameraOff && !state.cameraPaused && !chatOpen) {
-            VideoRenderer(
-                sink = session.localPreview,
+        if (showOwnVideo && !chatOpen && area != IntSize.Zero) {
+            FloatingVideo(
+                sink = if (ownVideoBig) session.remoteVideo else session.localPreview,
                 eglContext = session.eglContext,
-                // The frames as sent, Flip included: what you see is what they see.
-                mirror = false,
-                overlay = true,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .navigationBarsPadding()
-                    .padding(end = 16.dp, bottom = 120.dp)
-                    .size(width = 108.dp, height = 156.dp)
-                    .clip(RoundedCornerShape(14.dp)),
+                area = area,
+                key = session,
+                onTap = { if (showRemoteVideo) swapped = !swapped },
+                description = if (ownVideoBig) "Their video: drag to move, tap to swap" else "Your video: drag to move, tap to swap",
             )
         }
 

@@ -1,5 +1,6 @@
 package io.github.nomskis.earshot.ui
 
+import android.Manifest
 import android.app.Application
 import android.media.AudioManager
 import androidx.compose.runtime.getValue
@@ -7,10 +8,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.test.core.app.ApplicationProvider
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.audio.DeviceKind
 import io.github.nomskis.earshot.audio.OutputDevice
@@ -25,6 +28,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
@@ -44,9 +48,8 @@ class ScreensSmokeTest {
     private val run = DelayRun(device = buds.name, label = "Game mode on", delayMs = 118.0, reportedMs = 210.0, atMillis = 1)
 
     @Test
-    fun homeScreenShowsTheRouteTheDelayAndTheGameModeOffer() {
+    fun homeScreenOffersInvitingSomeoneAndTheGameMode() {
         var updated: AppSettings? = null
-        var estimated = false
         compose.setContent {
             EarshotTheme {
                 HomeScreen(
@@ -57,25 +60,52 @@ class ScreensSmokeTest {
                     onConsumePendingRoom = {},
                     onDismissError = {},
                     onUpdateSettings = { updated = it(settings) },
-                    delayRuns = listOf(run),
-                    estimate = null,
-                    onEstimate = { estimated = true },
                     earbuds = EarbudInfo(checked = true, earbuds = buds.name, family = "OPPO / OnePlus / realme"),
                     onDetectEarbuds = {},
-                    codec = null,
                     onJoin = { _, _ -> },
                     onOpenSettings = {},
-                    onOpenTuner = {},
                 )
             }
         }
-        // Joining comes first, without scrolling; the explanations follow.
-        compose.onNodeWithText("Join call").assertIsDisplayed()
-        compose.onNodeWithText("118 ms · Game mode on").performScrollTo().assertIsDisplayed()
+        // Inviting comes first, without scrolling; a room code is folded away until asked for.
+        compose.onNodeWithText("Invite someone").assertIsDisplayed()
+        assertTrue(compose.onAllNodesWithText("Room").fetchSemanticsNodes().isEmpty())
+        compose.onNodeWithText("Join with a room code").performClick()
+        compose.onNodeWithText("Room").assertIsDisplayed()
         compose.onNodeWithText("Your earbuds have a game mode").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Use it for calls").performScrollTo().performClick()
         assertEquals(true, updated?.autoGameMode)
-        assertTrue(estimated)
+    }
+
+    @Test
+    fun anInviteLinkAsksOnceAndJoinsWithOneTap() {
+        var joined: Pair<String, Boolean>? = null
+        var consumed = false
+        val permissions = shadowOf(ApplicationProvider.getApplicationContext<Application>())
+        permissions.grantPermissions(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA, Manifest.permission.POST_NOTIFICATIONS)
+        compose.setContent {
+            EarshotTheme {
+                HomeScreen(
+                    settings = settings,
+                    route = route,
+                    error = null,
+                    pendingRoom = "calm-otter-4821",
+                    onConsumePendingRoom = { consumed = true },
+                    onDismissError = {},
+                    onUpdateSettings = {},
+                    earbuds = EarbudInfo(),
+                    onDetectEarbuds = {},
+                    onJoin = { room, video -> joined = room to video },
+                    onOpenSettings = {},
+                )
+            }
+        }
+        compose.onNodeWithText("You're invited to a call").assertIsDisplayed()
+        assertTrue(consumed)
+        compose.onNodeWithText("Join").performClick()
+        assertEquals("calm-otter-4821" to true, joined)
+        // Asked once: the card goes once it's been answered.
+        assertTrue(compose.onAllNodesWithText("You're invited to a call").fetchSemanticsNodes().isEmpty())
     }
 
     @Test
@@ -92,15 +122,10 @@ class ScreensSmokeTest {
                     onConsumePendingRoom = {},
                     onDismissError = {},
                     onUpdateSettings = {},
-                    delayRuns = emptyList(),
-                    estimate = null,
-                    onEstimate = {},
                     earbuds = EarbudInfo(),
                     onDetectEarbuds = {},
-                    codec = null,
                     onJoin = { room, video -> joined = room to video },
                     onOpenSettings = {},
-                    onOpenTuner = {},
                     interrupted = InterruptedCall("calm-otter-4821", withVideo = false, aliveAtMillis = System.currentTimeMillis()),
                     onDismissInterrupted = { dismissed = true },
                 )
@@ -125,15 +150,10 @@ class ScreensSmokeTest {
                     onConsumePendingRoom = {},
                     onDismissError = {},
                     onUpdateSettings = {},
-                    delayRuns = emptyList(),
-                    estimate = null,
-                    onEstimate = {},
                     earbuds = EarbudInfo(),
                     onDetectEarbuds = {},
-                    codec = null,
                     onJoin = { _, _ -> },
                     onOpenSettings = {},
-                    onOpenTuner = {},
                 )
             }
         }
@@ -156,15 +176,10 @@ class ScreensSmokeTest {
                     onConsumePendingRoom = {},
                     onDismissError = {},
                     onUpdateSettings = { change -> stored = change(stored).let { it.copy(displayName = it.displayName.trim()) } },
-                    delayRuns = emptyList(),
-                    estimate = null,
-                    onEstimate = {},
                     earbuds = EarbudInfo(),
                     onDetectEarbuds = {},
-                    codec = null,
                     onJoin = { _, _ -> },
                     onOpenSettings = {},
-                    onOpenTuner = {},
                 )
             }
         }

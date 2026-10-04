@@ -62,8 +62,8 @@ fun ContactsCard(
             )
             if (contacts.isEmpty()) {
                 Text(
-                    "Have one call together with a room code or invite link. After that you'll each be saved here, " +
-                        "and either of you can ring the other's phone like a normal call.",
+                    "Tap Invite someone and send them the link. After your first call you're saved here on both " +
+                        "phones, and either of you can ring the other like a normal call.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
