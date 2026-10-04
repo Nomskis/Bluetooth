@@ -39,7 +39,9 @@ class SettingsRepository(private val context: Context) {
         val bluetoothFriendlyVideo = booleanPreferencesKey("bluetooth_friendly_video")
         val mobileDataOn24GHz = booleanPreferencesKey("mobile_data_on_24ghz")
         val lipSync = booleanPreferencesKey("lip_sync")
-        val mobileDataBackup = booleanPreferencesKey("mobile_data_backup")
+        // A new key: the old one was written with the old default (on) by any settings change,
+        // so a stored "on" didn't mean anyone chose it.
+        val mobileDataBackup = booleanPreferencesKey("mobile_data_backup_opt_in")
         val turboDuringCalls = booleanPreferencesKey("turbo_during_calls")
         val backgroundGuideDone = booleanPreferencesKey("background_guide_done")
         val gameModeHintDone = booleanPreferencesKey("game_mode_hint_done")

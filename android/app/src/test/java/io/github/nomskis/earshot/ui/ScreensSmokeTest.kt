@@ -155,7 +155,7 @@ class ScreensSmokeTest {
         }
         compose.onNodeWithText("Sharing the radio with Bluetooth").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Mobile data as a backup during calls").performScrollTo().performClick()
-        assertEquals(false, updated?.mobileDataBackup)
+        assertEquals(true, updated?.mobileDataBackup) // off by default; this turns it on
     }
 
     @Test

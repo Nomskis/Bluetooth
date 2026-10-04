@@ -6,6 +6,7 @@ import android.util.Log
 import io.github.nomskis.earshot.BuildConfig
 import io.github.nomskis.earshot.audio.AudioProfile
 import io.github.nomskis.earshot.audio.CallAudioController
+import io.github.nomskis.earshot.audio.LinkConditions
 import io.github.nomskis.earshot.audio.RemoteVoiceTap
 import io.github.nomskis.earshot.audio.ReplayPlayer
 import io.github.nomskis.earshot.audio.SmartDuck
@@ -852,7 +853,10 @@ class CallSession(
 
     private fun createLink(session: String): Link {
         val observer = LinkObserver()
-        val pc = engine.createPeerConnection(iceServers, observer, preferCellular)
+        // Mobile data only if you opted in, or if it's what the phone is using anyway (no Wi-Fi,
+        // or Wi-Fi without internet, like a gym login page): never quietly next to working Wi-Fi.
+        val mobileData = settings.mobileDataBackup || settings.mobileDataOn24GHz || !LinkConditions.onWorkingWifi(appContext)
+        val pc = engine.createPeerConnection(iceServers, observer, preferCellular, mobileDataNextToWifi = mobileData)
             ?: error("WebRTC could not create a peer connection")
         val tracks = engine.createSendTracks()
         tracks.audio.setEnabled(!_state.value.micMuted)

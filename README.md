@@ -53,10 +53,11 @@ this list works with every pair of classic Bluetooth earbuds:
   the phone's radio with Bluetooth, video is kept lighter in both directions;
   optionally the call moves to mobile data, which doesn't share it at all. A
   radio test in the tuner shows what Wi-Fi traffic costs your earbuds.
-- **Survives gym Wi-Fi.** Mobile data waits on standby, and a stalled Wi-Fi
-  path is swapped for it in about a second instead of WebRTC's usual 5–25.
-  Wi-Fi that's up but dropping packets is spotted too, by comparing how each
-  path answers ICE's checks, and the call moves until it recovers.
+- **Survives gym Wi-Fi.** A stalled path is swapped in about a second
+  instead of WebRTC's usual 5–25. Mobile data is never touched while Wi-Fi
+  works, unless you allow it as a backup in Settings: then a stalled Wi-Fi, or
+  one that's up but dropping packets, hands the call to mobile data until it
+  recovers.
   On 5 GHz Wi-Fi the call's packets are marked for Wi-Fi's priority queue,
   so a crowded network lets them through ahead of everyone's downloads.
 - **Lips in time with the voice.** Their video is held back by exactly the

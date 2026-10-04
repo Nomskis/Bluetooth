@@ -97,11 +97,12 @@ data class AppSettings(
      */
     val mobileDataOn24GHz: Boolean = false,
     /**
-     * Keep mobile data ready next to Wi-Fi during calls, so a Wi-Fi stall
-     * moves the call there in about a second. It carries the call only then;
-     * otherwise it costs a few kilobytes a minute of connection checks.
+     * Opt-in. Keep mobile data ready next to Wi-Fi during calls, so the call
+     * can move there when Wi-Fi stalls or keeps dropping packets. Off, the
+     * call never touches mobile data while Wi-Fi is connected (like any other
+     * app, it uses mobile data only when that's the phone's only network).
      */
-    val mobileDataBackup: Boolean = true,
+    val mobileDataBackup: Boolean = false,
     /** With Shizuku set up: Turbo's codec, buffer and low-latency switches for each call, undone after. */
     val turboDuringCalls: Boolean = true,
     /** Hold her video back to match the Bluetooth audio delay, so lips match words. */

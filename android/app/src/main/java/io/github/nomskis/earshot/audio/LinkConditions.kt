@@ -30,6 +30,18 @@ object LinkConditions {
         return frequency?.let(::bandFor)
     }
 
+    /**
+     * The phone's own network is Wi-Fi (or Ethernet) that Android has checked
+     * reaches the internet. Not a Wi-Fi still waiting at a login page: Android
+     * sends traffic over mobile data then, and so must the call.
+     */
+    fun onWorkingWifi(context: Context): Boolean {
+        val cm = context.getSystemService(ConnectivityManager::class.java) ?: return false
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        val local = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+        return local && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+
     fun bandFor(frequencyMhz: Int): WifiBand? = when (frequencyMhz) {
         in 2_400..2_500 -> WifiBand.GHZ_2_4
         in 4_900..5_900 -> WifiBand.GHZ_5

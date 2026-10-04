@@ -12,6 +12,13 @@ class RadioPlanTest {
     private val defaults = AppSettings()
 
     @Test
+    fun outOfTheBoxNothingUsesMobileDataWhileOnWifi() {
+        assertFalse(defaults.mobileDataBackup)
+        assertFalse(defaults.mobileDataOn24GHz)
+        assertFalse(RadioPlan.decide(WifiBand.GHZ_2_4, bluetoothAudio = true, defaults).preferCellular)
+    }
+
+    @Test
     fun onlyActsOnTwoPointFourGigahertzWithBluetoothAudio() {
         assertEquals(RadioPlan.NONE, RadioPlan.decide(WifiBand.GHZ_5, bluetoothAudio = true, defaults))
         assertEquals(RadioPlan.NONE, RadioPlan.decide(null, bluetoothAudio = true, defaults))

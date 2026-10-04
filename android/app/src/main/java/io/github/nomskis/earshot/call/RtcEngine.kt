@@ -30,6 +30,7 @@ import org.webrtc.VideoSink
 import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
 import org.webrtc.audio.JavaAudioDeviceModule
+import java.util.WeakHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -217,23 +218,41 @@ class RtcEngine(
         return old
     }
 
+    /**
+     * Whether each connection may gather on mobile data next to Wi-Fi. WebRTC fixes this
+     * when the connection is made (setConfiguration refuses to change it), so every later
+     * configuration for the same connection repeats it.
+     */
+    private val mobileDataAllowed = WeakHashMap<PeerConnection, Boolean>()
+
+    /**
+     * [mobileDataNextToWifi] false keeps the call off mobile data while a cheaper network
+     * (working Wi-Fi) is up; with mobile data as the only network it's used as usual.
+     */
     fun createPeerConnection(
         iceServers: List<IceServerConfig>,
         observer: PeerConnection.Observer,
         preferCellular: Boolean = false,
-    ): PeerConnection? = factory.createPeerConnection(rtcConfiguration(iceServers, preferCellular), observer)
+        mobileDataNextToWifi: Boolean = true,
+    ): PeerConnection? =
+        factory.createPeerConnection(rtcConfiguration(iceServers, preferCellular, mobileDataNextToWifi), observer)
+            ?.also { mobileDataAllowed[it] = mobileDataNextToWifi }
 
     /**
      * Tells ICE to prefer (or stop preferring) candidate pairs on mobile data.
      * A preference, not a rule: if mobile data fails, the call stays on Wi-Fi.
      */
     fun setPreferCellular(pc: PeerConnection, iceServers: List<IceServerConfig>, prefer: Boolean) {
-        if (!pc.setConfiguration(rtcConfiguration(iceServers, prefer))) Log.w(TAG, "Could not change the network preference")
+        if (!pc.setConfiguration(rtcConfiguration(iceServers, prefer, mobileDataAllowed[pc] ?: true))) {
+            Log.w(TAG, "Could not change the network preference")
+        }
     }
 
     /** Fresh STUN/TURN servers (TURN credentials expire) for the connection's next ICE restart. */
     fun updateIceServers(pc: PeerConnection, iceServers: List<IceServerConfig>, preferCellular: Boolean) {
-        if (!pc.setConfiguration(rtcConfiguration(iceServers, preferCellular))) Log.w(TAG, "Could not update the ICE servers")
+        if (!pc.setConfiguration(rtcConfiguration(iceServers, preferCellular, mobileDataAllowed[pc] ?: true))) {
+            Log.w(TAG, "Could not update the ICE servers")
+        }
     }
 
     /**
@@ -277,7 +296,11 @@ class RtcEngine(
         }
     }
 
-    private fun rtcConfiguration(iceServers: List<IceServerConfig>, preferCellular: Boolean): PeerConnection.RTCConfiguration {
+    private fun rtcConfiguration(
+        iceServers: List<IceServerConfig>,
+        preferCellular: Boolean,
+        mobileDataNextToWifi: Boolean,
+    ): PeerConnection.RTCConfiguration {
         val servers = iceServers.map { config ->
             val builder = PeerConnection.IceServer.builder(config.urls)
             config.username?.let { builder.setUsername(it) }
@@ -293,6 +316,12 @@ class RtcEngine(
             keyType = PeerConnection.KeyType.ECDSA
             // Lets setPacketPriority's marks reach the sockets; without it they're ignored.
             enableDscp = true
+            // LOW_COST: no candidates on mobile data while a cheaper network (Wi-Fi) is up.
+            candidateNetworkPolicy = if (mobileDataNextToWifi) {
+                PeerConnection.CandidateNetworkPolicy.ALL
+            } else {
+                PeerConnection.CandidateNetworkPolicy.LOW_COST
+            }
             // Let the jitter buffer shrink quickly after a network hiccup instead of staying
             // inflated, and cap how far it can grow (50 packets = 0.5 s at 10 ms packets).
             audioJitterBufferFastAccelerate = true

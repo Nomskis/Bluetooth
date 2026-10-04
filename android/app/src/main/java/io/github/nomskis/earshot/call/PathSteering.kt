@@ -10,7 +10,7 @@ package io.github.nomskis.earshot.call
  * like-for-like measure of how it's doing. When the Wi-Fi path loses a fifth
  * of its pings while the mobile-data path loses almost none, the trouble is
  * this phone's Wi-Fi, not the other side's network, and mobile data is the
- * better path. Only used with mobile data as a backup (the default).
+ * better path. Only used when the user opts into mobile data as a backup.
  */
 class PathSteering(
     private val windowSamples: Int = 5,

@@ -110,7 +110,7 @@ are in [research/latency.md](research/latency.md); in short:
 | Lip sync | Their video held back by the Bluetooth delay WebRTC doesn't know about | everything |
 | Earbud game mode | Each brand's own command, on for the call and back after | OPPO/OnePlus/realme, Nothing/CMF, Xiaomi/Redmi, Huawei/Honor, Soundcore, EarFun |
 | Turbo | Android's privileged Bluetooth controls, through Shizuku: for each call, low-latency mode, the codec measured fastest, the shortest buffer; undone after | Android 13+ with Wireless debugging |
-| Fast failover | Mobile data on standby, ICE tuned to swap a stalled path in ~1 s | everything |
+| Fast failover | ICE tuned to swap a stalled path in ~1 s; mobile data on standby if you allow it | everything |
 | Live readout | Mouth-to-ear delay from stats plus the measured app-to-ear figure | everything |
 
 ## Sharing the radio with Bluetooth
@@ -144,15 +144,22 @@ coexistence costs on that phone.
 
 ## Surviving gym Wi-Fi
 
+**Mobile data is never used next to working Wi-Fi unless you turn it on.**
+By default a call gathers no candidates on mobile data while the phone's own
+network is Wi-Fi that reaches the internet (WebRTC's `LOW_COST` candidate
+policy, decided per connection). When Wi-Fi is gone, or stuck at a gym's
+login page so Android itself is on mobile data, the call uses mobile data
+like any other app would.
+
 WebRTC's defaults check standby paths every 25 seconds and call a path dead
 after 5 seconds without an answer. Earshot switches when the path in use
-goes 1 second without packets, checks standby paths every 2 seconds, and
-keeps mobile data up next to Wi-Fi during calls (on by default). ICE prefers
-Wi-Fi as the cheaper network, moves to mobile data when Wi-Fi stalls, and
-comes back when it recovers; until then mobile data only carries connection
-checks.
+goes 1 second without packets and checks standby paths every 2 seconds.
+With **Mobile data as a backup** switched on (Settings, off by default), it
+also keeps mobile data up next to Wi-Fi during calls. ICE prefers Wi-Fi as
+the cheaper network, moves to mobile data when Wi-Fi stalls, and comes back
+when it recovers; until then mobile data only carries connection checks.
 
-Crowded gym Wi-Fi more often degrades than stalls: it drops packets but never
+With the backup on, crowded gym Wi-Fi more often degrades than stalls: it drops packets but never
 goes silent, so ICE never leaves it. Those connection checks are a fair test
 of each path, though, so Earshot compares them
 ([`call/PathSteering.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/PathSteering.kt)):

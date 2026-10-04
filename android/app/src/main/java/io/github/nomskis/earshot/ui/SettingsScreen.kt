@@ -231,7 +231,11 @@ fun SettingsScreen(
             Toggle("Mobile data as a backup during calls", settings.mobileDataBackup) { v ->
                 onUpdate { it.copy(mobileDataBackup = v) }
             }
-            Hint("If Wi-Fi stalls, the call moves to mobile data in about a second, and back when Wi-Fi recovers. Until then it only costs a few kilobytes a minute.")
+            Hint(
+                "Off by default: while you're on Wi-Fi, calls don't use mobile data at all. On, mobile data stays ready next to Wi-Fi, " +
+                    "and the call moves onto it when Wi-Fi stalls or keeps dropping packets, then back. That uses your data plan: " +
+                    "a video call on mobile data takes roughly 0.5 to 1.5 GB an hour.",
+            )
 
             HorizontalDivider()
             Section("About")
