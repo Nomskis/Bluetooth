@@ -31,15 +31,21 @@ object LinkConditions {
     }
 
     /**
-     * The phone's own network is Wi-Fi (or Ethernet) that Android has checked
-     * reaches the internet. Not a Wi-Fi still waiting at a login page: Android
-     * sends traffic over mobile data then, and so must the call.
+     * The phone is connected to Wi-Fi (or Ethernet) that Android has checked
+     * reaches the internet, whether or not it's the phone's default network:
+     * phones that move their own traffic to mobile data when Wi-Fi seems slow,
+     * or a VPN, make another network the default while Wi-Fi still works. Not a
+     * Wi-Fi waiting at a login page or without internet: the call needs mobile
+     * data then, like everything else on the phone.
      */
-    fun onWorkingWifi(context: Context): Boolean {
+    fun hasWorkingWifi(context: Context): Boolean {
         val cm = context.getSystemService(ConnectivityManager::class.java) ?: return false
-        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
-        val local = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
-        return local && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        @Suppress("DEPRECATION") // Still the one call that lists every network, default or not.
+        return cm.allNetworks.any { network ->
+            val caps = cm.getNetworkCapabilities(network) ?: return@any false
+            val local = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+            local && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        }
     }
 
     /** "wifi" (or Ethernet) or "cellular" for the phone's own network now; null when there's none or it's something else. */

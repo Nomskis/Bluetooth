@@ -15,6 +15,8 @@ data class CallQuality(
     val path: String? = null,
     /** This phone's network: "wifi", "cellular"... */
     val network: String? = null,
+    /** Whether the call could use mobile data, and why ("kept off, next to working Wi-Fi", ...). */
+    val mobileData: String? = null,
     val rttMsAvg: Int? = null,
     val rttMsMax: Int? = null,
     /** Their audio packets lost on the way, before redundancy and resends repaired them. */
@@ -61,6 +63,7 @@ data class CallQuality(
         durationSeconds?.let { appendLine("Length: ${it / 60} min ${it % 60} s") }
         appendLine("Quality: ${verdict.name.lowercase()}")
         appendLine("Route: ${path ?: "?"}, this phone on ${network ?: "?"}")
+        mobileData?.let { appendLine("Mobile data: $it") }
         appendLine("Round trip: ${rttMsAvg ?: "?"} ms average, ${rttMsMax ?: "?"} ms worst")
         appendLine(
             "Their audio: ${audioLossPercent.pct()} lost on the way, ${concealedPercent.pct()} made up" +
@@ -131,6 +134,7 @@ class CallQualityTracker {
     private var heightSum = 0.0
     private var path: String? = null
     private var network: String? = null
+    private var mobileData: String? = null
     private var codec: String? = null
     private var samples = 0
     private var reducedSamples = 0
@@ -145,6 +149,11 @@ class CallQualityTracker {
 
     fun reconnected() {
         reconnects++
+    }
+
+    /** Whether the latest connection could use mobile data, and why. */
+    fun mobileData(use: String) {
+        mobileData = use
     }
 
     /** One stats interval. [voiceReduced]: our voice was stepped down during it. */
@@ -214,6 +223,7 @@ class CallQualityTracker {
         return CallQuality(
             path = path,
             network = network,
+            mobileData = mobileData,
             rttMsAvg = avg(rttSum, rttCount),
             rttMsMax = rttMax.takeIf { rttCount > 0 }?.roundToInt(),
             audioLossPercent = (total.audioLost / audioPackets * 100).takeIf { audioPackets > 0 }?.round1(),

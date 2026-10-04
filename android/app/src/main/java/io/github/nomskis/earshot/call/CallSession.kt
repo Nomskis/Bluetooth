@@ -165,6 +165,8 @@ class CallSession(
     private var stuckJob: Job? = null
     /** Leaves Wi-Fi that's up but losing packets, for mobile data on standby. */
     private val steering = PathSteering()
+    /** Media has gone over Wi-Fi on this call, so mobile data later means Wi-Fi gave out. */
+    private var wasOnWifi = false
     /** The audio packet length we ask the other side for; lives across reconnects, like the network it reflects. */
     private val packetTime = PacketTime(startFrom?.packetStep ?: PacketTime.START)
     /** What the route carries, learned as the call goes, for reconnects within it and for the next call. */
@@ -721,7 +723,8 @@ class CallSession(
     private fun radioNote(plan: RadioPlan, path: CallPath?): String? = when {
         steering.prefersCellular && path == CallPath.CELLULAR -> "Wi-Fi here keeps dropping packets, so the call moved to mobile data"
         steering.prefersCellular -> "Wi-Fi here keeps dropping packets; moving the call to mobile data"
-        else -> RadioPlan.describe(plan, path) ?: if (path == CallPath.CELLULAR) "Wi-Fi stalled, so the call moved to mobile data" else null
+        // A call that's on mobile data from the start (the phone has no working Wi-Fi) has nothing to explain.
+        else -> RadioPlan.describe(plan, path) ?: if (path == CallPath.CELLULAR && wasOnWifi) "Wi-Fi stalled, so the call moved to mobile data" else null
     }
 
     /** The radio plan's wish (2.4 GHz option) or the steering's (bad Wi-Fi). */
@@ -778,6 +781,7 @@ class CallSession(
         steer(l, entries)
         val path = RadioPlan.pathFor(CallStats.selectedNetworkType(entries)) ?: return
         if (path == _state.value.callPath) return
+        if (path == CallPath.WIFI) wasOnWifi = true
         Log.i(TAG, "Media now flows over $path")
         _state.update { it.copy(callPath = path, radioNote = radioNote(radioPlan, path)) }
         applyVideoCap(l)
@@ -1339,6 +1343,19 @@ class CallSession(
         })
     }
 
+    /**
+     * Why a new connection may use mobile data, for the call report; null when it stays off it.
+     * Only if you opted in, or if the phone has no working Wi-Fi (none, or one stuck at a gym's
+     * login page): never quietly next to working Wi-Fi, even when the phone has made mobile data
+     * its default network ([LinkConditions.hasWorkingWifi]).
+     */
+    private fun mobileDataUse(): String? = when {
+        settings.mobileDataBackup -> "allowed, as set in Settings (Mobile data as a backup)"
+        settings.mobileDataOn24GHz -> "allowed, as set in Settings (instead of 2.4 GHz Wi-Fi)"
+        !LinkConditions.hasWorkingWifi(appContext) -> "used, no working Wi-Fi when the call connected"
+        else -> null
+    }
+
     private fun DataChannel.sendText(text: String): Boolean = runCatching {
         send(DataChannel.Buffer(ByteBuffer.wrap(text.toByteArray(Charsets.UTF_8)), false))
     }.getOrDefault(false)
@@ -1347,12 +1364,11 @@ class CallSession(
 
     private fun createLink(session: String): Link {
         val observer = LinkObserver()
-        // Mobile data only if you opted in, or if it's what the phone is using anyway (no Wi-Fi,
-        // or Wi-Fi without internet, like a gym login page): never quietly next to working Wi-Fi.
-        val mobileData = settings.mobileDataBackup || settings.mobileDataOn24GHz || !LinkConditions.onWorkingWifi(appContext)
+        val mobileData = mobileDataUse()
         val relayOnly = RelayRoute.use(settings.relayRoute, remote, iceServers, relayFailed)
-        val pc = engine.createPeerConnection(iceServers, observer, preferCellular, mobileDataNextToWifi = mobileData, relayOnly = relayOnly)
+        val pc = engine.createPeerConnection(iceServers, observer, preferCellular, mobileDataNextToWifi = mobileData != null, relayOnly = relayOnly)
             ?: error("WebRTC could not create a peer connection")
+        qualityTracker.mobileData(mobileData ?: "kept off, next to working Wi-Fi")
         // Start the bandwidth estimate where this route has been, not at WebRTC's blind 300 kbps.
         startBitrateBps?.let { if (!pc.setBitrate(null, it, null)) Log.w(TAG, "Could not set the start bitrate") }
         // Before any audio stream exists, so a ringing call never starts the microphone ([applyHold]).

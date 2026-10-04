@@ -95,6 +95,15 @@ class CallQualityTest {
     }
 
     @Test
+    fun theReportSaysWhetherMobileDataCouldBeUsedAndWhy() {
+        val tracker = CallQualityTracker()
+        tracker.mobileData("used, no working Wi-Fi when the call connected")
+        assertTrue(tracker.summary().report().contains("Mobile data: used, no working Wi-Fi when the call connected"))
+        // Calls kept from before the line existed just leave it out.
+        assertTrue(!CallQuality(network = "wifi").report().contains("Mobile data"))
+    }
+
+    @Test
     fun aCallThatSoundedBadIsPoor() {
         assertEquals(CallQuality.Verdict.POOR, CallQuality(concealedPercent = 4.0).verdict)
         assertEquals(CallQuality.Verdict.POOR, CallQuality(rttMsAvg = 450).verdict)
