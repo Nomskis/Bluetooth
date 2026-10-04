@@ -118,6 +118,12 @@ Open UDP/TCP 3478 and UDP 49160–49200 in your firewall. The server hands each
 peer time-limited TURN credentials derived from `TURN_SECRET` (coturn's
 `use-auth-secret` scheme), so the secret itself never leaves the server.
 
+For calls between countries, a hosted relay can do more than get through
+blocked networks: with **Route calls through the relay** on (Settings, "Calls
+abroad"), both phones send the call through it, and Cloudflare can carry the
+stretch between the two countries over its own network. See
+[how-it-works.md](how-it-works.md#calls-abroad-through-the-relays-network).
+
 A relay with fixed credentials works too: set `TURN_URLS`, `TURN_USERNAME`
 and `TURN_CREDENTIAL`. A relay never sees the call's content: WebRTC media is encrypted end to end
 (DTLS-SRTP), and the relay only forwards the encrypted packets. Gyms with

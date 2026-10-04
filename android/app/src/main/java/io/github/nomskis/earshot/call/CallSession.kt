@@ -151,6 +151,8 @@ class CallSession(
     private val steering = PathSteering()
     /** The audio packet length we ask the other side for; lives across reconnects, like the network it reflects. */
     private val packetTime = PacketTime()
+    /** The relay route was tried on this call and didn't connect ([RelayRoute]). */
+    private var relayFailed = false
     private val ringback = Ringback(
         if (profile.mode == AudioMode.HIFI) android.media.AudioManager.STREAM_MUSIC else android.media.AudioManager.STREAM_VOICE_CALL,
     )
@@ -159,8 +161,10 @@ class CallSession(
     private var gaveUpJob: Job? = null
 
     /** One RTCPeerConnection and everything tied to it. */
-    private class Link(val pc: PeerConnection, val session: String, var tracks: SendTracks) {
+    private class Link(val pc: PeerConnection, val session: String, var tracks: SendTracks, val relayOnly: Boolean) {
         val pendingCandidates = mutableListOf<IceCandidate>()
+        /** ICE has been connected at least once on this connection. */
+        var everConnected = false
         var tracksAdded = false
         var remoteAudio: AudioTrack? = null
         var remoteVideoTrack: VideoTrack? = null
@@ -210,6 +214,7 @@ class CallSession(
         data class SetLipSync(val plan: LipSync.Plan?, val playoutMs: Double?, val measured: Boolean) : Event
         class Stats(val link: Link, val report: RTCStatsReport) : Event
         class Renegotiate(val link: Link) : Event
+        class RelayCheck(val link: Link) : Event
         class ChatChannelState(val link: Link, val open: Boolean) : Event
         class ChatIncoming(val link: Link, val text: String) : Event
         data class SendChat(val text: String) : Event
@@ -310,7 +315,12 @@ class CallSession(
             client = ClientInfo(
                 platform = "android",
                 version = BuildConfig.VERSION_NAME,
-                capabilities = listOf("hifi-audio", Chat.CAPABILITY, Capabilities.RENEGOTIATE),
+                capabilities = listOfNotNull(
+                    "hifi-audio",
+                    Chat.CAPABILITY,
+                    Capabilities.RENEGOTIATE,
+                    Capabilities.RELAY_ROUTE.takeIf { settings.relayRoute },
+                ),
             ),
         )
         signaling = SignalingClient(http, wsUrl, join, scope)
@@ -365,6 +375,16 @@ class CallSession(
                 }
             }
             is Event.Renegotiate -> renegotiate(event.link)
+            is Event.RelayCheck -> {
+                val l = event.link
+                if (l === link && !l.everConnected) {
+                    // Never came up through the relay: go direct for the rest of this call.
+                    Log.w(TAG, "No connection through the relay; going direct")
+                    relayFailed = true
+                    _state.update { it.copy(routeNote = "The relay didn't connect, so this call goes direct") }
+                    if (isOfferer()) startSession() else sendSignal(SignalData.RequestOffer(null))
+                }
+            }
             is Event.RequestOfferDue -> {
                 if (lastOfferReceivedAt > event.askedAt) return
                 if (link?.isHealthy == true) return
@@ -950,6 +970,7 @@ class CallSession(
         if (l !== link) return
         when (ice) {
             IceConnectionState.CONNECTED, IceConnectionState.COMPLETED -> {
+                l.everConnected = true
                 recoveryJob?.cancel()
                 setPhase(CallPhase.CONNECTED)
                 sendMediaState()
@@ -1085,14 +1106,25 @@ class CallSession(
         // Mobile data only if you opted in, or if it's what the phone is using anyway (no Wi-Fi,
         // or Wi-Fi without internet, like a gym login page): never quietly next to working Wi-Fi.
         val mobileData = settings.mobileDataBackup || settings.mobileDataOn24GHz || !LinkConditions.onWorkingWifi(appContext)
-        val pc = engine.createPeerConnection(iceServers, observer, preferCellular, mobileDataNextToWifi = mobileData)
+        val relayOnly = RelayRoute.use(settings.relayRoute, remote, iceServers, relayFailed)
+        val pc = engine.createPeerConnection(iceServers, observer, preferCellular, mobileDataNextToWifi = mobileData, relayOnly = relayOnly)
             ?: error("WebRTC could not create a peer connection")
         val tracks = engine.createSendTracks()
         tracks.audio.setEnabled(!_state.value.micMuted)
         tracks.video?.setEnabled(!_state.value.sendsNoVideo)
-        return Link(pc, session, tracks).also {
+        if (relayOnly) {
+            val why = if (settings.relayRoute) "as set in Settings (Calls abroad)" else "as the other phone asked"
+            _state.update { it.copy(routeNote = "Going through the relay, $why") }
+        }
+        return Link(pc, session, tracks, relayOnly).also {
             observer.link = it
             openChatChannel(it)
+            if (relayOnly) {
+                scope.launch {
+                    delay(RelayRoute.FALLBACK_MS)
+                    post(Event.RelayCheck(it))
+                }
+            }
         }
     }
 

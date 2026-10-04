@@ -27,6 +27,9 @@ format has to update the examples and keep both sides passing.
   `chat` means the client has text chat (below); clients show the chat only
   when the other side lists it. `renegotiate` means it answers
   `request-offer` with `iceRestart: false` by renegotiating in place.
+  `relay-route` means this side wants the call through the TURN relay at
+  both ends; the other side relays too (relay-only ICE) when it has a relay,
+  and goes direct if that doesn't connect within 12 s.
 
 ## Server → client
 

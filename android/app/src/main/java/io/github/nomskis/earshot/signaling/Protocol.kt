@@ -217,6 +217,9 @@ sealed interface SignalData {
 object Capabilities {
     /** Answers `request-offer` with `iceRestart: false` by renegotiating in place. */
     const val RENEGOTIATE = "renegotiate"
+
+    /** Wants this call through the TURN relay at both ends (the other side follows, when it has a relay). */
+    const val RELAY_ROUTE = "relay-route"
 }
 
 object ErrorCodes {

@@ -64,6 +64,8 @@ data class CallState(
     val callPath: CallPath? = null,
     /** What Earshot is doing to keep the shared radio free for the earbuds, if anything. */
     val radioNote: String? = null,
+    /** How the call is routed when that's been chosen for it: through the relay, or direct after the relay failed. */
+    val routeNote: String? = null,
     /** How far her video is held back to match the Bluetooth audio delay; null when not. */
     val lipSync: LipSync.Plan? = null,
     /** Where her voice spends its time on the way to your ear, once stats arrive. */

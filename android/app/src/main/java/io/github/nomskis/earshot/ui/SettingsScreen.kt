@@ -248,6 +248,19 @@ fun SettingsScreen(
             )
 
             HorizontalDivider()
+            Section("Calls abroad")
+            Toggle("Route calls through the relay", settings.relayRoute) { v ->
+                onUpdate { it.copy(relayRoute = v) }
+            }
+            Hint(
+                "For calls between countries that stutter even on decent internet. Both phones send the call through your " +
+                    "server's TURN relay instead of directly; with Cloudflare's relay, the stretch between the two countries " +
+                    "can then run over Cloudflare's own network instead of the busy public internet. Try a call each way and " +
+                    "compare the delay readout. Needs a relay on your server (see docs/deploy.md); if it doesn't connect, the " +
+                    "call goes direct by itself. The other phone follows your choice.",
+            )
+
+            HorizontalDivider()
             Section("About")
             Text("Earshot ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
             Hint("Free and open source under the Apache 2.0 license.")

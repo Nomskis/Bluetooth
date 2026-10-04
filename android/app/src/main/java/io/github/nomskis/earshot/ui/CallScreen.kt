@@ -451,7 +451,7 @@ internal fun TopBar(state: CallState, route: AudioRoute, boostNotes: List<String
             "Video held back ${it.videoDelayMs} ms to match the earbuds" +
                 if (it.source == LipSync.Source.MEASURED) " (measured)" else ""
         }
-        (boostNotes + listOfNotNull(state.radioNote, lipSync)).forEach { note ->
+        (boostNotes + listOfNotNull(state.radioNote, state.routeNote, lipSync)).forEach { note ->
             Text(note, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall)
         }
         if (state.videoPausedForVoice) {

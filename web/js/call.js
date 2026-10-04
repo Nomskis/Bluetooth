@@ -39,6 +39,14 @@ const RENEGOTIATE_RETRY_MS = 15_000;
 
 /** Listed in our join message: we answer request-offer with iceRestart false by renegotiating in place. */
 export const RENEGOTIATE_CAPABILITY = 'renegotiate';
+/** In the other side's join: they want the call through the TURN relay at both ends (RelayRoute.kt). */
+export const RELAY_ROUTE_CAPABILITY = 'relay-route';
+/** A relay-only connection that hasn't come up by now goes direct for the rest of the call. */
+const RELAY_FALLBACK_MS = 12_000;
+
+function hasRelay(iceServers) {
+  return (iceServers ?? []).some((s) => [s.urls].flat().some((u) => /^turns?:/.test(u)));
+}
 
 export function randomId(prefix = '', bytes = 9) {
   const raw = crypto.getRandomValues(new Uint8Array(bytes));
@@ -84,6 +92,10 @@ export class CallEngine extends EventTarget {
   #askedPacketMs = null;
   #renegotiatedAt = 0;
   #adaptTimer = null;
+  /** The relay route was tried on this call and didn't connect. */
+  #relayFailed = false;
+  #relayTimer = null;
+  #everConnected = false;
   chat = new ChatLog({ newId: () => randomId('m') });
 
   /**
@@ -437,11 +449,29 @@ export class CallEngine extends EventTarget {
   }
 
   #createPeerConnection() {
+    // The other side asked for the call through the relay at both ends, and we have one.
+    const relayOnly =
+      !this.#relayFailed && hasRelay(this.#iceServers) && !!this.#remote?.client?.capabilities?.includes?.(RELAY_ROUTE_CAPABILITY);
     const pc = new RTCPeerConnection({
       iceServers: this.#iceServers,
+      iceTransportPolicy: relayOnly ? 'relay' : 'all',
       bundlePolicy: 'max-bundle',
       rtcpMuxPolicy: 'require',
     });
+    this.#everConnected = false;
+    clearTimeout(this.#relayTimer);
+    if (relayOnly) {
+      this.#relayTimer = setTimeout(() => {
+        this.#enqueue(async () => {
+          if (this.#pc !== pc || this.#everConnected) return;
+          // Never came up through the relay: go direct for the rest of this call.
+          console.warn('[earshot] no connection through the relay; going direct');
+          this.#relayFailed = true;
+          if (this.#isOfferer()) await this.#startSession();
+          else this.#sendSignal({ kind: 'request-offer', session: null });
+        });
+      }, RELAY_FALLBACK_MS);
+    }
     const stream = new MediaStream();
     this.#remoteStream = stream;
 
@@ -469,6 +499,7 @@ export class CallEngine extends EventTarget {
     if (pc !== this.#pc) return;
     const state = pc.iceConnectionState;
     if (state === 'connected' || state === 'completed') {
+      this.#everConnected = true;
       clearTimeout(this.#recoveryTimer);
       this.#recoveryTimer = null;
       this.#setStatus('connected');

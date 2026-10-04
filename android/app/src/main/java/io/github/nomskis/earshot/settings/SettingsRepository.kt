@@ -48,6 +48,7 @@ class SettingsRepository(private val context: Context) {
         // so a stored "on" didn't mean anyone chose it.
         val mobileDataBackup = booleanPreferencesKey("mobile_data_backup_opt_in")
         val turboDuringCalls = booleanPreferencesKey("turbo_during_calls")
+        val relayRoute = booleanPreferencesKey("relay_route")
         val backgroundGuideDone = booleanPreferencesKey("background_guide_done")
         val callSetupDone = booleanPreferencesKey("call_setup_done")
         val gameModeHintDone = booleanPreferencesKey("game_mode_hint_done")
@@ -152,6 +153,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.lipSync] = next.lipSync
             prefs[Keys.mobileDataBackup] = next.mobileDataBackup
             prefs[Keys.turboDuringCalls] = next.turboDuringCalls
+            prefs[Keys.relayRoute] = next.relayRoute
             prefs[Keys.backgroundGuideDone] = next.backgroundGuideDone
             prefs[Keys.callSetupDone] = next.callSetupDone
             prefs[Keys.gameModeHintDone] = next.gameModeHintDone
@@ -199,6 +201,7 @@ class SettingsRepository(private val context: Context) {
             lipSync = this[Keys.lipSync] ?: defaults.lipSync,
             mobileDataBackup = this[Keys.mobileDataBackup] ?: defaults.mobileDataBackup,
             turboDuringCalls = this[Keys.turboDuringCalls] ?: defaults.turboDuringCalls,
+            relayRoute = this[Keys.relayRoute] ?: defaults.relayRoute,
             backgroundGuideDone = this[Keys.backgroundGuideDone] ?: defaults.backgroundGuideDone,
             callSetupDone = this[Keys.callSetupDone] ?: defaults.callSetupDone,
             gameModeHintDone = this[Keys.gameModeHintDone] ?: defaults.gameModeHintDone,

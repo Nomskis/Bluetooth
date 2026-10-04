@@ -208,6 +208,26 @@ against the WebRTC source the app ships with
   leaner, or video pause, to fit. Tap the delay readout for both directions
   (good, fair or poor, with the numbers) and the packet length in use.
 
+## Calls abroad: through the relay's network
+
+A direct path between two countries takes whatever route the two internet
+providers' transit gives it, and on a busy evening that middle stretch can
+lose or delay packets on its own. **Route calls through the relay** (Settings,
+"Calls abroad", off by default) sends the call through the server's TURN relay
+at both ends instead. Cloudflare's relay is anycast: each phone reaches the
+Cloudflare city nearest to it, and when both ends relay through it, Cloudflare
+can carry the stretch between those cities over its own backbone
+([Cloudflare's TURN docs](https://developers.cloudflare.com/calls/turn/overview/)).
+
+Whether that beats the direct route depends on the providers and the hour, so
+it's a switch to try, with the delay readout ("through a relay", loss each
+way) to compare. Either side turning it on is enough: the app lists
+`relay-route` in its join message and the other side, app or browser, relays
+too when its server gave it a relay (`iceTransportPolicy` `relay`,
+[`call/RelayRoute.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/RelayRoute.kt)).
+A connection that hasn't come up through the relay within 12 seconds goes
+direct for the rest of the call, so a relay that's down never stops a call.
+
 ## Sharing the radio with Bluetooth
 
 Phones run Wi-Fi and Bluetooth on one combo chip, and on 2.4 GHz they take

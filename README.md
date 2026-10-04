@@ -70,6 +70,11 @@ this list works with every pair of classic Bluetooth earbuds:
   really leaves, the voice gets leaner before it would break up, and if even
   that's too little the video pauses, the other side is told why, and it
   comes back by itself.
+- **Calls abroad through the relay's network.** An opt-in switch sends the
+  call through your server's TURN relay at both ends; with Cloudflare's
+  relay, the stretch between the two countries can run over Cloudflare's own
+  network instead of the busy public internet. Try it and compare; if the
+  relay doesn't connect, the call goes direct by itself.
 - **Lips in time with the voice.** Their video is held back by exactly the
   Bluetooth delay that WebRTC doesn't know about, using your measurement when
   there is one.
