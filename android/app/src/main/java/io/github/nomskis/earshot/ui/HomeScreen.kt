@@ -62,6 +62,7 @@ import io.github.nomskis.earshot.call.RoomCodes
 import io.github.nomskis.earshot.calls.CallBackRequest
 import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.calls.InboxClient
+import io.github.nomskis.earshot.messages.Conversation
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.AudioMode
 import io.github.nomskis.earshot.settings.InterruptedCall
@@ -94,6 +95,9 @@ fun HomeScreen(
     /** A newer build of the app, and how installing it is going. */
     update: AppUpdater.State = AppUpdater.State.Idle,
     onUpdate: () -> Unit = {},
+    /** Conversations with contacts, by address. */
+    conversations: Map<String, Conversation> = emptyMap(),
+    onOpenConversation: ((Contact) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
@@ -269,7 +273,15 @@ fun HomeScreen(
                 )
             }
 
-            if (serverBase != null) ContactsCard(contacts, onCall = ::callContact, onRemove = onRemoveContact)
+            if (serverBase != null) {
+                ContactsCard(
+                    contacts,
+                    onCall = ::callContact,
+                    onRemove = onRemoveContact,
+                    conversations = conversations,
+                    onOpen = onOpenConversation,
+                )
+            }
 
             // Like a contact's two buttons: a video call or a voice call, either can switch later.
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -230,6 +230,7 @@ class CallManager(
         withVideo = withVideo,
         radioPlan = plan.radioPlan,
         me = plan.me,
+        onChat = { address, message -> onCallChat(address, message) },
         onContact = { contact -> scope.launch { settings.saveContact(contact) } },
         outgoing = outgoing,
         contactName = contactName,
@@ -240,6 +241,9 @@ class CallManager(
         ringing = ringing,
         answersRing = answersRing,
     )
+
+    /** A chat message in a call with a contact: kept in the conversation with them too. */
+    var onCallChat: (address: String, message: ChatMessage) -> Unit = { _, _ -> }
 
     /** The contact the current call is ringing, while that ring is still going. */
     fun ringingOut(): RingingOut? {

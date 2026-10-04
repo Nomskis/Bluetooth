@@ -129,6 +129,12 @@ export function createEarshotServer(config, { log = console, fetchImpl = globalT
         case 'ring-answer':
           inbox.answer(conn, msg);
           break;
+        case 'message':
+          inbox.message(conn, msg);
+          break;
+        case 'message-ack':
+          inbox.messageAck(conn, msg);
+          break;
       }
     });
 

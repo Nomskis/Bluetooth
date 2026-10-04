@@ -83,6 +83,8 @@ class CallSession(
     radioPlan: RadioPlan = RadioPlan.NONE,
     /** Our contact card (name and inbox address), sent to the other side so they can call us directly. */
     private val me: Chat.Frame.Contact? = null,
+    /** A chat message in this call, sent or received, with the contact at this address. */
+    private val onChat: (address: String, message: ChatMessage) -> Unit = { _, _ -> },
     /** Their contact card arrived; save it. Called on the call thread. */
     private val onContact: (Contact) -> Unit = {},
     /** Set when this call rings a contact (instead of waiting for someone with the link). */
@@ -545,11 +547,13 @@ class CallSession(
                     return
                 }
                 val incoming = chat.receive(event.text)
+                // Kept in the conversation with them too, when they're a contact.
+                incoming?.let { message -> remoteAddress?.let { onChat(it, message) } }
                 publishChat()
                 if (incoming != null) _state.update { it.copy(lastIncomingChat = incoming) }
             }
             is Event.SendChat -> {
-                chat.send(event.text)
+                chat.send(event.text)?.let { message -> remoteAddress?.let { onChat(it, message) } }
                 publishChat()
             }
             is Event.SetEchoCancellation -> setEchoCancellationNow(event.on)
@@ -979,8 +983,10 @@ class CallSession(
                 }
             }
             ServerMessage.Pong -> Unit
-            // Incoming rings go to the inbox connection, not to calls.
-            is ServerMessage.Listening, is ServerMessage.Incoming, is ServerMessage.RingCancelled -> Unit
+            // Incoming rings and chat go to the inbox connection, not to calls.
+            is ServerMessage.Listening, is ServerMessage.Incoming, is ServerMessage.RingCancelled,
+            is ServerMessage.Message, is ServerMessage.MessageStatus,
+            -> Unit
             // An answer while their early connection is here only says "answered, connecting": they may
             // be answering on a fresh connection (voice only, another device). That connection's own
             // media-state, or its voice arriving, lifts the hold (theyAnswered).

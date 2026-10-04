@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -188,6 +189,28 @@ class ScreensSmokeTest {
         box.performTextInput("Smith")
         compose.onNodeWithText("Sam Smith").assertIsDisplayed()
         assertEquals("Sam Smith", stored.displayName)
+    }
+
+    @Test
+    fun aConversationShowsTheMessagesAndSends() {
+        val sam = io.github.nomskis.earshot.calls.Contact("Sam", "c2FtLWFkZHJlc3MtMDAwMD")
+        val conversation = io.github.nomskis.earshot.messages.Conversation(sam.address)
+            .received("m1", "Landed!", 1_000)
+            .sending("m2", "Welcome home", 2_000)
+        val sent = mutableListOf<String>()
+        var called: Boolean? = null
+        compose.setContent {
+            EarshotTheme {
+                ConversationScreen(sam, conversation, onSend = { sent += it }, onCall = { called = it }, onBack = {})
+            }
+        }
+        compose.onNodeWithText("Landed!").assertIsDisplayed()
+        compose.onNodeWithText("Welcome home").assertIsDisplayed()
+        compose.onNodeWithText("Message").performTextInput("See you soon")
+        compose.onNodeWithContentDescription("Send").performClick()
+        compose.onNodeWithContentDescription("Video call Sam").performClick()
+        assertEquals(listOf("See you soon"), sent)
+        assertEquals(true, called)
     }
 
     @Test

@@ -39,6 +39,8 @@ import io.github.nomskis.earshot.turbo.CodecStatus
 import io.github.nomskis.earshot.turbo.TurboBoost
 import io.github.nomskis.earshot.turbo.TurboClient
 import io.github.nomskis.earshot.update.AppUpdater
+import io.github.nomskis.earshot.messages.Conversation
+import io.github.nomskis.earshot.messages.MessageNotifications
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,6 +86,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         graph.routeMonitor.route.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), graph.routeMonitor.snapshot())
 
     /** A room handed to us by an earshot://join/<room> link. */
+    /** Conversations with contacts, by address. */
+    val conversations: StateFlow<Map<String, Conversation>> = graph.messenger.conversations
+
+    private val _openConversation = MutableStateFlow<String?>(null)
+    /** The contact whose conversation is on screen (their address), or null. */
+    val openConversation: StateFlow<String?> = _openConversation.asStateFlow()
+
+    fun openConversation(address: String?) {
+        _openConversation.value = address
+        graph.messenger.open = address
+        address?.let { MessageNotifications.cancel(getApplication(), it) }
+    }
+
+    fun sendMessage(address: String, text: String) = graph.messenger.send(address, text)
+
+    /** A call button in a conversation: back home, which rings them (asking for permissions first). */
+    fun callFromConversation(contact: Contact, video: Boolean) {
+        openConversation(null)
+        graph.callBack.value = CallBackRequest(contact, video, System.currentTimeMillis())
+    }
+
     /** A newer build of the app, and how installing it is going. */
     val update: StateFlow<AppUpdater.State> = graph.updater.state
 

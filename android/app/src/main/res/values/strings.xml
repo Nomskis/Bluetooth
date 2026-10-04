@@ -17,6 +17,7 @@
     <string name="channel_incoming_calls">Incoming calls</string>
     <string name="channel_missed_calls">Missed calls</string>
     <string name="channel_ready_for_calls">Ready for calls</string>
+    <string name="channel_messages">Messages</string>
     <string name="ready_for_calls">Ready for calls</string>
     <string name="incoming_video_call">Earshot video call</string>
     <string name="incoming_voice_call">Earshot voice call</string>

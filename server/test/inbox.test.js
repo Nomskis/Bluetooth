@@ -194,6 +194,99 @@ describe('inbox', () => {
   });
 });
 
+describe('chat messages', () => {
+  function chat(to, extra = {}) {
+    return { type: 'message', to, id: 'msg-00000001', text: 'Landed!', name: 'Salma', ...extra };
+  }
+
+  it('reach every device, from the address the sender listens on', () => {
+    const inbox = new Inbox({ timers: fakeTimers(), now: () => 1000 });
+    const phone = conn('sam phone');
+    const tablet = conn('sam tablet');
+    const salma = conn('salma');
+    inbox.listen(phone, SAM_KEY);
+    inbox.listen(tablet, SAM_KEY);
+    inbox.listen(salma, SALMA_KEY);
+    inbox.message(salma, chat(SAM, { name: 'Salma' }));
+    for (const device of [phone, tablet]) {
+      assert.deepEqual(device.last('message'), {
+        type: 'message',
+        id: 'msg-00000001',
+        from: { address: SALMA, name: 'Salma' },
+        text: 'Landed!',
+        sentAt: 1000,
+      });
+    }
+    assert.deepEqual(salma.last('message-status'), { type: 'message-status', id: 'msg-00000001', to: SAM, status: 'sent' });
+  });
+
+  it('wait for a phone that is offline, and arrive when it listens', () => {
+    const inbox = new Inbox({ timers: fakeTimers() });
+    const salma = conn('salma');
+    inbox.listen(salma, SALMA_KEY);
+    inbox.message(salma, chat(SAM));
+    assert.equal(salma.last('message-status').status, 'queued');
+    // Sent again after a reconnect: still one message waiting.
+    inbox.message(salma, chat(SAM));
+    assert.equal(inbox.waitingMessages(SAM), 1);
+    const sam = conn('sam');
+    inbox.listen(sam, SAM_KEY);
+    assert.equal(sam.last('message').text, 'Landed!');
+  });
+
+  it('stop waiting once a device has them, and the sender hears they were delivered', () => {
+    const inbox = new Inbox({ timers: fakeTimers() });
+    const salma = conn('salma');
+    const sam = conn('sam');
+    inbox.listen(salma, SALMA_KEY);
+    inbox.message(salma, chat(SAM));
+    inbox.listen(sam, SAM_KEY);
+    inbox.messageAck(sam, { type: 'message-ack', to: SALMA, id: 'msg-00000001' });
+    assert.equal(inbox.waitingMessages(SAM), 0);
+    assert.deepEqual(salma.last('message-status'), { type: 'message-status', id: 'msg-00000001', to: SAM, status: 'delivered' });
+    // A device coming online later doesn't get it again.
+    const tablet = conn('sam tablet');
+    inbox.listen(tablet, SAM_KEY);
+    assert.equal(tablet.last('message'), undefined);
+  });
+
+  it('only from a phone that listens on its own inbox, and not as a flood', () => {
+    const inbox = new Inbox({ timers: fakeTimers(), now: () => 5000 });
+    const stranger = conn('stranger');
+    inbox.message(stranger, chat(SAM));
+    assert.equal(stranger.last('error').code, 'not-listening');
+    const salma = conn('salma');
+    inbox.listen(salma, SALMA_KEY);
+    for (let i = 0; i < 30; i++) inbox.message(salma, chat(SAM, { id: `msg-${String(i).padStart(8, '0')}` }));
+    assert.equal(salma.last('error'), undefined);
+    inbox.message(salma, chat(SAM, { id: 'msg-overflow' }));
+    assert.equal(salma.last('error').code, 'rate-limited');
+  });
+
+  it('are dropped after two weeks', () => {
+    let now = 0;
+    const inbox = new Inbox({ timers: fakeTimers(), now: () => now });
+    const salma = conn('salma');
+    inbox.listen(salma, SALMA_KEY);
+    inbox.message(salma, chat(SAM));
+    now = 15 * 24 * 60 * 60 * 1000;
+    assert.equal(inbox.waitingMessages(SAM), 0);
+  });
+
+  it('parse and validate', () => {
+    assert.deepEqual(parseClientMessage(JSON.stringify(chat(SAM))), { type: 'message', to: SAM, id: 'msg-00000001', text: 'Landed!', name: 'Salma' });
+    assert.throws(() => parseClientMessage(JSON.stringify(chat(SAM, { text: '   ' }))), ProtocolError);
+    assert.throws(() => parseClientMessage(JSON.stringify(chat(SAM, { text: 'x'.repeat(4001) }))), ProtocolError);
+    assert.throws(() => parseClientMessage(JSON.stringify(chat('nope'))), ProtocolError);
+    assert.throws(() => parseClientMessage(JSON.stringify(chat(SAM, { id: 'short' }))), ProtocolError);
+    assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'message-ack', to: SALMA, id: 'msg-00000001' })), {
+      type: 'message-ack',
+      to: SALMA,
+      id: 'msg-00000001',
+    });
+  });
+});
+
 describe('ring messages', () => {
   it('parse and validate', () => {
     assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'listen', inbox: SAM_KEY })), { type: 'listen', inbox: SAM_KEY });

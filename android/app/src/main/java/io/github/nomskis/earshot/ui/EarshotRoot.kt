@@ -51,6 +51,8 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
         onStopOrDispose { }
     }
     val update by viewModel.update.collectAsStateWithLifecycle()
+    val conversations by viewModel.conversations.collectAsStateWithLifecycle()
+    val openConversation by viewModel.openConversation.collectAsStateWithLifecycle()
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         val current = settings ?: return@Surface Box(Modifier.fillMaxSize())
@@ -68,6 +70,16 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 onFlipSaved = { on -> viewModel.updateSettings { it.copy(flip = on) } },
                 onLeaveScreen = onLeaveCallScreen,
             )
+            openConversation != null && contacts.any { it.address == openConversation } -> {
+                val contact = contacts.first { it.address == openConversation }
+                ConversationScreen(
+                    contact = contact,
+                    conversation = conversations[contact.address],
+                    onSend = { text -> viewModel.sendMessage(contact.address, text) },
+                    onCall = { video -> viewModel.callFromConversation(contact, video) },
+                    onBack = { viewModel.openConversation(null) },
+                )
+            }
             screen == Screen.SETTINGS -> SettingsScreen(
                 settings = current,
                 serverCheck = serverCheck,
@@ -144,6 +156,8 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                 inboxStatus = inboxStatus,
                 update = update,
                 onUpdate = viewModel::installUpdate,
+                conversations = conversations,
+                onOpenConversation = { contact -> viewModel.openConversation(contact.address) },
             )
         }
     }

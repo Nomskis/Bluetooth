@@ -144,6 +144,29 @@ with the lower address ignores the other ring; the other phone answers the
 winning ring with `accepted: true`, hangs up its own call (which cancels its
 ring) and joins the winner's room.
 
+## Messages between contacts
+
+Contacts can write to each other outside calls, over the same inbox
+connection that rings the phone. The sender has to be listening on its own
+inbox, so the server knows (rather than trusts) who a message is from.
+
+| Direction | `type` | Fields | Meaning |
+| --- | --- | --- | --- |
+| client → server | `message` | `to`, `id`, `text`, `name?` | A message to the inbox address `to`. `id`: 8 to 64 URL-safe characters, made by the sender; `text`: 1 to 4000 characters. |
+| server → client | `message` | `id`, `from: { address, name }`, `text`, `sentAt` | A message for us. `from.address` is the sender's proven address. |
+| client → server | `message-ack` | `to`, `id` | We have message `id` from `to`. Sent for every copy, repeats included. |
+| server → client | `message-status` | `id`, `to`, `status` | How our message to `to` is doing: `sent` (a device of theirs is online), `queued` (none is; it waits), `delivered` (one of their devices has it). |
+
+The server delivers a message to every device listening on `to`, and holds
+it in memory until one of them acks it (at most 14 days, 500 per inbox);
+a device that starts listening gets the waiting ones first. It keeps them in
+memory only: the sending app keeps every message it hasn't heard `delivered`
+for and sends it again each time its inbox is listening again, so a server
+restart loses nothing. A message sent twice is held once (same sender and
+`id`), and the receiving app keeps it once. More than 30 messages in 10
+seconds from one connection gets `rate-limited`; sending without listening
+gets `not-listening`.
+
 ## Reconnecting
 
 If a socket closes without `leave`, the server keeps the peer's slot for

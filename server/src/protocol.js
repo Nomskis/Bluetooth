@@ -76,6 +76,17 @@ function cleanClient(client) {
 /** Why a call wasn't taken: turned down, or already on another call. */
 const RING_DECLINE_REASONS = new Set(['declined', 'busy']);
 
+/** Longest chat message, in UTF-16 units (the clients' limit too). */
+export const MAX_MESSAGE_TEXT = 4000;
+const MESSAGE_ID_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
+
+function messageIdOf(msg) {
+  if (typeof msg.id !== 'string' || !MESSAGE_ID_PATTERN.test(msg.id)) {
+    throw new ProtocolError(ErrorCode.BAD_REQUEST, 'id must be 8-64 URL-safe characters');
+  }
+  return msg.id;
+}
+
 function ringIdOf(msg) {
   if (typeof msg.ringId !== 'string' || !PEER_ID_PATTERN.test(msg.ringId)) {
     throw new ProtocolError(ErrorCode.BAD_REQUEST, 'ringId must be 8-64 URL-safe characters');
@@ -154,6 +165,22 @@ export function parseClientMessage(raw) {
       }
       const reason = msg.accepted ? undefined : RING_DECLINE_REASONS.has(msg.reason) ? msg.reason : 'declined';
       return { type: 'ring-answer', ringId: ringIdOf(msg), accepted: msg.accepted, reason };
+    }
+    case 'message': {
+      // A chat message to someone's inbox, sent over our own listening inbox connection (docs/protocol.md).
+      if (typeof msg.to !== 'string' || !INBOX_ADDRESS_PATTERN.test(msg.to)) {
+        throw new ProtocolError(ErrorCode.BAD_REQUEST, 'message needs a valid "to" inbox address');
+      }
+      if (typeof msg.text !== 'string' || msg.text.trim().length === 0 || msg.text.length > MAX_MESSAGE_TEXT) {
+        throw new ProtocolError(ErrorCode.BAD_REQUEST, `message text must be 1-${MAX_MESSAGE_TEXT} characters`);
+      }
+      return { type: 'message', to: msg.to, id: messageIdOf(msg), text: msg.text, name: cleanText(msg.name, MAX_NAME_LENGTH) };
+    }
+    case 'message-ack': {
+      if (typeof msg.to !== 'string' || !INBOX_ADDRESS_PATTERN.test(msg.to)) {
+        throw new ProtocolError(ErrorCode.BAD_REQUEST, 'message-ack needs a valid "to" inbox address');
+      }
+      return { type: 'message-ack', to: msg.to, id: messageIdOf(msg) };
     }
     case 'leave':
       return { type: 'leave' };
