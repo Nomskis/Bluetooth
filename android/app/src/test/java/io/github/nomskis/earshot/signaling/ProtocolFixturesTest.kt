@@ -81,6 +81,7 @@ class ProtocolFixturesTest {
         assertEquals("calm-otter-4821", incoming.room)
         assertEquals(Caller("Salma", "1D8ANuTJStR4AyHh0kwUw6"), incoming.from)
         assertTrue(incoming.video)
+        assertTrue(incoming.preconnect)
         val status = decodeServerMessage(File(fixtures, "server/ring-status.json").readText()) as ServerMessage.RingStatus
         assertEquals("ringing", status.status)
         val cancelled = decodeServerMessage(File(fixtures, "server/ring-cancelled.json").readText()) as ServerMessage.RingCancelled

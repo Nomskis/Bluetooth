@@ -97,6 +97,14 @@ class CallSession(
     private val network: String? = null,
     /** At the end: what this call learned, for the next one ([LinkMemory]). Called on the call thread. */
     private val onLearned: (LinkMemory) -> Unit = {},
+    /**
+     * This phone is still ringing: join and connect now, but send and play nothing and leave the
+     * audio mode, the music and the camera alone until [answer] ([Capabilities.RINGING]). The call
+     * is then live the moment it's answered, instead of only starting to connect.
+     */
+    ringing: Boolean = false,
+    /** Joins the room a ring invited us to, where another device of ours may still be leaving. */
+    private val answersRing: Boolean = false,
 ) {
     private val appContext = context.applicationContext
     private val executor = Executors.newSingleThreadExecutor { Thread(it, "EarshotCall") }
@@ -182,6 +190,19 @@ class CallSession(
     private var ringRetryJob: Job? = null
     private var gaveUpJob: Job? = null
 
+    /** Still ringing here: connected ahead of the answer, sending and playing nothing. */
+    private var ringing = ringing
+    /** They joined while their phone still rings ([Capabilities.RINGING]): we keep ringing them and send nothing. */
+    private var remoteRinging = false
+    /** Nothing goes either way until the ringing phone is answered. */
+    private val holding: Boolean get() = ringing || remoteRinging
+    /** The connection's own phase; until their phone is answered the call shows WAITING. */
+    private var linkPhase = CallPhase.CONNECTING
+    private lateinit var join: ClientMessage.Join
+    private var roomFullRetries = 0
+    /** Their contact card, kept until the call that's ringing here is answered: only then is it a call with them. */
+    private var pendingCard: Chat.Frame.Contact? = null
+
     /** One RTCPeerConnection and everything tied to it. */
     private class Link(
         val pc: PeerConnection,
@@ -252,6 +273,8 @@ class CallSession(
         data object RingTimeout : Event
         data object RingRetry : Event
         data object GiveUp : Event
+        data object Answer : Event
+        data object Rejoin : Event
         data object HangUp : Event
     }
 
@@ -300,6 +323,8 @@ class CallSession(
     fun setOutputHeld(held: Boolean) = post(Event.SetOutputHeld(held))
     /** How far to lighten outgoing video for the phone's temperature; null = not at all. */
     fun setThermal(plan: ThermalPlan?) = post(Event.SetThermal(plan))
+    /** A call that was ringing here ([ringing]) was answered: start the sound and camera over the connection made meanwhile. */
+    fun answer() = post(Event.Answer)
     fun hangUp() = post(Event.HangUp)
 
     private fun post(event: Event) {
@@ -327,15 +352,9 @@ class CallSession(
                 radioNote = RadioPlan.describe(radioPlan, null),
             )
         }
-        audioController.begin(profile)
-        _state.update { it.copy(earbudMicAvailable = profile.mode == AudioMode.HIFI && audioController.earbudMicAvailable()) }
-        // Ducking only makes sense when the call plays next to music, i.e. in Hi-Fi mode.
-        if (settings.smartDuck && profile.mode == AudioMode.HIFI) {
-            smartDuck = SmartDuck(appContext) { post(Event.SmartDuckUnsupported) }
-        }
-        engine.startCamera()
+        if (!ringing) beginLocalMedia()
 
-        val join = ClientMessage.Join(
+        join = ClientMessage.Join(
             room = room,
             peerId = peerId,
             name = settings.displayName,
@@ -347,6 +366,7 @@ class CallSession(
                     Chat.CAPABILITY,
                     Capabilities.RENEGOTIATE,
                     Capabilities.RELAY_ROUTE.takeIf { settings.relayRoute },
+                    Capabilities.RINGING.takeIf { ringing },
                 ),
             ),
         )
@@ -354,6 +374,17 @@ class CallSession(
         scope.launch { for (message in signaling.incoming) post(Event.Server(message)) }
         scope.launch { signaling.state.collect { post(Event.SignalingStateChanged(it)) } }
         signaling.connect()
+    }
+
+    /** The audio mode, ducking and the camera: from the start, or once a call that rang here is answered. */
+    private fun beginLocalMedia() {
+        audioController.begin(profile)
+        _state.update { it.copy(earbudMicAvailable = profile.mode == AudioMode.HIFI && audioController.earbudMicAvailable()) }
+        // Ducking only makes sense when the call plays next to music, i.e. in Hi-Fi mode.
+        if (settings.smartDuck && profile.mode == AudioMode.HIFI) {
+            smartDuck = SmartDuck(appContext) { post(Event.SmartDuckUnsupported) }
+        }
+        engine.startCamera()
     }
 
     private fun finish(phase: CallPhase, error: String? = null) {
@@ -480,9 +511,7 @@ class CallSession(
             is Event.ChatIncoming -> if (event.link === link) {
                 val card = Chat.decode(event.text) as? Chat.Frame.Contact
                 if (card != null) {
-                    val name = card.name.ifBlank { remote?.name.orEmpty() }
-                    remoteAddress = card.address
-                    onContact(Contact(name, card.address, System.currentTimeMillis()))
+                    if (ringing) pendingCard = card else takeCard(card)
                     return
                 }
                 val incoming = chat.receive(event.text)
@@ -513,11 +542,20 @@ class CallSession(
             Event.RingRetry -> if (remote == null) ringContact()
             // The reason goes to the home screen, which is where you land.
             Event.GiveUp -> finish(CallPhase.ENDED, outgoing?.outcome)
+            Event.Answer -> answerNow()
+            // Only while connected; a reconnect joins by itself.
+            Event.Rejoin -> if (_state.value.signalingOnline) signaling.send(join)
             Event.HangUp -> {
                 outgoing?.hangUp()?.let(signaling::send)
                 finish(CallPhase.ENDED)
             }
         }
+    }
+
+    private fun takeCard(card: Chat.Frame.Contact) {
+        val name = card.name.ifBlank { remote?.name.orEmpty() }
+        remoteAddress = card.address
+        onContact(Contact(name, card.address, System.currentTimeMillis()))
     }
 
     /** Hi-Fi only: the earbuds' mic for a while (call quality), then back to the music link. */
@@ -570,6 +608,53 @@ class CallSession(
         old.dispose()
     }
 
+    // --- connecting while it rings ------------------------------------------------------
+
+    /** Answered here: what the call held back starts now, over the connection made while it rang. */
+    private fun answerNow() {
+        if (!ringing) return
+        ringing = false
+        Log.i(TAG, if (link?.isHealthy == true) "Answered over a connection that's already up" else "Answered; still connecting")
+        beginLocalMedia()
+        link?.let(::applyHold)
+        // Tells them it's answered, if the server's word (ring-answered) hasn't already.
+        sendMediaState()
+        pendingCard?.let(::takeCard)
+        pendingCard = null
+    }
+
+    /**
+     * While a phone rings, the connection is made but carries nothing: no microphone (WebRTC
+     * doesn't even start it), nothing played on the ringing phone, and no video. WebRTC keeps
+     * the first two for all of this call's connections, so each new one sets them too.
+     */
+    private fun applyHold(l: Link) {
+        l.pc.setAudioRecording(!holding)
+        l.pc.setAudioPlayout(!ringing)
+        applyVideoCap(l)
+    }
+
+    private fun stillRinging(peer: PeerInfo): Boolean = outgoing?.stillRinging(peer.client.capabilities) == true
+
+    /** They're in the room: unless their phone is still ringing, the ring is over and it's a call. */
+    private fun theyJoined() {
+        if (outgoing == null || remoteRinging) return
+        outgoing.onJoined()
+        onOutgoingChanged()
+    }
+
+    /** Their phone was answered: the call starts over the connection made while it rang. */
+    private fun theyAnswered() {
+        if (!remoteRinging) return
+        remoteRinging = false
+        Log.i(TAG, if (link?.isHealthy == true) "They answered; the connection is already up" else "They answered; still connecting")
+        theyJoined()
+        setRemote(remote)
+        setPhase(linkPhase)
+        _state.update { it.copy(hasRemoteVideo = link?.remoteVideoTrack != null) }
+        link?.let(::applyHold)
+    }
+
     // --- sharing the radio with Bluetooth ----------------------------------------------
 
     private suspend fun onRadioPlan(plan: RadioPlan) {
@@ -619,7 +704,7 @@ class CallSession(
             l.budget.videoCapBps?.let { it / 1000 },
             airtime.capKbps,
         ).minOrNull()
-        engine.capVideoSend(l.pc, kbps, thermal?.scaleDownBy, thermal?.maxFps, active = !l.budget.videoPaused)
+        engine.capVideoSend(l.pc, kbps, thermal?.scaleDownBy, thermal?.maxFps, active = !l.budget.videoPaused && !holding)
     }
 
     private fun applyPacketPriority(l: Link) {
@@ -643,6 +728,17 @@ class CallSession(
 
     private fun onStats(l: Link, report: RTCStatsReport) {
         val entries = report.statsMap.mapValues { (_, s) -> CallStats.Entry(s.type, s.members) }
+        // While it rings nothing flows yet: no rates, estimates or quality to go by.
+        if (!holding) followMedia(l, entries)
+        steer(l, entries)
+        val path = RadioPlan.pathFor(CallStats.selectedNetworkType(entries)) ?: return
+        if (path == _state.value.callPath) return
+        Log.i(TAG, "Media now flows over $path")
+        _state.update { it.copy(callPath = path, radioNote = radioNote(radioPlan, path)) }
+        applyVideoCap(l)
+    }
+
+    private fun followMedia(l: Link, entries: Map<String, CallStats.Entry>) {
         followMediaBudget(l, entries)
         if (l.isHealthy) CallStats.availableOutgoingBitrate(entries)?.let(learner::addEstimate)
         followTheirLink(l, SystemClock.elapsedRealtime())
@@ -657,12 +753,6 @@ class CallSession(
         // Earbuds can connect mid-call; keep the earbud-mic button honest.
         val micAvailable = profile.mode == AudioMode.HIFI && (_state.value.earbudMic || audioController.earbudMicAvailable())
         _state.update { it.copy(delay = delay, earbudMicAvailable = micAvailable) }
-        steer(l, entries)
-        val path = RadioPlan.pathFor(CallStats.selectedNetworkType(entries)) ?: return
-        if (path == _state.value.callPath) return
-        Log.i(TAG, "Media now flows over $path")
-        _state.update { it.copy(callPath = path, radioNote = radioNote(radioPlan, path)) }
-        applyVideoCap(l)
     }
 
     /**
@@ -803,7 +893,16 @@ class CallSession(
             is ServerMessage.PeerLeft -> onPeerLeft(message.peerId)
             is ServerMessage.Signal -> onSignal(message.from, message.data)
             is ServerMessage.Error -> when (message.code) {
-                ErrorCodes.ROOM_FULL -> finish(CallPhase.FAILED, "This room already has two people in it.")
+                ErrorCodes.ROOM_FULL -> if (answersRing && roomFullRetries < ROOM_FULL_RETRIES) {
+                    // Another device of ours, connected while it rang, may still be on its way out.
+                    roomFullRetries++
+                    scope.launch {
+                        delay(ROOM_FULL_RETRY_MS)
+                        post(Event.Rejoin)
+                    }
+                } else {
+                    finish(CallPhase.FAILED, "This room already has two people in it.")
+                }
                 ErrorCodes.BAD_ROOM -> finish(CallPhase.FAILED, "That room code is not valid.")
                 else -> {
                     Log.w(TAG, "Server error ${message.code}: ${message.message}")
@@ -814,7 +913,10 @@ class CallSession(
             ServerMessage.Pong -> Unit
             // Incoming rings go to the inbox connection, not to calls.
             is ServerMessage.Listening, is ServerMessage.Incoming, is ServerMessage.RingCancelled -> Unit
-            is ServerMessage.RingStatus, is ServerMessage.RingAnswered -> if (outgoing?.onMessage(message) == true) onOutgoingChanged()
+            is ServerMessage.RingStatus, is ServerMessage.RingAnswered -> if (outgoing?.onMessage(message) == true) {
+                onOutgoingChanged()
+                if (outgoing?.status == OutgoingRing.Status.ANSWERED) theyAnswered()
+            }
         }
     }
 
@@ -852,12 +954,10 @@ class CallSession(
             return
         }
         if (remote != null && remote?.peerId != peer.peerId) closeLink()
+        remoteRinging = stillRinging(peer)
         setRemote(peer)
         // They arrived while we were reconnecting.
-        if (outgoing != null) {
-            outgoing.onJoined()
-            onOutgoingChanged()
-        }
+        theyJoined()
         ensureNegotiated()
     }
 
@@ -865,11 +965,9 @@ class CallSession(
         if (remote?.peerId == peer.peerId && remote?.seq == peer.seq) return
         // A fresh join always means a fresh connection, even from a known peerId.
         closeLink()
+        remoteRinging = stillRinging(peer)
         setRemote(peer)
-        if (outgoing != null) {
-            outgoing.onJoined()
-            onOutgoingChanged()
-        }
+        theyJoined()
         setPhase(CallPhase.NEGOTIATING)
         if (isOfferer()) startSession()
     }
@@ -888,20 +986,27 @@ class CallSession(
             is SignalData.Answer -> onAnswer(data)
             is SignalData.Candidate -> onRemoteCandidate(data)
             is SignalData.RequestOffer -> onRequestOffer(data)
-            is SignalData.MediaState -> _state.update {
-                it.copy(
-                    remoteMedia = RemoteMedia(
-                        data.micMuted,
-                        data.cameraOff,
-                        data.audioMode,
-                        inPocket = data.inPocket == true,
-                        weakConnection = data.weakConnection == true,
-                        network = data.network,
-                        uplink = data.uplink,
-                        radioShared = data.radioShared == true,
-                    ),
-                )
+            is SignalData.MediaState -> {
+                if (data.ringing != true) theyAnswered()
+                updateRemoteMedia(data)
             }
+        }
+    }
+
+    private fun updateRemoteMedia(data: SignalData.MediaState) {
+        _state.update {
+            it.copy(
+                remoteMedia = RemoteMedia(
+                    data.micMuted,
+                    data.cameraOff,
+                    data.audioMode,
+                    inPocket = data.inPocket == true,
+                    weakConnection = data.weakConnection == true,
+                    network = data.network,
+                    uplink = data.uplink,
+                    radioShared = data.radioShared == true,
+                ),
+            )
         }
     }
 
@@ -1086,7 +1191,8 @@ class CallSession(
             is VideoTrack -> {
                 l.remoteVideoTrack = track
                 track.addSink(lipSyncSink)
-                _state.update { it.copy(hasRemoteVideo = true) }
+                // Nothing to show before their phone is answered: the screen keeps saying it's ringing.
+                _state.update { it.copy(hasRemoteVideo = !remoteRinging) }
             }
             is AudioTrack -> {
                 l.remoteAudio = track
@@ -1194,6 +1300,9 @@ class CallSession(
             ?: error("WebRTC could not create a peer connection")
         // Start the bandwidth estimate where this route has been, not at WebRTC's blind 300 kbps.
         startBitrateBps?.let { if (!pc.setBitrate(null, it, null)) Log.w(TAG, "Could not set the start bitrate") }
+        // Before any audio stream exists, so a ringing call never starts the microphone ([applyHold]).
+        pc.setAudioRecording(!holding)
+        pc.setAudioPlayout(!ringing)
         val tracks = engine.createSendTracks()
         tracks.audio.setEnabled(!_state.value.micMuted)
         tracks.video?.setEnabled(!_state.value.sendsNoVideo)
@@ -1313,6 +1422,7 @@ class CallSession(
                 network = linkReport.network,
                 uplink = linkReport.uplink,
                 radioShared = linkReport.radioShared.takeIf { it },
+                ringing = ringing.takeIf { it },
             ),
         )
     }
@@ -1332,16 +1442,22 @@ class CallSession(
             publishChat()
         }
         if (peer != null) lastPeerId = peer.peerId
+        if (peer == null) remoteRinging = false
         remote = peer
+        // Until their phone is answered they aren't in the call yet, as far as the screen goes.
+        val shown = peer.takeUnless { remoteRinging }
         _state.update {
-            it.copy(remotePeer = peer, remoteMedia = if (peer == null) RemoteMedia() else it.remoteMedia)
+            it.copy(remotePeer = shown, remoteMedia = if (shown == null) RemoteMedia() else it.remoteMedia)
         }
     }
 
     private fun setPhase(phase: CallPhase) {
-        _state.update { if (it.isActive) it.copy(phase = phase) else it }
+        linkPhase = phase
+        // While their phone rings, the call is still waiting for them, whatever the connection is doing.
+        val shown = if (remoteRinging) CallPhase.WAITING else phase
+        _state.update { if (it.isActive) it.copy(phase = shown) else it }
         // Connecting for a long time usually means the networks block direct calls; say so.
-        if (phase == CallPhase.NEGOTIATING || phase == CallPhase.RECONNECTING) {
+        if (shown == CallPhase.NEGOTIATING || shown == CallPhase.RECONNECTING) {
             if (stuckJob?.isActive != true) {
                 stuckJob = scope.launch {
                     delay(ConnectHint.AFTER_MS)
@@ -1373,5 +1489,8 @@ class CallSession(
         /** Voice packets per second, 120 ms to 10 ms packets. */
         const val MIN_PACKET_RATE = 8.0
         const val MAX_PACKET_RATE = 100.0
+        /** Joining a room that's full while answering a ring: tries again this often, this many times. */
+        const val ROOM_FULL_RETRY_MS = 700L
+        const val ROOM_FULL_RETRIES = 4
     }
 }

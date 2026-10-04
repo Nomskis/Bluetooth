@@ -6,5 +6,6 @@
     "name": "Salma",
     "address": "1D8ANuTJStR4AyHh0kwUw6"
   },
-  "video": true
+  "video": true,
+  "preconnect": true
 }

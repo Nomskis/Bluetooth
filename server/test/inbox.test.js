@@ -74,6 +74,17 @@ describe('inbox', () => {
     assert.deepEqual(caller.last('ring-status'), { type: 'ring-status', ringId: 'ring-0001', status: 'ringing', devices: 2 });
   });
 
+  it('tells the ringing device when it may connect ahead of the answer', () => {
+    const inbox = new Inbox({ timers: fakeTimers() });
+    const phone = conn('phone');
+    inbox.listen(phone, SAM_KEY);
+    inbox.ring(conn('new-caller'), ring(SAM, { preconnect: true }));
+    assert.equal(phone.last('incoming').preconnect, true);
+    // An older caller's app says nothing, and the ring says nothing either.
+    inbox.ring(conn('old-caller'), ring(SAM, { ringId: 'ring-0002', preconnect: false }));
+    assert.equal('preconnect' in phone.last('incoming'), false);
+  });
+
   it('says unreachable when nobody is listening', () => {
     const inbox = new Inbox({ timers: fakeTimers() });
     const caller = conn('caller');
@@ -186,7 +197,10 @@ describe('inbox', () => {
 describe('ring messages', () => {
   it('parse and validate', () => {
     assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'listen', inbox: SAM_KEY })), { type: 'listen', inbox: SAM_KEY });
-    assert.deepEqual(parseClientMessage(JSON.stringify(ring(SAM, { room: ' Calm-Otter-4821 ', name: ' Salma\n' }))), ring(SAM));
+    assert.deepEqual(
+      parseClientMessage(JSON.stringify(ring(SAM, { room: ' Calm-Otter-4821 ', name: ' Salma\n' }))),
+      ring(SAM, { preconnect: false }),
+    );
     assert.equal(parseClientMessage(JSON.stringify(ring(SAM, { video: 'yes' }))).video, false);
     assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'ring-answer', ringId: 'ring-0001', accepted: false, reason: 'whatever' })), {
       type: 'ring-answer',

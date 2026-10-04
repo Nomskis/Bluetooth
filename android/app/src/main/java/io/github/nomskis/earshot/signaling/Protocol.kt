@@ -82,7 +82,11 @@ sealed interface ClientMessage {
     @SerialName("listen")
     data class Listen(val inbox: String) : ClientMessage
 
-    /** Ring someone's inbox address with the room to meet in. [inbox] (our own key) proves who's calling. */
+    /**
+     * Ring someone's inbox address with the room to meet in. [inbox] (our own key) proves who's calling.
+     * [preconnect]: we take someone who joins listing [Capabilities.RINGING] as still ringing, so their
+     * phone may connect ahead of the answer.
+     */
     @Serializable
     @SerialName("ring")
     data class Ring(
@@ -92,6 +96,7 @@ sealed interface ClientMessage {
         val name: String = "",
         val video: Boolean = false,
         val inbox: String? = null,
+        val preconnect: Boolean? = null,
     ) : ClientMessage
 
     @Serializable
@@ -147,7 +152,7 @@ sealed interface ServerMessage {
     @SerialName("listening")
     data class Listening(val address: String) : ServerMessage
 
-    /** Someone is ringing us. */
+    /** Someone is ringing us. [preconnect]: their app lets us connect while it rings (see [ClientMessage.Ring]). */
     @Serializable
     @SerialName("incoming")
     data class Incoming(
@@ -155,6 +160,7 @@ sealed interface ServerMessage {
         val room: String,
         val from: Caller = Caller(),
         val video: Boolean = false,
+        val preconnect: Boolean = false,
     ) : ServerMessage
 
     /** Our ring reached [devices] devices ("ringing"), or nobody is listening ("unreachable"). */
@@ -216,6 +222,8 @@ sealed interface SignalData {
         val uplink: String? = null,
         /** Our Wi-Fi shares its radio with Bluetooth earbuds (2.4 GHz): fewer, longer packets please. */
         val radioShared: Boolean? = null,
+        /** Our phone is still ringing ([Capabilities.RINGING]); absent once answered. */
+        val ringing: Boolean? = null,
     ) : SignalData
 }
 
@@ -226,6 +234,14 @@ object Capabilities {
 
     /** Wants this call through the TURN relay at both ends (the other side follows, when it has a relay). */
     const val RELAY_ROUTE = "relay-route"
+
+    /**
+     * Joined while its phone still rings, to connect ahead of the answer: it sends and plays
+     * nothing, and the caller keeps ringing and sends nothing either, until it's answered
+     * (`ring-answered`, or a media-state without `ringing`). Only joins rooms whose ring said
+     * `preconnect`, and once answered it's an ordinary call, whatever its join said.
+     */
+    const val RINGING = "ringing"
 }
 
 object ErrorCodes {

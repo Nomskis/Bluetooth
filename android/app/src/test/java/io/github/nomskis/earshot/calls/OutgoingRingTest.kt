@@ -1,5 +1,6 @@
 package io.github.nomskis.earshot.calls
 
+import io.github.nomskis.earshot.signaling.Capabilities
 import io.github.nomskis.earshot.signaling.ClientMessage
 import io.github.nomskis.earshot.signaling.ServerMessage
 import org.junit.Assert.assertEquals
@@ -18,7 +19,15 @@ class OutgoingRingTest {
     fun ringsWithWhoWeAreAndTheRoom() {
         val ring = newRing()
         assertEquals(
-            ClientMessage.Ring(to = salma.address, ringId = "r-1", room = "call-abc", name = "Sam", video = true, inbox = "sam-secret-inbox-key-0001"),
+            ClientMessage.Ring(
+                to = salma.address,
+                ringId = "r-1",
+                room = "call-abc",
+                name = "Sam",
+                video = true,
+                inbox = "sam-secret-inbox-key-0001",
+                preconnect = true,
+            ),
             ring.ring("call-abc"),
         )
         assertEquals(OutgoingRing.Status.CALLING, ring.status)
@@ -37,6 +46,41 @@ class OutgoingRingTest {
         assertNull(ring.hangUp())
         assertNull(ring.timeOut())
         assertFalse(ring.gaveUp)
+    }
+
+    @Test
+    fun aPhoneThatConnectsWhileItRingsIsStillRingingUntilAnswered() {
+        val early = listOf("hifi-audio", Capabilities.RINGING)
+        val ring = newRing()
+        ring.ring("call-abc")
+        ring.onMessage(ServerMessage.RingStatus("r-1", "ringing", devices = 1))
+        // Their phone joined to connect early: we keep ringing it, and nothing flows yet.
+        assertTrue(ring.stillRinging(early))
+        assertTrue(ring.alive)
+        // Someone joining the ordinary way (an older app, or the invite link) has answered.
+        assertFalse(ring.stillRinging(listOf("hifi-audio")))
+        // Their answer arrives: from now on the same join is just a join.
+        ring.onMessage(ServerMessage.RingAnswered("r-1", accepted = true))
+        assertFalse(ring.stillRinging(early))
+    }
+
+    @Test
+    fun aJoinAfterTheyveBeenInTheCallIsJustAJoin() {
+        val ring = newRing()
+        ring.ring("call-abc")
+        ring.onJoined()
+        // Their join message still says "ringing" when their app reconnects later; it no longer counts.
+        assertFalse(ring.stillRinging(listOf(Capabilities.RINGING)))
+    }
+
+    @Test
+    fun aDeclinedPhoneThatConnectedEarlyNeverGetsTheCall() {
+        val ring = newRing()
+        ring.ring("call-abc")
+        ring.onMessage(ServerMessage.RingAnswered("r-1", accepted = false, reason = "declined"))
+        // It's on its way out; until then it's held like a ringing phone, and the call ends by itself.
+        assertTrue(ring.stillRinging(listOf(Capabilities.RINGING)))
+        assertTrue(ring.gaveUp)
     }
 
     @Test

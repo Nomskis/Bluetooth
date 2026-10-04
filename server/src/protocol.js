@@ -142,6 +142,8 @@ export function parseClientMessage(raw) {
         name: cleanText(msg.name, MAX_NAME_LENGTH),
         video: msg.video === true,
         inbox: msg.inbox ?? null,
+        // The caller takes a device that joins while still ringing as ringing (docs/protocol.md).
+        preconnect: msg.preconnect === true,
       };
     }
     case 'ring-cancel':

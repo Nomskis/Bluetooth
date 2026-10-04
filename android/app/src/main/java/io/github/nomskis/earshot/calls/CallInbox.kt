@@ -43,6 +43,10 @@ class CallInbox(
     private val ringingOut: () -> RingingOut? = { null },
     /** Leaves the current call for [ring]'s (we were calling each other at once). */
     private val switchTo: (ring: IncomingRing, withVideo: Boolean) -> Unit = { _, _ -> },
+    /** Connects [ring]'s call while it rings, so it's live the moment it's answered. */
+    private val preconnect: (ring: IncomingRing) -> Unit = {},
+    /** The ring with this id stopped without being answered here: let its early connection go. */
+    private val dropPreconnect: (ringId: String) -> Unit = {},
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -126,9 +130,18 @@ class CallInbox(
 
     private suspend fun onIncoming(message: ServerMessage.Incoming) {
         val contacts = settings.contacts.first()
-        val name = contacts.firstOrNull { it.address == message.from.address }?.name
-            ?: message.from.name.ifBlank { "Someone" }
-        val ring = IncomingRing(message.ringId, message.room, name, message.from.address, message.video)
+        val contact = message.from.address?.let { address -> contacts.firstOrNull { it.address == address } }
+        val name = contact?.name ?: message.from.name.ifBlank { "Someone" }
+        // Connecting early tells the caller where this phone is on the internet before you answer,
+        // so only for people you've saved (their address is proven by the server).
+        val ring = IncomingRing(
+            message.ringId,
+            message.room,
+            name,
+            message.from.address,
+            message.video,
+            preconnect = message.preconnect && contact != null,
+        )
         if (crossed(ring)) return
         // Already on a call, or another one is ringing: say so, and leave a note.
         if (isBusy() || _ringing.value != null) {
@@ -139,6 +152,7 @@ class CallInbox(
         _ringing.value = ring
         ringer.start()
         CallNotifications.showIncoming(appContext, ring)
+        if (ring.preconnect) preconnect(ring)
         timeoutJob?.cancel()
         // The server ends a ring after a minute; this covers a cancel lost with the connection.
         timeoutJob = scope.launch {
@@ -175,7 +189,7 @@ class CallInbox(
     fun answer(withVideo: Boolean): Boolean {
         val ring = _ringing.value ?: return false
         client?.send(ClientMessage.RingAnswer(ring.ringId, accepted = true))
-        stopRinging()
+        stopRinging(answered = true)
         startCall(ring, withVideo)
         return true
     }
@@ -186,7 +200,8 @@ class CallInbox(
         stopRinging()
     }
 
-    private fun stopRinging() {
+    private fun stopRinging(answered: Boolean = false) {
+        if (!answered) _ringing.value?.let { dropPreconnect(it.ringId) }
         timeoutJob?.cancel()
         ringer.stop()
         CallNotifications.clearIncoming(appContext)

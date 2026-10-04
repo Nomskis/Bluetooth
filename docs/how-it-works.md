@@ -269,6 +269,33 @@ that has got better is found again within a minute. A reconnect within a
 call starts from what the call has learned so far. Memories last two weeks
 and never leave the phone.
 
+## Answering a call that's already connected
+
+Setting a call up takes several trips over the route: the answering phone's
+connection to the server, the offer and answer through it, the connectivity
+checks, the encryption handshake. Between Finland and Morocco that's a few
+seconds of "Connecting…" after you've tapped Accept, while the other person
+is already saying hello. So when a saved contact rings, the phone does all of
+that while it rings: it joins the call and connects, but sends nothing and
+plays nothing. The microphone isn't even started (WebRTC's
+`setAudioRecording(false)`: it prepares the recorder but doesn't start it),
+playback is off (`setAudioPlayout(false)`), the camera stays off and video is
+inactive, and the phone's audio mode and your music are left alone. The
+caller's app sees the phone join "still ringing", keeps its ringing tone and
+"Ringing…", and holds its own microphone and video back the same way. Tapping
+Accept then only has to switch the sound (and camera) on, so the call is live
+straight away.
+
+Both apps have to know about it (the ring says so, through the server), so
+with an older app on either side, or an older server, calls set up after the
+answer as before. It's only done for saved contacts, because connecting shows
+the caller the phone's network addresses before you've answered. Declining,
+or the caller giving up, closes the early connection. Answering in a way it
+wasn't made for (voice only on a video call, or after switching audio mode)
+starts afresh like before; earbuds put in while it rang don't matter, since
+the echo canceller follows the earbuds during a call anyway. The details are
+in [protocol.md](protocol.md) ("Connecting while it rings").
+
 ## Calls abroad: through the relay's network
 
 A direct path between two countries takes whatever route the two internet

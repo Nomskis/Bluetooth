@@ -47,6 +47,9 @@ class CallInboxTest {
     /** What our own call is ringing, for calls that cross. */
     private var ringingOut: RingingOut? = null
     private val switched = mutableListOf<Pair<String, Boolean>>()
+    /** Rings connected early, and those let go again. */
+    private val preconnected = mutableListOf<String>()
+    private val dropped = mutableListOf<String>()
     private lateinit var myAddress: String
     private lateinit var inbox: CallInbox
 
@@ -80,6 +83,8 @@ class CallInboxTest {
             startCall = { ring, video -> started += ring.room to video },
             ringingOut = { ringingOut },
             switchTo = { ring, video -> switched += ring.room to video },
+            preconnect = { ring -> preconnected += ring.ringId },
+            dropPreconnect = { ringId -> dropped += ringId },
         )
         inbox.follow()
         // The phone connects and listens.
@@ -105,9 +110,10 @@ class CallInboxTest {
         return false
     }
 
-    private fun ring(video: Boolean = true, from: String = SALMA_ADDRESS, waitMs: Long = 5_000) {
+    private fun ring(video: Boolean = true, from: String = SALMA_ADDRESS, waitMs: Long = 5_000, preconnect: Boolean = false) {
         checkNotNull(socket).send(
-            """{"type":"incoming","ringId":"r-Zk3pQ81wLa","room":"calm-otter-4821","from":{"name":"Salma","address":"$from"},"video":$video}""",
+            """{"type":"incoming","ringId":"r-Zk3pQ81wLa","room":"calm-otter-4821","from":{"name":"Salma","address":"$from"},""" +
+                """"video":$video,"preconnect":$preconnect}""",
         )
         waitFor(waitMs) { inbox.ringing.value != null || fromPhone.peek() != null || switched.isNotEmpty() }
     }
@@ -130,6 +136,44 @@ class CallInboxTest {
         assertEquals(listOf("calm-otter-4821" to true), started)
         assertNull(inbox.ringing.value)
         assertNull(notifications.getNotification(CallNotifications.ID_INCOMING))
+    }
+
+    @Test
+    fun aContactsCallConnectsWhileItRingsAndAnsweringKeepsTheConnection() {
+        ring(preconnect = true)
+        assertEquals(listOf("r-Zk3pQ81wLa"), preconnected)
+        assertTrue(inbox.answer(withVideo = true))
+        assertEquals(listOf("calm-otter-4821" to true), started)
+        assertTrue(dropped.isEmpty())
+    }
+
+    @Test
+    fun decliningLetsTheEarlyConnectionGo() {
+        ring(preconnect = true)
+        inbox.decline()
+        assertEquals(listOf("r-Zk3pQ81wLa"), dropped)
+    }
+
+    @Test
+    fun theCallerHangingUpLetsTheEarlyConnectionGo() {
+        ring(preconnect = true)
+        checkNotNull(socket).send("""{"type":"ring-cancelled","ringId":"r-Zk3pQ81wLa","reason":"cancelled"}""")
+        assertTrue(waitFor { dropped.isNotEmpty() })
+        assertEquals(listOf("r-Zk3pQ81wLa"), dropped)
+    }
+
+    @Test
+    fun onlySavedContactsWhoseAppAllowsItConnectEarly() {
+        // A stranger would learn where this phone is on the internet before you answer.
+        ring(preconnect = true, from = "z".repeat(22))
+        assertNotNull(inbox.ringing.value)
+        assertTrue(preconnected.isEmpty())
+        inbox.decline()
+        nextFromPhone()
+        // An older app on their side wouldn't wait for the answer, so it isn't done for them either.
+        ring(preconnect = false)
+        assertNotNull(inbox.ringing.value)
+        assertTrue(preconnected.isEmpty())
     }
 
     @Test

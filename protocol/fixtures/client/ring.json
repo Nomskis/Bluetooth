@@ -5,5 +5,6 @@
   "room": "calm-otter-4821",
   "name": "Salma",
   "video": true,
-  "inbox": "salma-secret-inbox-key-01"
+  "inbox": "salma-secret-inbox-key-01",
+  "preconnect": true
 }

@@ -1,11 +1,15 @@
 package io.github.nomskis.earshot.call
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.PowerManager
+import android.util.Log
+import androidx.core.content.ContextCompat
 import io.github.nomskis.earshot.audio.AudioProfile
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.audio.AudioRouteMonitor
@@ -93,6 +97,131 @@ class CallManager(
     /** On a call, or about to be. */
     val busy: Boolean get() = _session.value != null || starting.value
 
+    /** A call ringing here, connected while it rings ([CallSession] `ringing`), and what it was made with. */
+    private class Early(val ringId: String, val session: CallSession, val profile: AudioProfile, val withVideo: Boolean)
+    /** The ring being connected early, from the moment it's asked (main thread only, like [early]). */
+    private var earlyFor: String? = null
+    private var early: Early? = null
+
+    /**
+     * [ring] is ringing here: join its room and connect now, sending and playing nothing and
+     * leaving the music, audio mode and camera alone, so answering only has to switch the sound
+     * (and camera) on. Over a slow route abroad, setting a call up (server, offer and answer,
+     * the route, encryption) takes seconds; this way they pass while the phone rings, not after
+     * you've said hello. Answering with the same voice or video and the same audio route takes
+     * this connection; anything else, or not answering here, leaves it behind.
+     */
+    fun preconnect(ring: IncomingRing) {
+        if (busy || earlyFor != null) return
+        // Answering needs the microphone; if it isn't allowed yet, answering asks and starts afresh.
+        if (!granted(Manifest.permission.RECORD_AUDIO)) return
+        earlyFor = ring.ringId
+        scope.launch {
+            val current = settings.current()
+            val base = ServerUrls.normalizeBase(current.serverUrl)
+            val withVideo = ring.video && granted(Manifest.permission.CAMERA)
+            val plan = plan(current, ring.callerAddress)
+            if (earlyFor != ring.ringId) return@launch // answered or gone meanwhile
+            if (base == null) {
+                earlyFor = null
+                return@launch
+            }
+            val session = newSession(plan, ring.room, base, withVideo, outgoing = null, contactName = ring.callerName, ringing = true)
+            early = Early(ring.ringId, session, plan.profile, withVideo)
+            Log.i(TAG, "Connecting while it rings")
+            session.start()
+            // It can end by itself (they hung up, the room filled up): nothing to take then.
+            session.state.first { !it.isActive }
+            if (early?.session === session) {
+                early = null
+                earlyFor = null
+            }
+        }
+    }
+
+    /** [ringId] stopped ringing without being answered here: leave the room it connected to. */
+    fun dropPreconnect(ringId: String) {
+        if (earlyFor != ringId) return
+        earlyFor = null
+        early?.session?.hangUp()
+        early = null
+    }
+
+    /**
+     * Wired the same way for a call. Not the echo canceller: that follows the audio route during
+     * the call anyway ([followRoute]), so earbuds put in while it rang don't need a new connection.
+     */
+    private fun AudioProfile.wiredLike(other: AudioProfile) = copy(softwareEchoCancellation = other.softwareEchoCancellation) == other
+
+    private fun granted(permission: String) =
+        ContextCompat.checkSelfPermission(appContext, permission) == PackageManager.PERMISSION_GRANTED
+
+    /** What a call is set up with, from the settings and where the audio goes right now. */
+    private class Plan(
+        val current: AppSettings,
+        val route: AudioRoute,
+        val profile: AudioProfile,
+        val radioPlan: RadioPlan,
+        val peerId: String,
+        val me: Chat.Frame.Contact,
+        val inboxKey: String,
+        val theirAddress: String?,
+        val network: String?,
+        val memory: LinkMemory?,
+    )
+
+    private suspend fun plan(current: AppSettings, theirAddress: String?): Plan {
+        val route = routeMonitor.snapshot()
+        // Swapped with the other side during the call, so you can call each other directly next time.
+        val inboxKey = settings.inboxKey()
+        // Start where the last call with them, from this kind of network, got to.
+        val network = LinkConditions.networkKind(appContext)
+        return Plan(
+            current = current,
+            route = route,
+            profile = AudioProfile.forCall(current, route),
+            radioPlan = radioPlan(current, route),
+            peerId = settings.peerId(),
+            me = Chat.Frame.Contact(current.displayName, InboxKeys.address(inboxKey)),
+            inboxKey = inboxKey,
+            theirAddress = theirAddress,
+            network = network,
+            memory = LinkMemories.find(settings.linkMemories(), theirAddress, network, System.currentTimeMillis()),
+        )
+    }
+
+    private fun newSession(
+        plan: Plan,
+        room: String,
+        base: String,
+        withVideo: Boolean,
+        outgoing: OutgoingRing?,
+        contactName: String?,
+        ringing: Boolean = false,
+        answersRing: Boolean = false,
+    ) = CallSession(
+        context = appContext,
+        room = room,
+        serverBase = base,
+        peerId = plan.peerId,
+        settings = plan.current,
+        profile = plan.profile,
+        eglBase = eglBase,
+        http = http,
+        withVideo = withVideo,
+        radioPlan = plan.radioPlan,
+        me = plan.me,
+        onContact = { contact -> scope.launch { settings.saveContact(contact) } },
+        outgoing = outgoing,
+        contactName = contactName,
+        remoteAddress = plan.theirAddress,
+        startFrom = plan.memory,
+        network = plan.network,
+        onLearned = { learned -> scope.launch { settings.saveLinkMemory(learned) } },
+        ringing = ringing,
+        answersRing = answersRing,
+    )
+
     /** The contact the current call is ringing, while that ring is still going. */
     fun ringingOut(): RingingOut? {
         val ring = outgoing?.takeIf { it.alive } ?: return null
@@ -124,58 +253,59 @@ class CallManager(
     private fun begin(room: String, withVideo: Boolean, calling: Contact?, answering: IncomingRing?) {
         if (_session.value != null || starting.value) return
         starting.value = true
+        // Answering the ring that connected early takes its connection; anything else leaves it.
+        val earlier = early
+        early = null
+        earlyFor = null
         scope.launch {
             // A call ended a moment ago may still be restoring the earbuds; don't overlap.
             cleanup?.join()
             val current = settings.current()
             val base = ServerUrls.normalizeBase(current.serverUrl)
             if (base == null) {
+                earlier?.session?.hangUp()
                 _lastError.value = "Add your server address in Settings first."
                 starting.value = false
                 return@launch
             }
             // A direct call's room is single-use; the room box keeps the one you typed.
             if (calling == null && answering == null) settings.update { it.copy(lastRoom = room) }
-            val route = routeMonitor.snapshot()
-            val profile = AudioProfile.forCall(current, route)
-            val radioPlan = radioPlan(current, route)
-            // Swapped with the other side during the call, so you can call each other directly next time.
-            val inboxKey = settings.inboxKey()
-            val me = Chat.Frame.Contact(current.displayName, InboxKeys.address(inboxKey))
-            val outgoing = calling?.let { OutgoingRing(it, current.displayName, inboxKey, withVideo) }
+            val plan = plan(current, calling?.address ?: answering?.callerAddress)
+            val route = plan.route
+            val radioPlan = plan.radioPlan
+            val outgoing = calling?.let { OutgoingRing(it, current.displayName, plan.inboxKey, withVideo) }
             this@CallManager.outgoing = outgoing
             calling?.let { settings.saveContact(it.copy(lastCallAtMillis = System.currentTimeMillis())) }
-            // Start where the last call with them, from this kind of network, got to.
-            val theirAddress = calling?.address ?: answering?.callerAddress
-            val network = LinkConditions.networkKind(appContext)
-            val memory = LinkMemories.find(settings.linkMemories(), theirAddress, network, System.currentTimeMillis())
-            val session = CallSession(
-                context = appContext,
-                room = room,
-                serverBase = base,
-                peerId = settings.peerId(),
-                settings = current,
-                profile = profile,
-                eglBase = eglBase,
-                http = http,
-                withVideo = withVideo,
-                radioPlan = radioPlan,
-                me = me,
-                onContact = { contact -> scope.launch { settings.saveContact(contact) } },
-                outgoing = outgoing,
+            // Made for this ring with what's still true now (voice or video, how the sound is wired): take it.
+            val taken = earlier?.takeIf {
+                it.ringId == answering?.ringId && it.withVideo == withVideo && it.profile.wiredLike(plan.profile) &&
+                    it.session.state.value.isActive
+            }
+            if (taken == null) earlier?.session?.hangUp()
+            val session = taken?.session ?: newSession(
+                plan,
+                room,
+                base,
+                withVideo,
+                outgoing,
                 contactName = calling?.name ?: answering?.callerName,
-                remoteAddress = theirAddress,
-                startFrom = memory,
-                network = network,
-                onLearned = { learned -> scope.launch { settings.saveLinkMemory(learned) } },
+                answersRing = answering != null,
             )
+            val profile = session.profile
             _lastError.value = null
             _session.value = session
             starting.value = false
             CallService.start(appContext)
             if (radioPlan.preferCellular || current.mobileDataBackup) cellular.acquire()
             watchNetwork(session, current)
-            session.start()
+            if (taken != null) {
+                Log.i(TAG, "Answered over the connection made while it rang")
+                // It was planned when it started ringing; the route may have moved since.
+                session.updateRadioPlan(radioPlan)
+                session.answer()
+            } else {
+                session.start()
+            }
             // If the system kills the app mid-call, the next launch can offer to rejoin.
             val aliveJob = launch {
                 while (true) {
@@ -358,6 +488,7 @@ class CallManager(
     }
 
     private companion object {
+        const val TAG = "EarshotCalls"
         const val PROBE_SETTLE_MS = 1_500L
         /** After earbuds reconnect, let A2DP and the companion channel come up first. */
         const val RECONNECT_SETTLE_MS = 3_000L
