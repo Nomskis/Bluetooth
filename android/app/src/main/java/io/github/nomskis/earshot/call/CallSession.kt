@@ -202,6 +202,8 @@ class CallSession(
     private var roomFullRetries = 0
     /** Their contact card, kept until the call that's ringing here is answered: only then is it a call with them. */
     private var pendingCard: Chat.Frame.Contact? = null
+    /** Answered here; the hold lifts once the sound has somewhere to go ([answerNow]). */
+    private var answered = false
 
     /** One RTCPeerConnection and everything tied to it. */
     private class Link(
@@ -274,6 +276,7 @@ class CallSession(
         data object RingRetry : Event
         data object GiveUp : Event
         data object Answer : Event
+        data object Unhold : Event
         data object Rejoin : Event
         data object HangUp : Event
     }
@@ -394,6 +397,12 @@ class CallSession(
         ringback.stop()
         smartDuck?.release()
         learned()?.let(onLearned)
+        // Never answered here: WebRTC prepared the playback while it rang but only frees playback it
+        // started. Start it silent, so closing stops it and frees Android's AudioTrack now, not at GC.
+        if (ringing) link?.let {
+            engine.setPlaybackMuted(true)
+            it.pc.setAudioPlayout(true)
+        }
         closeLink()
         lipSyncSink.release()
         if (::signaling.isInitialized) signaling.close()
@@ -543,6 +552,7 @@ class CallSession(
             // The reason goes to the home screen, which is where you land.
             Event.GiveUp -> finish(CallPhase.ENDED, outgoing?.outcome)
             Event.Answer -> answerNow()
+            Event.Unhold -> unholdHere()
             // Only while connected; a reconnect joins by itself.
             Event.Rejoin -> if (_state.value.signalingOnline) signaling.send(join)
             Event.HangUp -> {
@@ -612,24 +622,45 @@ class CallSession(
 
     /** Answered here: what the call held back starts now, over the connection made while it rang. */
     private fun answerNow() {
-        if (!ringing) return
-        ringing = false
+        if (!ringing || answered) return
+        answered = true
         Log.i(TAG, if (link?.isHealthy == true) "Answered over a connection that's already up" else "Answered; still connecting")
         beginLocalMedia()
+        if (!audioController.awaitingBluetoothRoute()) {
+            unholdHere()
+            return
+        }
+        // Headset mode on Bluetooth earbuds: Android brings their call link up in the background and
+        // plays the call on the earpiece meanwhile. With the connection already made, the first words
+        // would land there; wait for the earbuds (a second or two at most).
+        scope.launch {
+            val until = SystemClock.elapsedRealtime() + BLUETOOTH_ROUTE_WAIT_MS
+            while (audioController.awaitingBluetoothRoute() && SystemClock.elapsedRealtime() < until) delay(ROUTE_POLL_MS)
+            post(Event.Unhold)
+        }
+    }
+
+    /** The sound and camera are ready: let the call flow both ways, and tell them it's answered. */
+    private fun unholdHere() {
+        if (!ringing) return
+        ringing = false
         link?.let(::applyHold)
-        // Tells them it's answered, if the server's word (ring-answered) hasn't already.
+        // Their phone keeps ringing until this arrives (or our voice does).
         sendMediaState()
         pendingCard?.let(::takeCard)
         pendingCard = null
     }
 
     /**
-     * While a phone rings, the connection is made but carries nothing: no microphone (WebRTC
-     * doesn't even start it), nothing played on the ringing phone, and no video. WebRTC keeps
-     * the first two for all of this call's connections, so each new one sets them too.
+     * While a phone rings, the connection is made but carries nothing: our voice's stream isn't
+     * started (so WebRTC doesn't even prepare the microphone, see RtcEngine.audioConstraints),
+     * recording is off as well, nothing plays on the ringing phone, and video is inactive.
+     * Applied to a new connection's senders before it's negotiated, so nothing slips out when
+     * it first connects; WebRTC keeps recording and playout for all of this call's connections.
      */
     private fun applyHold(l: Link) {
         l.pc.setAudioRecording(!holding)
+        engine.setAudioSending(l.pc, !holding)
         l.pc.setAudioPlayout(!ringing)
         applyVideoCap(l)
     }
@@ -728,6 +759,9 @@ class CallSession(
 
     private fun onStats(l: Link, report: RTCStatsReport) {
         val entries = report.statsMap.mapValues { (_, s) -> CallStats.Entry(s.type, s.members) }
+        // A ringing phone sends no voice, so their voice arriving means they answered, even if
+        // both messages saying so were lost with a dead connection to the server.
+        if (remoteRinging && (CallStats.inboundAudioCounters(entries)?.packetsReceived ?: 0.0) > 0.0) theyAnswered()
         // While it rings nothing flows yet: no rates, estimates or quality to go by.
         if (!holding) followMedia(l, entries)
         steer(l, entries)
@@ -913,10 +947,10 @@ class CallSession(
             ServerMessage.Pong -> Unit
             // Incoming rings go to the inbox connection, not to calls.
             is ServerMessage.Listening, is ServerMessage.Incoming, is ServerMessage.RingCancelled -> Unit
-            is ServerMessage.RingStatus, is ServerMessage.RingAnswered -> if (outgoing?.onMessage(message) == true) {
-                onOutgoingChanged()
-                if (outgoing?.status == OutgoingRing.Status.ANSWERED) theyAnswered()
-            }
+            // An answer while their early connection is here only says "answered, connecting": they may
+            // be answering on a fresh connection (voice only, another device). That connection's own
+            // media-state, or its voice arriving, lifts the hold (theyAnswered).
+            is ServerMessage.RingStatus, is ServerMessage.RingAnswered -> if (outgoing?.onMessage(message) == true) onOutgoingChanged()
         }
     }
 
@@ -958,6 +992,9 @@ class CallSession(
         setRemote(peer)
         // They arrived while we were reconnecting.
         theyJoined()
+        // Our ring went with our old connection, so their phone would stop ringing; ring again
+        // (their inbox takes it as the same call, keeping the connection it made).
+        if (remoteRinging) ringContact()
         ensureNegotiated()
     }
 
@@ -1041,6 +1078,7 @@ class CallSession(
         val l = createLink(Ids.random(9, "s"))
         link = l
         addLocalTracks(l)
+        if (holding) applyHold(l)
         // Always offer to receive both kinds, even when we send no video ourselves.
         if (l.tracks.video == null) {
             l.pc.addTransceiver(
@@ -1088,7 +1126,10 @@ class CallSession(
         checkNotNull(l)
         l.pc.awaitSetRemote(SessionDescription(SessionDescription.Type.OFFER, data.sdp))
         if (link !== l) return
-        if (fresh) addLocalTracks(l)
+        if (fresh) {
+            addLocalTracks(l)
+            if (holding) applyHold(l)
+        }
         engine.preferRedundantAudio(l.pc)
         val answer = l.pc.awaitCreateAnswer()
         if (link !== l) return
@@ -1492,5 +1533,8 @@ class CallSession(
         /** Joining a room that's full while answering a ring: tries again this often, this many times. */
         const val ROOM_FULL_RETRY_MS = 700L
         const val ROOM_FULL_RETRIES = 4
+        /** Longest wait, after answering, for Bluetooth earbuds' call link before the call flows anyway. */
+        const val BLUETOOTH_ROUTE_WAIT_MS = 1_500L
+        const val ROUTE_POLL_MS = 50L
     }
 }

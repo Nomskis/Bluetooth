@@ -307,6 +307,22 @@ class RtcEngine(
     }
 
     /**
+     * Sends our voice or not. Off, WebRTC doesn't start the audio stream at all, so it doesn't
+     * even prepare the microphone (with [audioConstraints]' InitAudioRecordingOnSend off);
+     * on, it starts the stream, the recorder with it. Kept across other parameter changes.
+     */
+    fun setAudioSending(pc: PeerConnection, active: Boolean) {
+        for (sender in pc.senders) {
+            val kind = runCatching { sender.track()?.kind() }.getOrNull()
+            if (kind != MediaStreamTrack.AUDIO_TRACK_KIND) continue
+            val parameters = sender.parameters
+            if (parameters.encodings.isEmpty() || parameters.encodings.all { it.active == active }) continue
+            parameters.encodings.forEach { it.active = active }
+            if (!sender.setParameters(parameters)) Log.w(TAG, "Could not ${if (active) "start" else "hold"} our voice")
+        }
+    }
+
+    /**
      * Temporal layers for our video when it's VP8 (see [WebRtcTuning.VIDEO_SCALABILITY_MODE]).
      * Called once the call is connected, when the codec is settled; its own setParameters
      * call, so a refusal doesn't take other settings with it.
@@ -497,6 +513,12 @@ class RtcEngine(
             mandatory += MediaConstraints.KeyValuePair("googNoiseSuppression", profile.softwareNoiseSuppression.toString())
             mandatory += MediaConstraints.KeyValuePair("googAutoGainControl", profile.softwareAutoGain.toString())
             mandatory += MediaConstraints.KeyValuePair("googHighpassFilter", "true")
+            // WebRTC otherwise prepares the microphone (creates Android's AudioRecord) as soon as a
+            // connection may send, and never frees one it didn't start. Off, it's prepared when the
+            // audio stream starts, a moment later in the same step, and not at all while a call
+            // rings and holds its voice ([setAudioSending]). sdk/media_constraints.cc maps this to
+            // AudioOptions.init_recording_on_send, which WebRtcVoiceSendChannel::SetSend checks.
+            mandatory += MediaConstraints.KeyValuePair("InitAudioRecordingOnSend", "false")
         }
     }
 }

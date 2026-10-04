@@ -118,15 +118,24 @@ it while it rings, and only switch the sound on when it's answered:
   keeps ringing (ringback tone, "Ringing…") and sends nothing either, but
   answers the offer, so the connection comes up.
 - Accepting sends `ring-answer` as always; the callee then starts its
-  microphone, playback and camera on the connection that's already up and
-  sends a `media-state` without `ringing`. The caller starts sending on
-  whichever arrives first, `ring-answered` (accepted) or that `media-state`.
+  microphone, playback and camera on the connection that's already up (in
+  headset mode it first waits, up to 1.5 s, for Bluetooth earbuds' call link)
+  and sends a `media-state` without `ringing`. The caller starts sending on
+  that `media-state`, or on the callee's voice arriving (a ringing phone sends
+  none), whichever comes first. `ring-answered` alone only shows "answered,
+  connecting": the callee may be answering on a fresh connection instead.
 - Declining, the caller hanging up and the timeout end the ring as always;
   the callee's early connection then leaves the room. Answering with
   something the connection wasn't made for (voice only on a video call, or a
   changed audio mode) leaves it too, and joins afresh. A peer's `ringing`
   only counts while the ring is unanswered: once answered, or once the peer
   has been in the call, its join is just a join.
+- The server ends a ring with the caller's socket, so a caller that rejoins
+  while the callee's early connection is still there rings again. The callee
+  takes an `incoming` for the room that's ringing, from the same proven
+  address, as the same call: it keeps ringing (and its early connection)
+  under the new `ringId` and ignores the old ring's cancel. A ring for the
+  room of the call it's already on is answered `accepted: true`.
 
 When two people ring each other at once, each phone gets an `incoming` from
 the person it's ringing. Both settle it the same way, by comparing the two

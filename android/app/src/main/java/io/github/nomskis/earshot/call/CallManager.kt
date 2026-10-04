@@ -97,10 +97,15 @@ class CallManager(
     /** On a call, or about to be. */
     val busy: Boolean get() = _session.value != null || starting.value
 
-    /** A call ringing here, connected while it rings ([CallSession] `ringing`), and what it was made with. */
-    private class Early(val ringId: String, val session: CallSession, val profile: AudioProfile, val withVideo: Boolean)
-    /** The ring being connected early, from the moment it's asked (main thread only, like [early]). */
-    private var earlyFor: String? = null
+    /**
+     * A call ringing here, connected while it rings ([CallSession] `ringing`), from the moment
+     * it's asked; [session] and what it was made with are filled in once it exists. Main thread only.
+     */
+    private class Early(var ringId: String) {
+        var session: CallSession? = null
+        var profile: AudioProfile? = null
+        var withVideo = false
+    }
     private var early: Early? = null
 
     /**
@@ -112,40 +117,50 @@ class CallManager(
      * this connection; anything else, or not answering here, leaves it behind.
      */
     fun preconnect(ring: IncomingRing) {
-        if (busy || earlyFor != null) return
+        if (busy || early != null) return
         // Answering needs the microphone; if it isn't allowed yet, answering asks and starts afresh.
         if (!granted(Manifest.permission.RECORD_AUDIO)) return
-        earlyFor = ring.ringId
+        val pending = Early(ring.ringId)
+        early = pending
         scope.launch {
             val current = settings.current()
             val base = ServerUrls.normalizeBase(current.serverUrl)
             val withVideo = ring.video && granted(Manifest.permission.CAMERA)
             val plan = plan(current, ring.callerAddress)
-            if (earlyFor != ring.ringId) return@launch // answered or gone meanwhile
+            if (early !== pending) return@launch // answered or gone meanwhile
             if (base == null) {
-                earlyFor = null
+                early = null
                 return@launch
             }
             val session = newSession(plan, ring.room, base, withVideo, outgoing = null, contactName = ring.callerName, ringing = true)
-            early = Early(ring.ringId, session, plan.profile, withVideo)
+            pending.session = session
+            pending.profile = plan.profile
+            pending.withVideo = withVideo
             Log.i(TAG, "Connecting while it rings")
             session.start()
             // It can end by itself (they hung up, the room filled up): nothing to take then.
             session.state.first { !it.isActive }
-            if (early?.session === session) {
-                early = null
-                earlyFor = null
-            }
+            if (early === pending) early = null
         }
     }
 
     /** [ringId] stopped ringing without being answered here: leave the room it connected to. */
     fun dropPreconnect(ringId: String) {
-        if (earlyFor != ringId) return
-        earlyFor = null
-        early?.session?.hangUp()
+        val e = early?.takeIf { it.ringId == ringId } ?: return
         early = null
+        e.session?.hangUp()
     }
+
+    /**
+     * The caller rang again for the same call (its app reconnected, and the server ends a ring
+     * with the connection that sent it): the early connection now belongs to [newRingId].
+     */
+    fun rekeyPreconnect(oldRingId: String, newRingId: String) {
+        early?.takeIf { it.ringId == oldRingId }?.ringId = newRingId
+    }
+
+    /** On a call in [room] (a ring for it is the same call, rung again). */
+    fun inCall(room: String): Boolean = _session.value?.room == room
 
     /**
      * Wired the same way for a call. Not the echo canceller: that follows the audio route during
@@ -256,7 +271,6 @@ class CallManager(
         // Answering the ring that connected early takes its connection; anything else leaves it.
         val earlier = early
         early = null
-        earlyFor = null
         scope.launch {
             // A call ended a moment ago may still be restoring the earbuds; don't overlap.
             cleanup?.join()
@@ -277,12 +291,12 @@ class CallManager(
             this@CallManager.outgoing = outgoing
             calling?.let { settings.saveContact(it.copy(lastCallAtMillis = System.currentTimeMillis())) }
             // Made for this ring with what's still true now (voice or video, how the sound is wired): take it.
-            val taken = earlier?.takeIf {
-                it.ringId == answering?.ringId && it.withVideo == withVideo && it.profile.wiredLike(plan.profile) &&
-                    it.session.state.value.isActive
+            val taken = earlier?.session?.takeIf {
+                earlier.ringId == answering?.ringId && earlier.withVideo == withVideo &&
+                    earlier.profile?.wiredLike(plan.profile) == true && it.state.value.isActive
             }
             if (taken == null) earlier?.session?.hangUp()
-            val session = taken?.session ?: newSession(
+            val session = taken ?: newSession(
                 plan,
                 room,
                 base,

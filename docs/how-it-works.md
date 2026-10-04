@@ -277,14 +277,21 @@ checks, the encryption handshake. Between Finland and Morocco that's a few
 seconds of "Connecting…" after you've tapped Accept, while the other person
 is already saying hello. So when a saved contact rings, the phone does all of
 that while it rings: it joins the call and connects, but sends nothing and
-plays nothing. The microphone isn't even started (WebRTC's
-`setAudioRecording(false)`: it prepares the recorder but doesn't start it),
-playback is off (`setAudioPlayout(false)`), the camera stays off and video is
-inactive, and the phone's audio mode and your music are left alone. The
+plays nothing. The microphone isn't even prepared: the voice's stream is
+held inactive (its encoding's `active` flag) and WebRTC's habit of preparing
+the recorder as soon as a connection can send is switched off
+(`InitAudioRecordingOnSend`), with recording off as well
+(`setAudioRecording(false)`). Playback is off (`setAudioPlayout(false)`),
+the camera stays off and video is inactive, and the phone's audio mode and
+your music are left alone. The
 caller's app sees the phone join "still ringing", keeps its ringing tone and
 "Ringing…", and holds its own microphone and video back the same way. Tapping
 Accept then only has to switch the sound (and camera) on, so the call is live
-straight away.
+straight away. The caller starts sending when the answering phone says so, or
+as soon as that phone's voice arrives, so a message lost with a dropped
+connection to the server can't leave it on hold. If the caller's own
+connection to the server drops while it rings (a switch from Wi-Fi to mobile
+data, say), it rings again and the ringing phone takes that as the same call.
 
 Both apps have to know about it (the ring says so, through the server), so
 with an older app on either side, or an older server, calls set up after the
