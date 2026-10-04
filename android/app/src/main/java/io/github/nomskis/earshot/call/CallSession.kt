@@ -358,7 +358,7 @@ class CallSession(
             context = appContext,
             eglBase = eglBase,
             profile = profile,
-            videoQuality = settings.videoQuality,
+            videoQuality = LessData.capture(settings.lessData, settings.videoQuality),
             startWithBackCamera = settings.startWithBackCamera,
             camera = true,
             localPreview = localPreview,

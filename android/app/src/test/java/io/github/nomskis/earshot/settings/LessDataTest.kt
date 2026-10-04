@@ -15,5 +15,7 @@ class LessDataTest {
         assertEquals(LessData.VIDEO_FPS, LessData.videoFps(on = true, cap = 30))
         assertEquals(10, LessData.videoFps(on = true, cap = 10))
         assertEquals(null, LessData.videoFps(on = false, cap = null))
+        assertEquals(VideoQuality.LOW, LessData.capture(on = true, chosen = VideoQuality.FULL_HD))
+        assertEquals(VideoQuality.HIGH, LessData.capture(on = false, chosen = VideoQuality.HIGH))
     }
 }
