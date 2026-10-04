@@ -183,6 +183,7 @@ class CallSession(
         data class SetOutputHeld(val held: Boolean) : Event
         data object StuckCheck : Event
         data class SetThermal(val plan: ThermalPlan?) : Event
+        data class SetBatteryLow(val low: Boolean) : Event
         data object HangUp : Event
     }
 
@@ -230,6 +231,7 @@ class CallSession(
     fun setOutputHeld(held: Boolean) = post(Event.SetOutputHeld(held))
     /** How far to lighten outgoing video for the phone's temperature; null = not at all. */
     fun setThermal(plan: ThermalPlan?) = post(Event.SetThermal(plan))
+    fun setBatteryLow(low: Boolean) = post(Event.SetBatteryLow(low))
     fun hangUp() = post(Event.HangUp)
 
     private fun post(event: Event) {
@@ -381,6 +383,10 @@ class CallSession(
                 _state.update { it.copy(thermal = event.plan) }
                 link?.let(::applyVideoCap)
             }
+            is Event.SetBatteryLow -> if (event.low != _state.value.batteryLow) {
+                _state.update { it.copy(batteryLow = event.low) }
+                link?.let(::applyVideoCap)
+            }
             Event.StuckCheck -> if (_state.value.phase == CallPhase.NEGOTIATING || _state.value.phase == CallPhase.RECONNECTING) {
                 _state.update { it.copy(connectHint = ConnectHint.forStuck(iceServers)) }
             }
@@ -484,7 +490,7 @@ class CallSession(
     private fun RadioPlan.remoteVideoCap(): Int? = if (preferCellular) null else wifiVideoCapKbps
 
     private fun applyVideoCap(l: Link) {
-        val thermal = _state.value.thermal
+        val thermal = ThermalPlan.lighter(_state.value.thermal, ThermalPlan.LOW_BATTERY.takeIf { _state.value.batteryLow })
         val kbps = ThermalPlan.tighter(radioPlan.videoCapFor(_state.value.callPath), thermal?.maxKbps)
         engine.capVideoSend(l.pc, kbps, thermal?.scaleDownBy, thermal?.maxFps)
     }

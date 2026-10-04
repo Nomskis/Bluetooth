@@ -66,6 +66,8 @@ data class CallState(
     val earbudMicAvailable: Boolean = false,
     /** Outgoing video lightened because the phone is warm; null when it isn't. */
     val thermal: ThermalPlan? = null,
+    /** Battery low and not charging: outgoing video lightened so the call lasts. */
+    val batteryLow: Boolean = false,
     /** Shown when connecting takes long: what's probably wrong. */
     val connectHint: String? = null,
     /** Their voice is paused because the earbuds went away mid-call; see [OutputHold]. */

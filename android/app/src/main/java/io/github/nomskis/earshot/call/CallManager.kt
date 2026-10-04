@@ -1,11 +1,16 @@
 package io.github.nomskis.earshot.call
 
+import android.content.BroadcastReceiver
 import android.content.Context
-import android.os.Build
-import android.os.PowerManager
+import android.content.Intent
+import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.os.BatteryManager
+import android.os.Build
+import android.os.PowerManager
+import androidx.core.content.ContextCompat
 import io.github.nomskis.earshot.audio.AudioProfile
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.audio.AudioRouteMonitor
@@ -140,6 +145,7 @@ class CallManager(
             }
             val routeJob = launch { followRoute(session, profile, current) }
             val thermalJob = launch { followTemperature(session) }
+            val batteryJob = launch { followBattery(session) }
             // In a pocket the camera films the lining and costs battery, heat and Wi-Fi airtime.
             val pocketJob = if (current.pocketGuard && withVideo) {
                 launch {
@@ -173,6 +179,7 @@ class CallManager(
             lipSyncJob?.cancel()
             routeJob.cancel()
             thermalJob.cancel()
+            batteryJob.cancel()
             pocketJob?.cancel()
             reapplyJob?.cancelAndJoin()
             if (end.error != null) _lastError.value = end.error
@@ -255,6 +262,29 @@ class CallManager(
             power.addThermalStatusListener(appContext.mainExecutor, listener)
             awaitClose { power.removeThermalStatusListener(listener) }
         }.distinctUntilChanged().collect { status -> session.setThermal(ThermalPlan.forStatus(status)) }
+    }
+
+    /** Lighter video on a low battery that isn't charging, so the call lasts. */
+    private suspend fun followBattery(session: CallSession) {
+        callbackFlow {
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context, intent: Intent) {
+                    trySend(isBatteryLow(intent))
+                }
+            }
+            // Sticky: the current state arrives straight away.
+            ContextCompat.registerReceiver(appContext, receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
+                ?.let { trySend(isBatteryLow(it)) }
+            awaitClose { appContext.unregisterReceiver(receiver) }
+        }.distinctUntilChanged().collect(session::setBatteryLow)
+    }
+
+    private fun isBatteryLow(intent: Intent): Boolean {
+        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+        val plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
+        if (level < 0 || scale <= 0 || plugged) return false
+        return level * 100 / scale <= ThermalPlan.LOW_BATTERY_PERCENT
     }
 
     fun endCall() {

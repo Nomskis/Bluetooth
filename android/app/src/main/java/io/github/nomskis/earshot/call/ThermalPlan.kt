@@ -27,6 +27,13 @@ data class ThermalPlan(
             else -> null
         }
 
+        /** Battery at or below this, not charging: lighter video so the call lasts. */
+        const val LOW_BATTERY_PERCENT = 15
+        val LOW_BATTERY = ThermalPlan(maxKbps = 500, scaleDownBy = 1.5, maxFps = 15)
+
+        /** The lighter of the heat and battery plans, either of which may be absent. */
+        fun lighter(a: ThermalPlan?, b: ThermalPlan?): ThermalPlan? = listOfNotNull(a, b).minByOrNull { it.maxKbps }
+
         /** The tighter of two bitrate caps, either of which may be absent. */
         fun tighter(a: Int?, b: Int?): Int? = when {
             a == null -> b

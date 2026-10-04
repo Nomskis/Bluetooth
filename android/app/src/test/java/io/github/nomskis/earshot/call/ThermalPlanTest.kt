@@ -19,6 +19,14 @@ class ThermalPlanTest {
     }
 
     @Test
+    fun theLighterOfHeatAndBatteryWins() {
+        val moderate = ThermalPlan.forStatus(ThermalPlan.MODERATE)
+        assertEquals(ThermalPlan.LOW_BATTERY, ThermalPlan.lighter(moderate, ThermalPlan.LOW_BATTERY))
+        assertEquals(moderate, ThermalPlan.lighter(moderate, null))
+        assertNull(ThermalPlan.lighter(null, null))
+    }
+
+    @Test
     fun combinesWithTheRadioCap() {
         assertEquals(800, ThermalPlan.tighter(800, 1_000))
         assertEquals(500, ThermalPlan.tighter(800, 500))

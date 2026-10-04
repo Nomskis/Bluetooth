@@ -376,9 +376,9 @@ internal fun TopBar(state: CallState, route: AudioRoute, boostNotes: List<String
         (boostNotes + listOfNotNull(state.radioNote, lipSync)).forEach { note ->
             Text(note, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall)
         }
-        if (state.thermal != null) {
+        if (state.thermal != null || state.batteryLow) {
             Text(
-                "Your phone is warm, so your video is lighter until it cools down.",
+                if (state.thermal != null) "Your phone is warm, so your video is lighter until it cools down." else "Battery low, so your video is lighter to make the call last.",
                 color = Color.White.copy(alpha = 0.8f),
                 style = MaterialTheme.typography.bodySmall,
             )
