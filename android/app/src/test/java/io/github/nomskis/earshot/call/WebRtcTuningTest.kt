@@ -47,6 +47,13 @@ class WebRtcTuningTest {
     }
 
     @Test
+    fun gapsAreConcealedByOpusItself() {
+        // audio_decoder_opus.cc: field_trial::IsEnabled("WebRTC-Audio-OpusGeneratePlc"), which
+        // only looks for a value starting with "Enabled".
+        assertTrue(trials().getValue(WebRtcTuning.OPUS_CONCEALMENT).startsWith("Enabled"))
+    }
+
+    @Test
     fun theJitterBufferHasRoomForALongStall() {
         // At 10 ms packets; WebRTC accepts 20 and up.
         assertTrue(WebRtcTuning.JITTER_BUFFER_MAX_PACKETS * 10 >= 1_000)

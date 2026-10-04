@@ -139,6 +139,15 @@ against the WebRTC source the app ships with
   or mobile data. The browser tests check it over a simulated lossy link
   (`e2e/lossy-link.js`): with a sixth of the voice packets dropped, the
   receiver asks and the sender resends.
+- **What can't be repaired, Opus fills in itself.** Voice that RED, FEC and
+  resends all missed has to be made up. NetEq's default is its own generic
+  Expand; `WebRTC-Audio-OpusGeneratePlc/Enabled/` makes it ask the Opus
+  decoder for Opus's own concealment, which knows the voice it was just
+  decoding. Measured on WebRTC 6367's own NetEq and Opus code over simulated
+  loss, jitter and Wi-Fi stalls, it sounded better in 31 of 32 conditions
+  (+0.11 wideband PESQ on average, up to +0.22 on the worst links) and never
+  worse through stalls ([research/concealment.md](research/concealment.md)).
+  The Android app only: browsers don't take field trials.
 - **Voice first, then video.** WebRTC splits its bandwidth estimate between
   voice and video itself, but it only counts the voice's codec bitrate, not
   RED's copies (`audio_send_stream.cc` registers the codec rate with the

@@ -1,0 +1,6 @@
+{"ptime": 10, "loss": 0.03, "outage_ms": 200, "expand_pesq": 3.474, "codecplc_pesq": 3.572, "mean_gain": 0.099, "seeds_better": 5, "jb_ms": [64.7, 65.8]}
+{"ptime": 10, "loss": 0.05, "outage_ms": 500, "expand_pesq": 3.145, "codecplc_pesq": 3.178, "mean_gain": 0.033, "seeds_better": 4, "jb_ms": [73.5, 72.9]}
+{"ptime": 10, "loss": 0.02, "outage_ms": 1000, "expand_pesq": 3.749, "codecplc_pesq": 3.777, "mean_gain": 0.028, "seeds_better": 2, "jb_ms": [59.3, 62.9]}
+{"ptime": 20, "loss": 0.03, "outage_ms": 200, "expand_pesq": 3.353, "codecplc_pesq": 3.449, "mean_gain": 0.096, "seeds_better": 5, "jb_ms": [85.1, 93.7]}
+{"ptime": 20, "loss": 0.05, "outage_ms": 500, "expand_pesq": 3.18, "codecplc_pesq": 3.176, "mean_gain": -0.004, "seeds_better": 1, "jb_ms": [83.6, 91.3]}
+{"ptime": 20, "loss": 0.02, "outage_ms": 1000, "expand_pesq": 3.787, "codecplc_pesq": 3.788, "mean_gain": 0.001, "seeds_better": 3, "jb_ms": [80.0, 86.6]}

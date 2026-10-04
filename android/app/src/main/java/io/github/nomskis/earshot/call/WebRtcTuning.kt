@@ -58,11 +58,23 @@ object WebRtcTuning {
     /** And WebRTC won't scale below this while in software (320x180). */
     const val SOFTWARE_VIDEO_MIN_PIXELS = 320 * 180
 
+    /**
+     * Voice that RED, Opus FEC and resends all missed has to be made up. NetEq's default is its
+     * own generic Expand; with this trial it asks the Opus decoder for Opus's own concealment
+     * (NetEqImpl::DoCodecPlc, AudioDecoderOpusImpl::GeneratePlc), which knows the voice it was
+     * just decoding and stays in step with it for the next packet. Measured on 6367's own NetEq
+     * and Opus behind 3 RED copies (docs/research/concealment.md): better in 31 of 32 loss and
+     * jitter conditions, +0.11 wideband PESQ on average and up to +0.22 on the worst links, and
+     * as good or better through 0.2-1 s Wi-Fi stalls.
+     */
+    const val OPUS_CONCEALMENT = "WebRTC-Audio-OpusGeneratePlc"
+
     /** WebRTC field trials: "Name/Value/" pairs, set once when WebRTC starts. */
     val fieldTrials: String = buildString {
         append("WebRTC-Audio-Red-For-Opus/Enabled-$RED_REDUNDANCY/")
         append("WebRTC-Audio-NetEqDelayManagerConfig/quantile:$JITTER_QUANTILE/")
         // Enabled-<min pixels>,<max pixels>,<min bps> (the last is only checked for being positive).
         append("WebRTC-VP8-Forced-Fallback-Encoder-v2/Enabled-$SOFTWARE_VIDEO_MIN_PIXELS,$SOFTWARE_VIDEO_MAX_PIXELS,30000/")
+        append("$OPUS_CONCEALMENT/Enabled/")
     }
 }
