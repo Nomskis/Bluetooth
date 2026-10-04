@@ -70,8 +70,6 @@ export function createEarshotServer(config, { log = console, fetchImpl = globalT
     let tokens = RATE_BUCKET_SIZE;
     let lastRefill = Date.now();
     ws.isAlive = true;
-    ws.conn = conn;
-    ws.lastSeen = Date.now();
 
     ws.on('pong', () => {
       ws.isAlive = true;
@@ -80,7 +78,6 @@ export function createEarshotServer(config, { log = console, fetchImpl = globalT
     ws.on('message', (data, isBinary) => {
       ws.isAlive = true;
       const now = Date.now();
-      ws.lastSeen = now;
       tokens = Math.min(RATE_BUCKET_SIZE, tokens + ((now - lastRefill) / 1000) * RATE_REFILL_PER_SECOND);
       lastRefill = now;
       if (tokens < 1) {
@@ -142,14 +139,7 @@ export function createEarshotServer(config, { log = console, fetchImpl = globalT
 
   // Detect sockets that died without a close frame (common on mobile networks).
   const heartbeat = setInterval(() => {
-    const now = Date.now();
     for (const ws of wss.clients) {
-      // Only waiting for calls: no pings, which would keep waking the phone. It checks in
-      // itself every few minutes; silent for longer than listenerIdleMs, it's presumed gone.
-      if (ws.conn?.inboxAddress && !ws.conn.member) {
-        if (now - ws.lastSeen > config.listenerIdleMs) ws.terminate();
-        continue;
-      }
       if (!ws.isAlive) {
         ws.terminate();
         continue;

@@ -232,34 +232,3 @@ describe('earshot server', () => {
     assert.match(err.message, /404/);
   });
 });
-
-describe('phones waiting for calls', () => {
-  it("aren't pinged every heartbeat, and are dropped once silent too long", async () => {
-    const config = { ...loadConfig({}), heartbeatMs: 30, listenerIdleMs: 400 };
-    const server = createEarshotServer(config, { log: silentLog });
-    const { port } = await server.listen(0, '127.0.0.1');
-    const url = `ws://127.0.0.1:${port}/ws`;
-    try {
-      const listener = new TestClient(url);
-      const inCall = new TestClient(url);
-      await Promise.all([listener.open(), inCall.open()]);
-      let listenerPings = 0;
-      let callPings = 0;
-      listener.ws.on('ping', () => listenerPings++);
-      inCall.ws.on('ping', () => callPings++);
-      listener.send({ type: 'listen', inbox: 'sam-secret-inbox-key-0003' });
-      await listener.next('listening');
-      inCall.send({ type: 'join', room: 'heartbeat-room', peerId: 'peer-dddd' });
-      await inCall.next('joined');
-
-      const closed = new Promise((resolve) => listener.ws.once('close', resolve));
-      await new Promise((r) => setTimeout(r, 200));
-      assert.equal(listenerPings, 0);
-      assert.ok(callPings >= 2, `call socket pinged ${callPings} times`);
-      await closed; // nothing heard from it for 400 ms
-      inCall.close();
-    } finally {
-      await server.close();
-    }
-  });
-});

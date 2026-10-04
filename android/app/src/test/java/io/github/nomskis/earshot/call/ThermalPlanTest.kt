@@ -7,23 +7,13 @@ import org.junit.Test
 
 class ThermalPlanTest {
     @Test
-    fun videoGetsLighterAsThePhoneHeatsUp() {
-        assertNull(ThermalPlan.forStatus(0))
-        assertNull(ThermalPlan.forStatus(1)) // light: nothing yet
-        val moderate = ThermalPlan.forStatus(ThermalPlan.MODERATE)!!
+    fun fullQualityUntilThePhoneIsActuallyOverheating() {
+        for (status in 0..2) assertNull("status $status", ThermalPlan.forStatus(status)) // none, light, moderate
         val severe = ThermalPlan.forStatus(ThermalPlan.SEVERE)!!
-        val critical = ThermalPlan.forStatus(6)!!
-        assertTrue(moderate.maxKbps > severe.maxKbps && severe.maxKbps > critical.maxKbps)
-        assertTrue(moderate.maxFps > severe.maxFps && severe.maxFps > critical.maxFps)
+        val critical = ThermalPlan.forStatus(6)!! // shutdown counts as critical
+        assertTrue(severe.maxKbps > critical.maxKbps)
+        assertTrue(severe.maxFps > critical.maxFps)
         assertTrue(critical.scaleDownBy >= severe.scaleDownBy)
-    }
-
-    @Test
-    fun theLighterOfHeatAndBatteryWins() {
-        val moderate = ThermalPlan.forStatus(ThermalPlan.MODERATE)
-        assertEquals(ThermalPlan.LOW_BATTERY, ThermalPlan.lighter(moderate, ThermalPlan.LOW_BATTERY))
-        assertEquals(moderate, ThermalPlan.lighter(moderate, null))
-        assertNull(ThermalPlan.lighter(null, null))
     }
 
     @Test

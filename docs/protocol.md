@@ -74,9 +74,11 @@ channel during a call (see `contact` below).
 
 Rings time out after `RING_TIMEOUT_MS` (60 s). To accept, the callee joins
 `room`, where the caller is already waiting; the call then sets up as usual.
-A socket that only listens isn't pinged by the server's heartbeat (that would
-keep waking the phone); it sends its own `ping` every few minutes, and is
-dropped after `LISTENER_IDLE_MS` (10 minutes) without hearing from it.
+Listening sockets get the same heartbeat as any other (a WebSocket ping every
+`HEARTBEAT_MS`, dropped if unanswered), so a phone that lost its connection
+stops counting as reachable within seconds. Listening clients also send a
+`ping` message every minute, which some hosts (Render's free plan) need to see
+to stay awake.
 
 ## Reconnecting
 

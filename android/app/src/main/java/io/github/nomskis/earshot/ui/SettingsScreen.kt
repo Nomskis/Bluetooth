@@ -213,7 +213,7 @@ fun SettingsScreen(
             Toggle("Screen off in your pocket", settings.pocketGuard) { v -> onUpdate { it.copy(pocketGuard = v) } }
             Hint(
                 "Uses the proximity sensor, like a phone call, so a pocket can't mute or hang up. The camera pauses too, " +
-                    "which saves battery and Wi-Fi airtime for your earbuds; the other side sees why. " +
+                    "so the other side sees \"phone in pocket\" instead of a black picture, and the Wi-Fi airtime goes back to your earbuds. " +
                     "Turn off if the screen goes dark while the phone is propped up.",
             )
 

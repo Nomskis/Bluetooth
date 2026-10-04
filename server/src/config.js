@@ -38,8 +38,6 @@ export function loadConfig(env = process.env) {
     reconnectGraceMs: int(env.RECONNECT_GRACE_MS, 20_000),
     heartbeatMs: int(env.HEARTBEAT_MS, 25_000),
     ringTimeoutMs: int(env.RING_TIMEOUT_MS, 60_000),
-    // Phones waiting for calls check in every few minutes; after this long silent, drop them.
-    listenerIdleMs: int(env.LISTENER_IDLE_MS, 10 * 60_000),
     ice: {
       stunUrls: list(env.STUN_URLS, DEFAULT_STUN_URLS),
       turnUrls: list(env.TURN_URLS, []),

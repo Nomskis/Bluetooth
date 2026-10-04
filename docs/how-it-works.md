@@ -234,10 +234,11 @@ inside the server's grace period the call simply resumes.
 - **Camera pause.** Covered for 2 seconds, the camera stops (it would only
   film the pocket) and `media-state` tells the other side `inPocket`, so they
   see why. That also gives the Wi-Fi airtime back to the earbuds on 2.4 GHz.
-- **Heat.** On Android 10+, the thermal status steers outgoing video:
-  moderate caps it at 1 Mbps and 24 fps, severe at 500 kbps, 15 fps and two
-  thirds of the resolution, critical at 250 kbps, 10 fps and half. Encoding
-  is the biggest heat source a call can turn down; the voice is left alone.
+- **Overheating.** Video stays at full quality unless Android reports severe
+  or critical heat (Android 10+ thermal status), where it throttles hard and
+  starts switching the camera off. Then outgoing video drops to 800 kbps,
+  24 fps and two thirds of the resolution (severe) or 400 kbps, 15 fps and
+  half (critical), which keeps it going; the voice is left alone.
 - **Dropped earbuds.** Their voice pauses rather than playing out loud, and
   echo cancellation comes on while it does play out loud (see Echo above).
 - **Chat.** For when one of you can't talk or hear: a data channel, so
