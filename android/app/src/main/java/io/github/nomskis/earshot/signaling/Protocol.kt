@@ -142,6 +142,8 @@ sealed interface SignalData {
         val cameraOff: Boolean = false,
         /** "hifi" when this side plays the call as media, "headset" or "standard" otherwise. */
         val audioMode: String? = null,
+        /** The camera is paused because the phone is in a pocket (cameraOff is true too). */
+        val inPocket: Boolean? = null,
     ) : SignalData
 }
 

@@ -26,6 +26,8 @@ data class RemoteMedia(
     val micMuted: Boolean = false,
     val cameraOff: Boolean = false,
     val audioMode: String? = null,
+    /** Their camera is paused because their phone is in a pocket. */
+    val inPocket: Boolean = false,
 )
 
 data class CallState(
@@ -38,6 +40,8 @@ data class CallState(
     val hasRemoteVideo: Boolean = false,
     val micMuted: Boolean = false,
     val cameraOff: Boolean = false,
+    /** The camera is paused while the phone is in a pocket (the proximity sensor is covered). */
+    val cameraPaused: Boolean = false,
     val hasCamera: Boolean = true,
     val frontCamera: Boolean = true,
     val signalingOnline: Boolean = false,

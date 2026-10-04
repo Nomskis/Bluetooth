@@ -64,6 +64,8 @@ class ProtocolFixturesTest {
         assertEquals(1, payload.sdpMLineIndex)
         val media = decodeServerMessage(File(fixtures, "server/signal-media-state.json").readText()) as ServerMessage.Signal
         assertEquals(SignalData.MediaState(micMuted = true, cameraOff = false, audioMode = null), media.data)
+        val pocket = decodeServerMessage(File(fixtures, "server/signal-media-state-pocket.json").readText()) as ServerMessage.Signal
+        assertEquals(SignalData.MediaState(micMuted = false, cameraOff = true, audioMode = "hifi", inPocket = true), pocket.data)
     }
 
     @Test

@@ -156,7 +156,7 @@ fun CallScreen(
 
         TopBar(state, route, listOfNotNull(earbudBoost?.text, turboNote), Modifier.align(Alignment.TopCenter))
 
-        if (state.hasCamera && !state.cameraOff && !chatOpen) {
+        if (state.hasCamera && !state.cameraOff && !state.cameraPaused && !chatOpen) {
             VideoRenderer(
                 sink = session.localPreview,
                 eglContext = session.eglContext,
@@ -289,7 +289,11 @@ private fun RemotePlaceholder(state: CallState, compact: Boolean) {
             CallPhase.WAITING -> "Waiting for the other person to join\n${state.room}"
             CallPhase.NEGOTIATING -> "Connecting to ${peerName ?: "the other person"}…"
             CallPhase.RECONNECTING -> "Connection lost. Reconnecting…"
-            CallPhase.CONNECTED -> if (state.remoteMedia.cameraOff) "${peerName ?: "They"} turned the camera off" else "Connected"
+            CallPhase.CONNECTED -> when {
+                state.remoteMedia.inPocket -> "Camera paused: ${peerName?.let { "$it's" } ?: "their"} phone is in a pocket"
+                state.remoteMedia.cameraOff -> "${peerName ?: "They"} turned the camera off"
+                else -> "Connected"
+            }
             CallPhase.ENDED -> "Call ended"
             CallPhase.FAILED -> state.error ?: "Call failed"
         }

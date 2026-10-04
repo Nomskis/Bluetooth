@@ -329,7 +329,8 @@ function renderBadges(media) {
     ui.peerBadges.append(span);
   };
   if (media.micMuted) add('Muted');
-  if (media.cameraOff) add('Camera off');
+  if (media.inPocket) add('Phone in pocket');
+  else if (media.cameraOff) add('Camera off');
   if (media.audioMode === 'hifi') add('Hi-Fi audio', 'hifi');
 }
 

@@ -68,7 +68,11 @@ a `4000` close.
 | `answer` | `session`, `sdp` | the answerer |
 | `candidate` | `session`, `candidate: { candidate, sdpMid, sdpMLineIndex, usernameFragment? }` | both |
 | `request-offer` | `session` (may be null) | the answerer, when it needs a fresh offer |
-| `media-state` | `micMuted`, `cameraOff`, `audioMode?` (`hifi`, `headset`, `standard`) | both, after connecting and on every change |
+| `media-state` | `micMuted`, `cameraOff`, `audioMode?` (`hifi`, `headset`, `standard`), `inPocket?` | both, after connecting and on every change |
+
+`inPocket: true` (with `cameraOff: true`) means the camera paused itself
+because the phone's proximity sensor is covered, a pocket usually; show that
+rather than "camera off".
 
 Ignore kinds you don't know; newer clients may send more.
 

@@ -161,6 +161,7 @@ class CallSession(
         data class RequestOfferDue(val askedAt: Long) : Event
         data class SetMicMuted(val muted: Boolean) : Event
         data class SetCameraOff(val off: Boolean) : Event
+        data class SetCameraPaused(val paused: Boolean) : Event
         data object SwitchCamera : Event
         data class CameraSwitched(val front: Boolean) : Event
         data class SetVoiceVolume(val volume: Float) : Event
@@ -206,6 +207,8 @@ class CallSession(
 
     fun setMicMuted(muted: Boolean) = post(Event.SetMicMuted(muted))
     fun setCameraOff(off: Boolean) = post(Event.SetCameraOff(off))
+    /** Pause the camera while the phone is in a pocket; separate from the user's own camera switch. */
+    fun setCameraPaused(paused: Boolean) = post(Event.SetCameraPaused(paused))
     fun switchCamera() = post(Event.SwitchCamera)
     fun setVoiceVolume(volume: Float) = post(Event.SetVoiceVolume(volume))
     fun onNetworkChanged() = post(Event.NetworkChanged)
@@ -314,9 +317,13 @@ class CallSession(
                 sendMediaState()
             }
             is Event.SetCameraOff -> {
-                link?.tracks?.video?.setEnabled(!event.off)
-                if (event.off) engine.stopCamera() else engine.startCamera()
                 _state.update { it.copy(cameraOff = event.off) }
+                applyCamera()
+                sendMediaState()
+            }
+            is Event.SetCameraPaused -> if (event.paused != _state.value.cameraPaused) {
+                _state.update { it.copy(cameraPaused = event.paused) }
+                applyCamera()
                 sendMediaState()
             }
             Event.SwitchCamera -> engine.switchCamera { front -> post(Event.CameraSwitched(front)) }
@@ -588,7 +595,7 @@ class CallSession(
             is SignalData.Candidate -> onRemoteCandidate(data)
             is SignalData.RequestOffer -> onRequestOffer(data)
             is SignalData.MediaState -> _state.update {
-                it.copy(remoteMedia = RemoteMedia(data.micMuted, data.cameraOff, data.audioMode))
+                it.copy(remoteMedia = RemoteMedia(data.micMuted, data.cameraOff, data.audioMode, inPocket = data.inPocket == true))
             }
         }
     }
@@ -816,7 +823,7 @@ class CallSession(
             ?: error("WebRTC could not create a peer connection")
         val tracks = engine.createSendTracks()
         tracks.audio.setEnabled(!_state.value.micMuted)
-        tracks.video?.setEnabled(!_state.value.cameraOff)
+        tracks.video?.setEnabled(!_state.value.sendsNoVideo)
         return Link(pc, session, tracks).also {
             observer.link = it
             openChatChannel(it)
@@ -892,8 +899,24 @@ class CallSession(
         if (remote == null) return
         val s = _state.value
         val mode = if (s.earbudMic) "headset" else profile.wireName
-        sendSignal(SignalData.MediaState(micMuted = s.micMuted, cameraOff = s.cameraOff, audioMode = mode))
+        sendSignal(
+            SignalData.MediaState(
+                micMuted = s.micMuted,
+                cameraOff = s.sendsNoVideo,
+                audioMode = mode,
+                inPocket = (s.cameraPaused && !s.cameraOff).takeIf { it },
+            ),
+        )
     }
+
+    /** The camera runs unless you switched it off or the phone is in a pocket. */
+    private fun applyCamera() {
+        val off = _state.value.sendsNoVideo
+        link?.tracks?.video?.setEnabled(!off)
+        if (off) engine.stopCamera() else engine.startCamera()
+    }
+
+    private val CallState.sendsNoVideo: Boolean get() = cameraOff || cameraPaused
 
     private fun setRemote(peer: PeerInfo?) {
         if (peer != null && lastPeerId != null && peer.peerId != lastPeerId) {

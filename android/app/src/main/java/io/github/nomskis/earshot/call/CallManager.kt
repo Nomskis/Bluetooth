@@ -135,6 +135,17 @@ class CallManager(
                 null
             }
             val routeJob = launch { followRoute(session, profile, current) }
+            // In a pocket the camera films the lining and costs battery, heat and Wi-Fi airtime.
+            val pocketJob = if (current.pocketGuard && withVideo) {
+                launch {
+                    PocketSensor(appContext).covered().collectLatest { covered ->
+                        if (covered) delay(POCKET_SETTLE_MS) // not for a hand passing over it
+                        session.setCameraPaused(covered)
+                    }
+                }
+            } else {
+                null
+            }
             // Earbuds back from the case mid-call: many reset game mode, and HyperOS resets the codec.
             val reapplyJob = if (boost || turbo != null) {
                 launch {
@@ -156,6 +167,7 @@ class CallManager(
             settings.clearActiveCall()
             lipSyncJob?.cancel()
             routeJob.cancel()
+            pocketJob?.cancel()
             reapplyJob?.cancelAndJoin()
             if (end.error != null) _lastError.value = end.error
             unwatchNetwork()
@@ -272,6 +284,7 @@ class CallManager(
         /** After earbuds reconnect, let A2DP and the companion channel come up first. */
         const val RECONNECT_SETTLE_MS = 3_000L
         const val ECHO_OFF_SETTLE_MS = 2_000L
+        const val POCKET_SETTLE_MS = 2_000L
     }
 
     private fun unwatchNetwork() {
