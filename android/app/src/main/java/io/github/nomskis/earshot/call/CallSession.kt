@@ -808,8 +808,10 @@ class CallSession(
     }
 
     /** Our tweaks to every description we send. */
-    private fun tune(sdp: String): String =
-        SdpTuning.capVideoBandwidth(SdpTuning.preferHdVoice(SdpTuning.preferLowLatencyAudio(sdp)), radioPlan.remoteVideoCap())
+    private fun tune(sdp: String): String = SdpTuning.capVideoBandwidth(
+        SdpTuning.requestAudioResends(SdpTuning.preferHdVoice(SdpTuning.preferLowLatencyAudio(sdp))),
+        radioPlan.remoteVideoCap(),
+    )
 
     private suspend fun onAnswer(data: SignalData.Answer) {
         val l = link ?: return

@@ -19,7 +19,15 @@
  */
 
 import { CHAT_CAPABILITY, CHAT_CHANNEL, ChatLog } from './chat.js';
-import { firstAudioCodec, opusMaxAverageBitrate, preferHdVoice, preferLowLatencyAudio, preferRedundantAudio } from './sdp.js';
+import {
+  firstAudioCodec,
+  opusHasNack,
+  opusMaxAverageBitrate,
+  preferHdVoice,
+  preferLowLatencyAudio,
+  preferRedundantAudio,
+  requestAudioResends,
+} from './sdp.js';
 
 const ICE_RECOVERY_DELAY_MS = 4000;
 const OFFER_TIMEOUT_MS = 10_000;
@@ -35,9 +43,9 @@ function isHealthy(pc) {
   return pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed';
 }
 
-/** Our tweaks to every description we send: 10 ms packets and HD voice. */
+/** Our tweaks to every description we send: 10 ms packets, HD voice, and resends of lost voice. */
 function tune(sdp) {
-  return preferHdVoice(preferLowLatencyAudio(sdp));
+  return requestAudioResends(preferHdVoice(preferLowLatencyAudio(sdp)));
 }
 
 export class CallEngine extends EventTarget {
@@ -126,7 +134,7 @@ export class CallEngine extends EventTarget {
   /** What the current connection negotiated; for diagnostics and tests. */
   get negotiated() {
     const remote = this.#pc?.currentRemoteDescription?.sdp;
-    return { audioCodec: firstAudioCodec(remote), opusBitrate: opusMaxAverageBitrate(remote) };
+    return { audioCodec: firstAudioCodec(remote), opusBitrate: opusMaxAverageBitrate(remote), audioNack: opusHasNack(remote) };
   }
 
   hangUp() {

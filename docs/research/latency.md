@@ -193,6 +193,16 @@ them, with no help from their side, so it works with any client.
   `WebRTC-Audio-Red-For-Opus` field trial.
 - **Jitter buffer.** `audioJitterBufferFastAccelerate` and a lower
   `audioJitterBufferMaxPackets` make it shrink quickly after a spike.
+- **Audio NACK** **[WebRTC source]**. Off in WebRTC unless the Opus line
+  carries `a=rtcp-fb:<pt> nack`. Each side's voice channel takes it from the
+  *remote* description: the send stream keeps 5 s of history
+  (`kNackRtpHistoryMs`), and `VoiceChannel::SetRemoteContent_w` turns the
+  receive side's NACK on from the sender's setting. So adding the line to the
+  descriptions we send turns it on in both directions, for any client that
+  does the same. NetEq's `NackTracker` only lists a packet when its time to
+  play exceeds the round trip, or while it's recent and loss is high, so it
+  never waits for a resend. **Built** (both clients; e2e-tested over a
+  lossy relay).
 - **DRED** (Opus 1.5/1.6 neural redundancy, up to 1 s of recovery) isn't in
   libWebRTC or Chrome yet ([BlogGeek](https://bloggeek.me/webrtcglossary/dred/)).
   Revisit later.

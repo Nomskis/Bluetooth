@@ -81,6 +81,35 @@ export function preferHdVoice(sdp, bitrate = HD_VOICE_BITRATE) {
   return lines.join('\r\n');
 }
 
+/**
+ * Lets the other side's receiver ask for lost voice packets again (generic
+ * NACK on the Opus line, RFC 4585). WebRTC switches audio NACK on from the
+ * description it receives: the side reading this keeps a few seconds of sent
+ * packets, and its own receiver asks for the ones RED couldn't repair, but
+ * only those a resend can still bring in before they're due to play, so it
+ * never adds delay. Same as SdpTuning.kt.
+ */
+export function requestAudioResends(sdp) {
+  const opus = sdp.match(/^a=rtpmap:(\d+) opus\/48000/im);
+  if (!opus) return sdp;
+  const pt = opus[1];
+  const nack = `a=rtcp-fb:${pt} nack`;
+  const lines = sdp.split('\r\n');
+  if (lines.includes(nack)) return sdp;
+  let last = -1;
+  lines.forEach((l, i) => {
+    if (l.startsWith(`a=rtpmap:${pt} `) || l.startsWith(`a=rtcp-fb:${pt} `) || l.startsWith(`a=fmtp:${pt} `)) last = i;
+  });
+  lines.splice(last + 1, 0, nack);
+  return lines.join('\r\n');
+}
+
+/** True when a description lets its reader's receiver ask for lost voice packets again. */
+export function opusHasNack(sdp) {
+  const opus = sdp?.match(/^a=rtpmap:(\d+) opus\/48000/im);
+  return !!opus && new RegExp(`^a=rtcp-fb:${opus[1]} nack\\r?$`, 'm').test(sdp);
+}
+
 /** maxaveragebitrate on the Opus line of a description, or null. */
 export function opusMaxAverageBitrate(sdp) {
   const opus = sdp?.match(/^a=rtpmap:(\d+) opus\/48000/im);

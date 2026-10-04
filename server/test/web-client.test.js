@@ -4,7 +4,7 @@ import test from 'node:test';
 import fs from 'node:fs';
 import { ChatLog, MAX_CHAT_LENGTH, parseChat } from '../../web/js/chat.js';
 import { DelayTracker, SENDER_ESTIMATE_MS, isWeak, relayed } from '../../web/js/delay.js';
-import { opusMaxAverageBitrate, preferHdVoice } from '../../web/js/sdp.js';
+import { opusHasNack, opusMaxAverageBitrate, preferHdVoice, requestAudioResends } from '../../web/js/sdp.js';
 import { VoiceActivityDetector, rms } from '../../web/js/voice.js';
 
 test('voice detector: quick to start, slow to stop', () => {
@@ -45,6 +45,19 @@ test('HD voice sets maxaveragebitrate on the Opus line only', () => {
   assert.equal(preferHdVoice(tuned), tuned);
   assert.equal(opusMaxAverageBitrate(tuned), 48000);
   assert.equal(opusMaxAverageBitrate(sdp), null);
+});
+
+test('resends of lost voice are asked for on the Opus line only', () => {
+  const sdp = ['m=audio 9 UDP/TLS/RTP/SAVPF 63 111', 'a=rtpmap:63 red/48000/2', 'a=fmtp:63 111/111', 'a=rtpmap:111 opus/48000/2', 'a=rtcp-fb:111 transport-cc', 'a=fmtp:111 minptime=10;useinbandfec=1', ''].join('\r\n');
+  const tuned = requestAudioResends(sdp);
+  const lines = tuned.split('\r\n');
+  assert.equal(lines.indexOf('a=rtcp-fb:111 nack'), lines.indexOf('a=fmtp:111 minptime=10;useinbandfec=1') + 1);
+  assert.equal(lines.filter((l) => l.startsWith('a=rtcp-fb:63')).length, 0);
+  assert.equal(tuned.replace('a=rtcp-fb:111 nack\r\n', ''), sdp);
+  assert.equal(requestAudioResends(tuned), tuned);
+  assert.equal(opusHasNack(tuned), true);
+  assert.equal(opusHasNack(sdp), false);
+  assert.equal(requestAudioResends('v=0\r\n'), 'v=0\r\n');
 });
 
 test('delay tracker reports recent packet loss', () => {

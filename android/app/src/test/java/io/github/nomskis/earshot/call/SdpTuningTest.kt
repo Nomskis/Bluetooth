@@ -98,4 +98,23 @@ class SdpTuningTest {
         assertTrue(SdpTuning.preferHdVoice(bare).contains("a=rtpmap:111 opus/48000/2\r\na=fmtp:111 maxaveragebitrate=48000"))
         assertEquals("v=0\r\n", SdpTuning.preferHdVoice("v=0\r\n"))
     }
+
+    @Test
+    fun letsTheOtherSideAskForLostVoicePacketsAgain() {
+        val tuned = SdpTuning.requestAudioResends(offer)
+        val lines = tuned.split("\r\n")
+        // On the Opus line itself (RED only wraps it), next to Opus's other attributes.
+        assertEquals(1, lines.count { it == "a=rtcp-fb:111 nack" })
+        assertEquals(lines.indexOf("a=fmtp:111 minptime=10;useinbandfec=1") + 1, lines.indexOf("a=rtcp-fb:111 nack"))
+        assertFalse(lines.any { it.startsWith("a=rtcp-fb:63") })
+        // Nothing else changes, and applying it twice changes nothing more.
+        assertEquals(offer, tuned.replace("a=rtcp-fb:111 nack\r\n", ""))
+        assertEquals(tuned, SdpTuning.requestAudioResends(tuned))
+        // Next to Opus's existing feedback when it has some.
+        val withFeedback = offer.replace("a=rtpmap:111 opus/48000/2\r\n", "a=rtpmap:111 opus/48000/2\r\na=rtcp-fb:111 transport-cc\r\n")
+            .replace("a=fmtp:111 minptime=10;useinbandfec=1\r\n", "")
+        val withFeedbackLines = SdpTuning.requestAudioResends(withFeedback).split("\r\n")
+        assertEquals(withFeedbackLines.indexOf("a=rtcp-fb:111 transport-cc") + 1, withFeedbackLines.indexOf("a=rtcp-fb:111 nack"))
+        assertEquals("v=0\r\n", SdpTuning.requestAudioResends("v=0\r\n"))
+    }
 }

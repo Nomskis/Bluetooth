@@ -103,7 +103,7 @@ are in [research/latency.md](research/latency.md); in short:
 | What | How | Works with |
 | --- | --- | --- |
 | Shorter network path | 10 ms Opus packets (`a=ptime:10`), redundant audio (RED) preferred, a jitter buffer that shrinks quickly (`audioJitterBufferFastAccelerate`) | everything |
-| Ride out bad Wi-Fi | Each audio packet repeats the 3 before it, a jitter buffer sized for spiky networks, VP8 temporal layers, Wi-Fi kept out of power save (see below) | everything |
+| Ride out bad Wi-Fi | Each audio packet repeats the 3 before it, lost voice asked for again (NACK), a jitter buffer sized for spiky networks, VP8 temporal layers, Wi-Fi kept out of power save (see below) | everything |
 | Fast playback path | `PERFORMANCE_MODE_LOW_LATENCY` with a self-adjusting buffer (`setUseLowLatency`), game-audio label | everything; low-latency Bluetooth where the phone supports it |
 | Measure it | The sonar meter in the delay tuner: chirps through an earbud held to the mic, matched filter, calibrated against the phone speaker | everything |
 | See them talk first | A voice detector on their decoded audio, 100–250 ms ahead of your ears: the call screen glows, music dips (`AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`), 8-second replay | everything |
@@ -127,6 +127,18 @@ against the WebRTC source the app ships with
   concealed. That adds bytes, not packets, and on Wi-Fi each packet's airtime
   costs more than its size: about 100 kbps more at HD voice. Opus's own
   in-band FEC stays on underneath.
+- **Lost voice is asked for again.** Both clients put `a=rtcp-fb:<opus> nack`
+  in the descriptions they send. WebRTC switches audio NACK on from the
+  description it receives
+  ([`pc/channel.cc`](https://webrtc.googlesource.com/src/+/refs/branch-heads/6367/pc/channel.cc),
+  `SetReceiveNackEnabled(SenderNackEnabled())`), so each sender keeps 5 s of
+  packets and each receiver asks for the ones RED couldn't repair. NetEq only
+  asks for a packet a resend can still bring in before it's due to play, so
+  this never adds delay; it rescues the longer gaps on links where the jitter
+  buffer is deep anyway, which is exactly a long-distance call over weak Wi-Fi
+  or mobile data. The browser tests check it over a simulated lossy link
+  (`e2e/lossy-link.js`): with a sixth of the voice packets dropped, the
+  receiver asks and the sender resends.
 - **Voice that fits the connection.** WebRTC sends audio at a fixed bitrate
   whatever its bandwidth estimate says, and HD voice with its copies is about
   250 kbps. When the estimate (`availableOutgoingBitrate`) says that doesn't
