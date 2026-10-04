@@ -113,7 +113,8 @@ class ChatNotifier(private val context: Context, private val replyIntent: Intent
     private fun replyAction(): NotificationCompat.Action {
         val input = RemoteInput.Builder(KEY_REPLY)
             .setLabel(context.getString(R.string.chat_reply))
-            .setChoices(quickReplies.toTypedArray())
+            // All removed in Settings: just the text box.
+            .apply { if (quickReplies.isNotEmpty()) setChoices(quickReplies.toTypedArray()) }
             .build()
         // Mutable so Android can put the typed reply into it.
         val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
