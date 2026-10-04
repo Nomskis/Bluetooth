@@ -39,9 +39,30 @@ object WebRtcTuning {
      */
     const val VIDEO_SCALABILITY_MODE = "L1T3"
 
+    /**
+     * Video at or below this many pixels is encoded in software (libvpx), above
+     * it by the phone's hardware encoder. Android's WebRTC prefers a hardware VP8
+     * encoder whenever the phone has one and doesn't switch to software for
+     * temporal layers (sdk/android video_encoder_fallback.cc passes
+     * prefer_temporal_support=false), so on most phones [VIDEO_SCALABILITY_MODE]
+     * was simply ignored, and hardware encoders' rate control is at its worst at
+     * low bitrates. WebRTC only scales the camera down this far when bandwidth
+     * is short, and a resolution change re-initialises the encoder, where the
+     * fallback wrapper checks this threshold: so on a weak link the call gets
+     * temporal layers (a lost packet costs a frame, not a freeze) and libvpx's
+     * rate control, while a good link keeps the cheaper hardware encoder.
+     * 640x360: software VP8 at that size is light work for any phone.
+     */
+    const val SOFTWARE_VIDEO_MAX_PIXELS = 640 * 360
+
+    /** And WebRTC won't scale below this while in software (320x180). */
+    const val SOFTWARE_VIDEO_MIN_PIXELS = 320 * 180
+
     /** WebRTC field trials: "Name/Value/" pairs, set once when WebRTC starts. */
     val fieldTrials: String = buildString {
         append("WebRTC-Audio-Red-For-Opus/Enabled-$RED_REDUNDANCY/")
         append("WebRTC-Audio-NetEqDelayManagerConfig/quantile:$JITTER_QUANTILE/")
+        // Enabled-<min pixels>,<max pixels>,<min bps> (the last is only checked for being positive).
+        append("WebRTC-VP8-Forced-Fallback-Encoder-v2/Enabled-$SOFTWARE_VIDEO_MIN_PIXELS,$SOFTWARE_VIDEO_MAX_PIXELS,30000/")
     }
 }

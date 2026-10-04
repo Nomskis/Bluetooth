@@ -33,6 +33,20 @@ class WebRtcTuningTest {
     }
 
     @Test
+    fun smallVideoIsEncodedInSoftwareSoTemporalLayersWork() {
+        // video_encoder_software_fallback_wrapper.cc: sscanf("Enabled-%d,%d,%d"), all positive,
+        // max >= min, and max at least the hardware encoder's own floor (320x180 by default).
+        val config = trials().getValue("WebRTC-VP8-Forced-Fallback-Encoder-v2")
+        assertTrue(config.startsWith("Enabled-"))
+        val (minPixels, maxPixels, minBps) = config.removePrefix("Enabled-").split(',').map { it.toInt() }
+        assertTrue(minPixels > 0 && minBps > 0)
+        assertTrue(maxPixels >= minPixels)
+        assertTrue(maxPixels >= 320 * 180 - 1)
+        // 360p and below in software, 540p and up in hardware.
+        assertTrue(640 * 360 <= maxPixels && 960 * 540 > maxPixels)
+    }
+
+    @Test
     fun theJitterBufferHasRoomForALongStall() {
         // At 10 ms packets; WebRTC accepts 20 and up.
         assertTrue(WebRtcTuning.JITTER_BUFFER_MAX_PACKETS * 10 >= 1_000)

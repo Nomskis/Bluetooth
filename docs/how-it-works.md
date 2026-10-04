@@ -191,9 +191,20 @@ against the WebRTC source the app ships with
   temporal layers (`scalabilityMode` L1T3): half the frames are referenced by
   nothing and a quarter by one other, so a loss usually costs one frame
   instead of stalling the picture until it's resent or a new keyframe
-  arrives. Hardware encoders ignore it. WebRTC already keeps the frame rate
-  and lowers resolution when bandwidth drops (`MAINTAIN_FRAMERATE`), so
-  motion stays smooth.
+  arrives. WebRTC already keeps the frame rate and lowers resolution when
+  bandwidth drops (`MAINTAIN_FRAMERATE`), so motion stays smooth.
+- **Software encoding when the link is weak.** Android's WebRTC uses the
+  phone's hardware VP8 encoder whenever there is one, with software only as
+  a fallback for errors (`sdk/android/src/jni/video_encoder_fallback.cc`
+  passes `prefer_temporal_support=false`). Hardware encoders make no
+  temporal layers, so on most phones the line above did nothing, and their
+  rate control is at its worst at low bitrates. WebRTC only scales the camera
+  down to 360p or less when bandwidth is short, and each resolution change
+  re-initialises the encoder; with `WebRTC-VP8-Forced-Fallback-Encoder-v2`
+  set, the fallback wrapper then switches to libvpx below that size. So a
+  weak link gets temporal layers and libvpx's rate control, and a good one
+  keeps the cheaper hardware encoder
+  ([`call/WebRtcTuning.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/WebRtcTuning.kt)).
 - **Wi-Fi out of power save.** A phone in power save lets the router hold its
   packets and fetches them in bursts. The call holds Android's low-latency
   Wi-Fi lock (screen on, app in front) and the high-performance one, which
