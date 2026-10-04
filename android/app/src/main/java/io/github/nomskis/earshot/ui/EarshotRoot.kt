@@ -40,6 +40,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
     val contacts by viewModel.contacts.collectAsStateWithLifecycle()
     val callBack by viewModel.callBack.collectAsStateWithLifecycle()
     val inboxStatus by viewModel.inboxStatus.collectAsStateWithLifecycle()
+    val callLog by viewModel.callLog.collectAsStateWithLifecycle()
     // Each time the app comes to the front outside a call, nudge a sleeping server awake.
     LifecycleStartEffect(session == null) {
         if (session == null) viewModel.wakeServer()
@@ -72,6 +73,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean, onLeaveCa
                     viewModel.resetServerCheck()
                     screen = Screen.HOME
                 },
+                lastCall = callLog.firstOrNull { it.quality != null },
             )
             screen == Screen.TUNER -> TunerScreen(
                 settings = current,

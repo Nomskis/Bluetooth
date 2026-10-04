@@ -5,22 +5,23 @@ import kotlin.math.min
 /**
  * How long the audio packets we ask the other side for should be.
  *
- * 10 ms packets save delay, and each one carries the three before it (RED),
- * so up to 30 ms of consecutive loss is repaired exactly. Weak Wi-Fi and
- * mobile data, especially at the end of a long international path, lose
- * longer runs than that, and then NetEq has to conceal what's missing. Longer
- * packets stretch the same three copies over more time: 20 ms packets repair
- * gaps up to 60 ms, 40 ms ones up to 120 ms, at half or a quarter of the
- * packet rate (less airtime, less per-packet overhead). The cost is 10 or
- * 30 ms more delay, which only matters on a link that's fine anyway.
+ * Each packet carries the three before it (RED), so 20 ms packets repair up
+ * to 60 ms of consecutive loss exactly, 40 ms ones up to 120 ms, 10 ms ones
+ * 30 ms. Longer packets also halve or quarter the packet rate: less airtime on
+ * contended Wi-Fi and less per-packet overhead (about 23 kbps of headers at
+ * 20 ms instead of 46 at 10), and Opus codes 20 ms frames more efficiently.
+ * Shorter ones save 10 or 30 ms of delay, which only matters on a link that's
+ * fine anyway.
  *
- * So it's decided from what we receive: when packets go missing and audio
+ * So a call starts at WebRTC's usual 20 ms ([START]; on a long route with a
+ * weak end that's the safe choice, docs/research/long-distance.md), and from
+ * then on it's decided from what we receive: when packets go missing and audio
  * still has to be concealed after RED, Opus FEC and resends have done what
- * they can, ask for longer packets; after a calm minute, shorter again. A
+ * they can, ask for longer packets; after a calm minute, a step shorter. A
  * step back down that doesn't hold makes the next one wait longer. Same rules
  * as web/js/ptime.js.
  */
-class PacketTime(start: Step = Step.SHORT) {
+class PacketTime(start: Step = START) {
     enum class Step(val ms: Int) { SHORT(10), MEDIUM(20), LONG(40) }
 
     /** Where it starts: shorter after a calm minute if the link has got better ([LinkMemory]). */
@@ -98,6 +99,9 @@ class PacketTime(start: Step = Step.SHORT) {
     }
 
     companion object {
+        /** Where a call with no memory of the route starts: WebRTC's usual 20 ms. */
+        val START = Step.MEDIUM
+
         /** Packets lost on the way, before any repair. */
         const val ROUGH_LOSS = 0.03
         /** Share of received audio NetEq still had to make up. */

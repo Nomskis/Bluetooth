@@ -27,7 +27,7 @@ data class LinkMemory(
     val network: String,
     /** A cautious figure for what we could send: the lower quartile of the estimate over the call's last minutes. */
     val sendEstimateBps: Int? = null,
-    val packetMs: Int = 10,
+    val packetMs: Int = PacketTime.START.ms,
     /** [MediaBudget.Level] name. */
     val voiceLevel: String = MediaBudget.Level.FULL.name,
     val atMillis: Long,
@@ -37,7 +37,7 @@ data class LinkMemory(
         get() = sendEstimateBps?.let(::startBitrateFor)
 
     val packetStep: PacketTime.Step
-        get() = PacketTime.Step.entries.firstOrNull { it.ms == packetMs } ?: PacketTime.Step.SHORT
+        get() = PacketTime.Step.entries.firstOrNull { it.ms == packetMs } ?: PacketTime.START
 
     val level: MediaBudget.Level
         get() = MediaBudget.Level.entries.firstOrNull { it.name == voiceLevel } ?: MediaBudget.Level.FULL

@@ -7,16 +7,9 @@ package io.github.nomskis.earshot.call
 object SdpTuning {
 
     /**
-     * Asks the other side to send 10 ms audio packets instead of the default
-     * 20 ms. Each packet waits half as long to fill before it's sent, which
-     * saves about 10 ms per direction for a little more packet overhead.
-     */
-    fun preferLowLatencyAudio(sdp: String): String = askForPacketTime(sdp, 10)
-
-    /**
      * Asks the other side to send audio packets of [ms] (a=ptime, which WebRTC
      * senders take from the description they receive as Opus's frame length).
-     * Longer ones on a rough link: see [PacketTime].
+     * 20 ms to start with, longer or shorter as the link turns out: see [PacketTime].
      */
     fun askForPacketTime(sdp: String, ms: Int): String {
         val out = StringBuilder(sdp.length + 16)

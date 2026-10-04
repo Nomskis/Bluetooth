@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import io.github.nomskis.earshot.settings.SettingsRepository
 import io.github.nomskis.earshot.signaling.ClientMessage
 import io.github.nomskis.earshot.signaling.encodeClientMessage
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -55,6 +56,7 @@ class CallInboxTest {
     private var inCallRoom: String? = null
     private lateinit var myAddress: String
     private lateinit var inbox: CallInbox
+    private val settings by lazy { SettingsRepository(context) }
 
     private val notifications get() = shadowOf(context.getSystemService(NotificationManager::class.java))
 
@@ -72,7 +74,6 @@ class CallInboxTest {
             }).build(),
         )
         server.start()
-        val settings = SettingsRepository(context)
         runBlocking {
             settings.update { it.copy(serverUrl = server.url("/").toString(), receiveCalls = true) }
             settings.saveContact(Contact("Salma ❤️", SALMA_ADDRESS))
@@ -99,6 +100,8 @@ class CallInboxTest {
 
     @After
     fun tearDown() {
+        // Let the history finish writing, so the next test's settings aren't queued behind it.
+        waitFor(500) { false }
         inbox.close()
         runCatching { socket?.close(1000, null) }
         server.close()
@@ -246,6 +249,8 @@ class CallInboxTest {
         val missed = notifications.allNotifications.first { it.extras.getString("android.title") == "Missed call from Salma ❤️" }
         // They proved their address, so they can be rung back from the notification.
         assertEquals(listOf("Call back"), missed.actions.map { it.title.toString() })
+        // And it's in the history, in red.
+        assertTrue(waitFor { runBlocking { settings.callLog.first() }.any { it.missed && it.address == SALMA_ADDRESS } })
     }
 
     @Test

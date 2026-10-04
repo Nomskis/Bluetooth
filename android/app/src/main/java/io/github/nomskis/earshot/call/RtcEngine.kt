@@ -203,6 +203,23 @@ class RtcEngine(
         }
     }
 
+    /**
+     * Puts VP9 first for video (WebRtcTuning.PREFERRED_VIDEO_CODEC), keeping every other
+     * codec, RTX and FEC included, as fallbacks in their usual order.
+     */
+    fun preferVp9(pc: PeerConnection) {
+        val codecs = factory.getRtpReceiverCapabilities(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO).codecs
+        val (vp9, rest) = codecs.partition {
+            it.name.equals(WebRtcTuning.PREFERRED_VIDEO_CODEC, ignoreCase = true) && (it.parameters["profile-id"] ?: "0") == "0"
+        }
+        if (vp9.isEmpty()) return
+        for (transceiver in pc.transceivers) {
+            if (transceiver.mediaType != MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO) continue
+            runCatching { transceiver.setCodecPreferences(vp9 + rest) }
+                .onFailure { Log.w(TAG, "Could not prefer VP9", it) }
+        }
+    }
+
     fun createSendTracks(): SendTracks = SendTracks(
         audio = createAudioTrack(),
         video = videoSource?.let { factory.createVideoTrack(Ids.random(6, "v"), it) },
@@ -323,7 +340,7 @@ class RtcEngine(
     }
 
     /**
-     * Temporal layers for our video when it's VP8 (see [WebRtcTuning.VIDEO_SCALABILITY_MODE]).
+     * Temporal layers for our video when it's VP8 or VP9 (see [WebRtcTuning.VIDEO_SCALABILITY_MODE]).
      * Called once the call is connected, when the codec is settled; its own setParameters
      * call, so a refusal doesn't take other settings with it.
      */
@@ -332,7 +349,8 @@ class RtcEngine(
             val kind = runCatching { sender.track()?.kind() }.getOrNull()
             if (kind != MediaStreamTrack.VIDEO_TRACK_KIND) continue
             val parameters = sender.parameters
-            if (parameters.codecs.firstOrNull()?.name?.equals("VP8", ignoreCase = true) != true) continue
+            val codec = parameters.codecs.firstOrNull()?.name ?: continue
+            if (WebRtcTuning.TEMPORAL_LAYER_CODECS.none { it.equals(codec, ignoreCase = true) }) continue
             if (parameters.encodings.isEmpty() || parameters.encodings.all { it.scalabilityMode == WebRtcTuning.VIDEO_SCALABILITY_MODE }) continue
             parameters.encodings.forEach { it.scalabilityMode = WebRtcTuning.VIDEO_SCALABILITY_MODE }
             if (!sender.setParameters(parameters)) Log.w(TAG, "Could not use temporal layers for video")

@@ -65,6 +65,8 @@ class CallInbox(
     val status: StateFlow<InboxClient.State> = _status.asStateFlow()
 
     private var client: InboxClient? = null
+    /** When each ring arrived, for the history. */
+    private val ringStartedAt = HashMap<String, Long>()
     /** Our own address, to settle who wins when two people call each other at once. */
     private var myAddress: String? = null
     private var clientJob: Job? = null
@@ -126,7 +128,7 @@ class CallInbox(
                 val ring = _ringing.value ?: return
                 if (ring.ringId != message.ringId) return
                 stopRinging()
-                if (message.reason != "answered-elsewhere") CallNotifications.showMissed(appContext, ring, busy = false)
+                if (message.reason != "answered-elsewhere") missed(ring, busy = false)
             }
             else -> Unit
         }
@@ -152,6 +154,7 @@ class CallInbox(
         val current = _ringing.value
         if (current != null && current.room == ring.room && ring.callerAddress != null && current.callerAddress == ring.callerAddress) {
             _ringing.value = current.copy(ringId = ring.ringId)
+            ringStartedAt[ring.ringId] = ringStartedAt.remove(current.ringId) ?: System.currentTimeMillis()
             rekeyPreconnect(current.ringId, ring.ringId)
             armTimeout()
             return
@@ -162,10 +165,11 @@ class CallInbox(
             client?.send(ClientMessage.RingAnswer(ring.ringId, accepted = true))
             return
         }
+        ringStartedAt[ring.ringId] = System.currentTimeMillis()
         // Already on a call, or another one is ringing: say so, and leave a note.
         if (isBusy() || _ringing.value != null) {
             client?.send(ClientMessage.RingAnswer(ring.ringId, accepted = false, reason = "busy"))
-            CallNotifications.showMissed(appContext, ring, busy = true)
+            missed(ring, busy = true)
             return
         }
         _ringing.value = ring
@@ -183,7 +187,7 @@ class CallInbox(
             delay(LOCAL_TIMEOUT_MS)
             if (_ringing.value?.ringId == ring.ringId) {
                 stopRinging()
-                CallNotifications.showMissed(appContext, ring, busy = false)
+                missed(ring, busy = false)
             }
         }
     }
@@ -212,6 +216,7 @@ class CallInbox(
     /** Accepts the ringing call and starts it. Returns false if nothing is ringing. */
     fun answer(withVideo: Boolean): Boolean {
         val ring = _ringing.value ?: return false
+        ringStartedAt.remove(ring.ringId) // the call itself goes in the history when it ends
         client?.send(ClientMessage.RingAnswer(ring.ringId, accepted = true))
         stopRinging(answered = true)
         startCall(ring, withVideo)
@@ -222,6 +227,20 @@ class CallInbox(
         val ring = _ringing.value ?: return
         client?.send(ClientMessage.RingAnswer(ring.ringId, accepted = false, reason = "declined"))
         stopRinging()
+        record(ring, CallRecord.Outcome.DECLINED)
+    }
+
+    /** Rang and wasn't taken: a notification and a line in the history. */
+    private fun missed(ring: IncomingRing, busy: Boolean) {
+        CallNotifications.showMissed(appContext, ring, busy)
+        record(ring, CallRecord.Outcome.MISSED)
+    }
+
+    private fun record(ring: IncomingRing, outcome: CallRecord.Outcome) {
+        val at = ringStartedAt[ring.ringId] ?: System.currentTimeMillis()
+        ringStartedAt.remove(ring.ringId)
+        // Off the main thread: DataStore runs an edit's transform on the caller's dispatcher.
+        scope.launch(Dispatchers.Default) { settings.addCallRecord(CallRecords.notTaken(ring, outcome, at)) }
     }
 
     private fun stopRinging(answered: Boolean = false) {

@@ -166,10 +166,14 @@ class CallSession(
     /** Leaves Wi-Fi that's up but losing packets, for mobile data on standby. */
     private val steering = PathSteering()
     /** The audio packet length we ask the other side for; lives across reconnects, like the network it reflects. */
-    private val packetTime = PacketTime(startFrom?.packetStep ?: PacketTime.Step.SHORT)
+    private val packetTime = PacketTime(startFrom?.packetStep ?: PacketTime.START)
     /** What the route carries, learned as the call goes, for reconnects within it and for the next call. */
     private val learner = LinkLearner()
+    @Volatile
     private var remoteAddress = remoteAddress
+
+    /** Their inbox address: known from the start for a direct call, else from their contact card. */
+    val theirAddress: String? get() = remoteAddress
     /** Where a new connection's voice and send estimate start: the last connection's, else the last call's. */
     private var startLevel = startFrom?.level ?: MediaBudget.Level.FULL
     private var startBitrateBps = startFrom?.startBitrateBps
@@ -183,6 +187,8 @@ class CallSession(
     private var linkReport = LinkReport(null, null, false)
     private var pendingReport: LinkReport? = null
     private var pendingReportCount = 0
+    /** How the call is going, for the history and its report. */
+    private val qualityTracker = CallQualityTracker()
     private val ringback = Ringback(
         if (profile.mode == AudioMode.HIFI) android.media.AudioManager.STREAM_MUSIC else android.media.AudioManager.STREAM_VOICE_CALL,
     )
@@ -408,7 +414,9 @@ class CallSession(
         if (::signaling.isInitialized) signaling.close()
         audioController.end()
         if (::engine.isInitialized) engine.release()
-        _state.update { it.copy(phase = phase, error = error, signalingOnline = false, hasRemoteVideo = false) }
+        // A report is a nice-to-have; nothing about it may stop a call from ending.
+        val quality = if (_state.value.connectedAt != null) runCatching { qualityTracker.summary() }.getOrNull() else null
+        _state.update { it.copy(phase = phase, error = error, signalingOnline = false, hasRemoteVideo = false, quality = quality) }
         events.close()
         scope.cancel()
         executor.shutdown()
@@ -644,6 +652,9 @@ class CallSession(
     private fun unholdHere() {
         if (!ringing) return
         ringing = false
+        if (_state.value.phase == CallPhase.CONNECTED) {
+            _state.update { it.copy(connectedAt = it.connectedAt ?: SystemClock.elapsedRealtime()) }
+        }
         link?.let(::applyHold)
         // Their phone keeps ringing until this arrives (or our voice does).
         sendMediaState()
@@ -774,6 +785,7 @@ class CallSession(
 
     private fun followMedia(l: Link, entries: Map<String, CallStats.Entry>) {
         followMediaBudget(l, entries)
+        qualityTracker.update(entries, voiceReduced = l.budget.voiceCapBps != null)
         if (l.isHealthy) CallStats.availableOutgoingBitrate(entries)?.let(learner::addEstimate)
         followTheirLink(l, SystemClock.elapsedRealtime())
         followPacketTime(l, entries)
@@ -1087,6 +1099,7 @@ class CallSession(
             )
         }
         engine.preferRedundantAudio(l.pc)
+        engine.preferVp9(l.pc)
         setPhase(CallPhase.NEGOTIATING)
         sendOffer(l, iceRestart = false)
     }
@@ -1131,6 +1144,7 @@ class CallSession(
             if (holding) applyHold(l)
         }
         engine.preferRedundantAudio(l.pc)
+        engine.preferVp9(l.pc)
         val answer = l.pc.awaitCreateAnswer()
         if (link !== l) return
         l.pc.awaitSetLocal(answer)
@@ -1344,6 +1358,7 @@ class CallSession(
         // Before any audio stream exists, so a ringing call never starts the microphone ([applyHold]).
         pc.setAudioRecording(!holding)
         pc.setAudioPlayout(!ringing)
+        qualityTracker.newConnection()
         val tracks = engine.createSendTracks()
         tracks.audio.setEnabled(!_state.value.micMuted)
         tracks.video?.setEnabled(!_state.value.sendsNoVideo)
@@ -1496,7 +1511,15 @@ class CallSession(
         linkPhase = phase
         // While their phone rings, the call is still waiting for them, whatever the connection is doing.
         val shown = if (remoteRinging) CallPhase.WAITING else phase
-        _state.update { if (it.isActive) it.copy(phase = shown) else it }
+        val before = _state.value
+        if (before.isActive && shown == CallPhase.RECONNECTING && before.phase == CallPhase.CONNECTED) qualityTracker.reconnected()
+        _state.update {
+            if (!it.isActive) return@update it
+            // The timer counts from when the call connected, through any reconnects; a call
+            // connected while it rang here starts counting when it's answered ([unholdHere]).
+            val connectedAt = it.connectedAt ?: if (shown == CallPhase.CONNECTED && !ringing) SystemClock.elapsedRealtime() else null
+            it.copy(phase = shown, connectedAt = connectedAt)
+        }
         // Connecting for a long time usually means the networks block direct calls; say so.
         if (shown == CallPhase.NEGOTIATING || shown == CallPhase.RECONNECTING) {
             if (stuckJob?.isActive != true) {

@@ -26,6 +26,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.platform.LocalContext
+import io.github.nomskis.earshot.calls.CallRecord
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -59,8 +61,11 @@ fun SettingsScreen(
     onCheckServer: (String) -> Unit,
     onOpenTuner: () -> Unit,
     onBack: () -> Unit,
+    /** The latest call that connected, for its quality report. */
+    lastCall: CallRecord? = null,
 ) {
     BackHandler(onBack = onBack)
+    val context = LocalContext.current
     var serverUrl by rememberSaveable { mutableStateOf(settings.serverUrl) }
     var displayName by rememberSaveable { mutableStateOf(settings.displayName) }
 
@@ -259,6 +264,27 @@ fun SettingsScreen(
                     "compare the delay readout. Needs a relay on your server (see docs/deploy.md); if it doesn't connect, the " +
                     "call goes direct by itself. The other phone follows your choice.",
             )
+
+            Section("Call reports")
+            val quality = lastCall?.quality
+            if (lastCall != null && quality != null) {
+                Text(
+                    "Last call with ${lastCall.name}: ${quality.verdict.name.lowercase()}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    quality.report(lastCall.durationSeconds),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(onClick = {
+                    val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                    clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Earshot call report", quality.report(lastCall.durationSeconds)))
+                }) { Text("Copy report") }
+            } else {
+                Text("After a call, how the connection held up shows here.", style = MaterialTheme.typography.bodyMedium)
+            }
+            Hint("What the connection did during the call: the route, delay, what was lost and repaired, video freezes. Send it along if a call went badly.")
 
             HorizontalDivider()
             Section("About")

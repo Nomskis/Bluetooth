@@ -4,14 +4,18 @@ package io.github.nomskis.earshot.call
  * How WebRTC is set up to ride out bad Wi-Fi: lost packets, bursts of them,
  * and delay spikes. Each value is checked against the WebRTC source this app
  * ships with (branch-heads/6367); docs/how-it-works.md explains the choices.
+ * The audio packet length isn't fixed here: it starts at 20 ms and follows
+ * the link ([PacketTime]).
  */
 object WebRtcTuning {
     /**
      * Earlier audio packets repeated in each packet (RED, RFC 2198). WebRTC's
-     * default is 1; at 10 ms packets that only repairs a single lost packet,
-     * while Wi-Fi tends to lose them in bursts. 3 repairs up to 30 ms of
-     * consecutive loss. It adds bytes, not packets, and on Wi-Fi the packet
-     * count is what costs airtime: about 100 kbps more at HD voice.
+     * default is 1, which only repairs a single lost packet, while Wi-Fi
+     * tends to lose them in bursts. 3 repairs up to 60 ms of consecutive loss
+     * at 20 ms packets (30 at 10 ms, 120 at 40 ms). It adds bytes, not
+     * packets, and on Wi-Fi the packet count is what costs airtime: about
+     * 100 kbps more at HD voice. Longer bursts are resent when there's time
+     * ([SdpTuning.requestAudioResends]).
      */
     const val RED_REDUNDANCY = 3
 
@@ -24,39 +28,54 @@ object WebRtcTuning {
     const val JITTER_QUANTILE = 0.97
 
     /**
-     * Most audio packets the jitter buffer holds, 1 s at 10 ms packets. It also
-     * caps how far the buffer may grow (three quarters of this). Too small,
-     * and a long Wi-Fi stall overflows it and the audio skips.
+     * Most audio packets the jitter buffer holds: 2 s at 20 ms packets (1 s at
+     * 10 ms, 4 s at 40 ms). It also caps how far the buffer may grow (three
+     * quarters of this). Too small, and a long stall (a crowded home router's
+     * queue, say) overflows it and the audio skips.
      */
     const val JITTER_BUFFER_MAX_PACKETS = 100
 
     /**
-     * Three temporal layers for VP8: half the frames are referenced by no
+     * Preferred video codec. VP9 needs roughly a third fewer bits than VP8 for
+     * the same picture, which is what a slow home upload needs most; VP8,
+     * H.264 and the rest stay as fallbacks. Software VP9 costs more CPU; WebRTC
+     * lowers the resolution by itself if the phone can't keep up.
+     */
+    const val PREFERRED_VIDEO_CODEC = "VP9"
+
+    /** Codecs whose software encoders make temporal layers. */
+    val TEMPORAL_LAYER_CODECS = listOf("VP8", "VP9")
+
+    /**
+     * Three temporal layers for VP8 and VP9: half the frames are referenced by no
      * other frame and a quarter by just one. A lost packet then usually costs
      * a single frame instead of freezing the picture until it's resent or a
-     * new keyframe arrives. Only the software VP8 encoder makes layers;
-     * hardware encoders ignore it.
+     * new keyframe arrives. Only the software encoders make layers; hardware
+     * encoders ignore it (see [SOFTWARE_VIDEO_MAX_PIXELS]).
      */
     const val VIDEO_SCALABILITY_MODE = "L1T3"
 
     /**
      * Video at or below this many pixels is encoded in software (libvpx), above
-     * it by the phone's hardware encoder. Android's WebRTC prefers a hardware VP8
-     * encoder whenever the phone has one and doesn't switch to software for
-     * temporal layers (sdk/android video_encoder_fallback.cc passes
-     * prefer_temporal_support=false), so on most phones [VIDEO_SCALABILITY_MODE]
-     * was simply ignored, and hardware encoders' rate control is at its worst at
-     * low bitrates. WebRTC only scales the camera down this far when bandwidth
-     * is short, and a resolution change re-initialises the encoder, where the
-     * fallback wrapper checks this threshold: so on a weak link the call gets
-     * temporal layers (a lost packet costs a frame, not a freeze) and libvpx's
-     * rate control, while a good link keeps the cheaper hardware encoder.
-     * 640x360: software VP8 at that size is light work for any phone.
+     * it by the phone's hardware encoder, whatever the codec. Android's WebRTC
+     * prefers a hardware encoder whenever the phone has one and doesn't switch
+     * to software for temporal layers (sdk/android video_encoder_fallback.cc
+     * passes prefer_temporal_support=false), so on most phones
+     * [VIDEO_SCALABILITY_MODE] was simply ignored, and hardware encoders' rate
+     * control is at its worst at low bitrates. WebRTC only scales the camera
+     * down this far when bandwidth is short, and a resolution change
+     * re-initialises the encoder, where the fallback wrapper checks this
+     * threshold: so on a weak link the call gets temporal layers (a lost packet
+     * costs a frame, not a freeze) and libvpx's rate control, while a good link
+     * keeps the cheaper hardware encoder. 640x360: software VP9 or VP8 at that
+     * size is light work for any phone.
+     *
+     * Set with WebRTC-Video-EncoderFallbackSettings, which applies to every codec
+     * (video_encoder_software_fallback_wrapper.cc); the older
+     * WebRTC-VP8-Forced-Fallback-Encoder-v2 only switches VP8. The wrapper then
+     * keeps WebRTC's floor of 320x180 while in software.
      */
     const val SOFTWARE_VIDEO_MAX_PIXELS = 640 * 360
-
-    /** And WebRTC won't scale below this while in software (320x180). */
-    const val SOFTWARE_VIDEO_MIN_PIXELS = 320 * 180
 
     /**
      * Voice that RED, Opus FEC and resends all missed has to be made up. NetEq's default is its
@@ -73,8 +92,8 @@ object WebRtcTuning {
     val fieldTrials: String = buildString {
         append("WebRTC-Audio-Red-For-Opus/Enabled-$RED_REDUNDANCY/")
         append("WebRTC-Audio-NetEqDelayManagerConfig/quantile:$JITTER_QUANTILE/")
-        // Enabled-<min pixels>,<max pixels>,<min bps> (the last is only checked for being positive).
-        append("WebRTC-VP8-Forced-Fallback-Encoder-v2/Enabled-$SOFTWARE_VIDEO_MIN_PIXELS,$SOFTWARE_VIDEO_MAX_PIXELS,30000/")
+        // FieldTrialOptional<int> "resolution_threshold_px", parsed as key:value.
+        append("WebRTC-Video-EncoderFallbackSettings/resolution_threshold_px:$SOFTWARE_VIDEO_MAX_PIXELS/")
         append("$OPUS_CONCEALMENT/Enabled/")
     }
 }

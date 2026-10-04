@@ -94,6 +94,10 @@ data class CallState(
     val outgoing: OutgoingCall? = null,
     /** Who a direct call is with, for the title while they're not in the room. */
     val contactName: String? = null,
+    /** When the call first connected (SystemClock.elapsedRealtime), for the call timer; null until then. */
+    val connectedAt: Long? = null,
+    /** How the call went, filled in when it ends. */
+    val quality: CallQuality? = null,
     /** Text chat with the other person, oldest first. */
     val chat: List<ChatMessage> = emptyList(),
     /** Their latest message, for the bubble and the notification. */

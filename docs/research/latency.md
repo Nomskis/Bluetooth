@@ -186,6 +186,9 @@ them, with no help from their side, so it works with any client.
 
 - **10 ms audio packets.** Chrome honours `a=ptime:10` in the remote
   description: 100 vs 50 packets/s, about 10 ms less per direction (tested).
+  The Android app went back to 20 ms for long routes over weak Wi-Fi, where
+  robustness is worth more than those 10 ms; see
+  [long-distance.md](long-distance.md).
 - **RED (redundant audio).** Both clients prefer `audio/red`; each packet also
   carries the previous one, so a single loss is repaired without the jitter
   buffer growing. Chrome sends it when negotiated first (tested: bytes per

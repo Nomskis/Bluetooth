@@ -9,7 +9,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MediaBudgetTest {
-    private val budget = MediaBudget(redundancy = 3)
+    // The scenarios below are worked out for 10 ms packets, the most per-packet overhead;
+    // a call starts at 20 ms and the real rate is measured (packetsPerSecond).
+    private val budget = MediaBudget(redundancy = 3).apply { packetsPerSecond = 100.0 }
     private var now = 0L
 
     /** One 2 s stats interval; by default the voice sends what its level costs. */
@@ -22,6 +24,10 @@ class MediaBudgetTest {
     fun hdVoiceWithItsCopiesIsAboutAQuarterMegabit() {
         assertEquals(249_000.0, budget.wireBps(Level.FULL), 2_000.0)
         assertEquals(137_000.0, budget.wireBps(Level.LOW), 2_000.0)
+        // At the 20 ms packets a call starts with, half the headers.
+        val fresh = MediaBudget(redundancy = 3)
+        assertEquals(50.0, fresh.packetsPerSecond, 0.0)
+        assertEquals(220_000.0, fresh.wireBps(Level.FULL), 2_000.0)
     }
 
     @Test

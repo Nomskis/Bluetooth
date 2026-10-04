@@ -102,8 +102,8 @@ are in [research/latency.md](research/latency.md); in short:
 
 | What | How | Works with |
 | --- | --- | --- |
-| Shorter network path | 10 ms Opus packets (`a=ptime:10`), redundant audio (RED) preferred, a jitter buffer that shrinks quickly (`audioJitterBufferFastAccelerate`) | everything |
-| Ride out bad Wi-Fi | Each audio packet repeats the 3 before it, lost voice asked for again (NACK), longer packets while gaps outrun the copies, voice first when bandwidth is short, a jitter buffer sized for spiky networks, VP8 temporal layers, Wi-Fi kept out of power save (see below) | everything |
+| Shorter network path | Redundant audio (RED) preferred, a jitter buffer that shrinks quickly (`audioJitterBufferFastAccelerate`) | everything |
+| Ride out bad Wi-Fi | Each audio packet repeats the 3 before it, packets that start at 20 ms and follow the link (40 ms while gaps outrun the copies, 10 ms once it's calm), lost voice asked for again (NACK), what's still lost made up by Opus itself, voice first when bandwidth is short, a jitter buffer sized for spiky networks, VP9 with temporal layers (encoded in software on a weak link), Wi-Fi kept out of power save (see below) | everything |
 | Fast playback path | `PERFORMANCE_MODE_LOW_LATENCY` with a self-adjusting buffer (`setUseLowLatency`), game-audio label | everything; low-latency Bluetooth where the phone supports it |
 | Measure it | The sonar meter in the delay tuner: chirps through an earbud held to the mic, matched filter, calibrated against the phone speaker | everything |
 | See them talk first | A voice detector on their decoded audio, 100–250 ms ahead of your ears: the call screen glows, music dips (`AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`), 8-second replay | everything |
@@ -116,17 +116,19 @@ are in [research/latency.md](research/latency.md); in short:
 
 ## Riding out bad Wi-Fi
 
-Gym and café Wi-Fi rarely runs out of bandwidth first. It loses packets in
-bursts and delivers others late, in clumps. Each setting below was checked
-against the WebRTC source the app ships with
-([`call/WebRtcTuning.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/WebRtcTuning.kt)):
+Home and gym Wi-Fi, and long routes like Morocco to Finland, rarely run out
+of bandwidth first. They lose packets in bursts and deliver others late, in
+clumps. Each setting below was checked against the WebRTC source the app
+ships with ([`call/WebRtcTuning.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/WebRtcTuning.kt));
+[research/long-distance.md](research/long-distance.md) has the reasoning for
+calls between countries over weak Wi-Fi.
 
-- **Audio repeats itself.** With RED, every 10 ms packet also carries the 3
-  before it (`WebRTC-Audio-Red-For-Opus/Enabled-3/`; WebRTC's default is 1),
-  so up to 30 ms of consecutive loss is repaired exactly instead of
-  concealed. That adds bytes, not packets, and on Wi-Fi each packet's airtime
-  costs more than its size: about 100 kbps more at HD voice. Opus's own
-  in-band FEC stays on underneath.
+- **Audio repeats itself.** With RED, every packet also carries the 3 before
+  it (`WebRTC-Audio-Red-For-Opus/Enabled-3/`; WebRTC's default is 1), so up
+  to 60 ms of consecutive loss is repaired exactly instead of concealed at
+  20 ms packets (30 at 10 ms, 120 at 40). That adds bytes, not packets, and
+  on Wi-Fi each packet's airtime costs more than its size: about 100 kbps more
+  at HD voice. Opus's own in-band FEC stays on underneath.
 - **Lost voice is asked for again.** Both clients put `a=rtcp-fb:<opus> nack`
   in the descriptions they send. WebRTC switches audio NACK on from the
   description it receives
@@ -151,8 +153,9 @@ against the WebRTC source the app ships with
 - **Voice first, then video.** WebRTC splits its bandwidth estimate between
   voice and video itself, but it only counts the voice's codec bitrate, not
   RED's copies (`audio_send_stream.cc` registers the codec rate with the
-  allocator). HD voice with its copies is about 250 kbps on the wire and
-  WebRTC reserves about 100, so video is handed ~150 kbps that aren't there.
+  allocator). HD voice with its copies is about 220 kbps on the wire at 20 ms
+  packets and WebRTC reserves about 100, so video is handed ~120 kbps that
+  aren't there.
   On a fast connection that's noise; under about 1.2 Mbps (a weak uplink in
   another country, say) the call sends more than the connection carries all
   the time, a standing queue that turns into delay and then loss, for the
@@ -172,47 +175,58 @@ against the WebRTC source the app ships with
   Coming back is a probe: video resumes after 20 s, and the voice steps back
   up the same way; one that doesn't hold makes the next try wait twice as
   long, up to almost three minutes.
-- **Longer packets when the copies can't keep up.** 10 ms packets each
-  carrying the three before them repair gaps up to 30 ms. Weak Wi-Fi and
-  mobile data at the far end of a long international path lose longer runs,
-  and then NetEq has to conceal what's missing. Each side watches the voice
-  it receives: when packets go missing *and* audio still has to be concealed
-  after RED, Opus FEC and resends have done what they can, it asks the other
-  side for 20 ms packets, then 40 ms (`a=ptime`, which WebRTC senders take as
-  Opus's frame length). The same three copies then cover 60 or 120 ms, at
-  half or a quarter of the packet rate, for 10 or 30 ms more delay. After a
-  calm minute it steps back down; a step down that doesn't hold makes the
-  next wait twice as long
+- **Packets that follow the link.** A call starts at WebRTC's usual 20 ms
+  packets (`a=ptime:20`): half the packets of 10 ms means less contention for
+  airtime on weak Wi-Fi and half the header overhead, the same three copies
+  repair 60 ms of loss, and Opus codes 20 ms frames more efficiently, for
+  about 10 ms more delay than 10 ms packets
+  ([research/long-distance.md](research/long-distance.md)). From then on each
+  side watches the voice it receives: when packets go missing *and* audio
+  still has to be concealed after RED, Opus FEC and resends have done what
+  they can, it asks the other side for 40 ms packets (`a=ptime`, which WebRTC
+  senders take as Opus's frame length), so the same copies cover 120 ms at
+  half the packet rate, for 20 ms more delay. After a calm minute it asks for
+  a step shorter, down to 10 ms on a link that's fine, where the 10 ms saved
+  costs nothing; a step down that doesn't hold makes the next wait twice as
+  long
   ([`call/PacketTime.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/PacketTime.kt),
   [`web/js/ptime.js`](../web/js/ptime.js)). What we ask for travels in our
   description, so the offering side renegotiates in place, without
   restarting ICE, and the answering side asks it to (`request-offer` with
   `iceRestart: false`). The browser tests run it over a simulated link that
-  loses 100 ms of voice every second, both ways round.
+  loses 100 ms of voice every second, both ways round. Each call starts from
+  the packet length that held on the last call with that person
+  ([LinkMemory](#calls-that-remember-the-route)).
 - **A jitter buffer sized for spikes.** WebRTC sizes the audio buffer to
   absorb 95% of the delay spikes it has seen; Earshot asks for 97%
   (`WebRTC-Audio-NetEqDelayManagerConfig/quantile:0.97/`), so a jittery
   network causes fewer dropouts. On a steady network the two are the same;
   the extra delay only appears while the network is that bad. The buffer can
-  hold a full second (`audioJitterBufferMaxPackets` 100), so a long stall
-  doesn't overflow it.
-- **Video that doesn't freeze on a lost packet.** VP8 sent with three
+  hold 100 packets (`audioJitterBufferMaxPackets`), 2 seconds at 20 ms
+  packets, so a long stall in a crowded router's queue doesn't overflow it.
+- **VP9 video.** VP9 needs roughly a third fewer bits than VP8 for the same
+  picture, which is what a slow home upload needs most; VP8 and H.264 stay as
+  fallbacks. WebRTC lowers the resolution by itself if a phone can't keep up
+  with the encoding.
+- **Video that doesn't freeze on a lost packet.** VP9 or VP8 sent with three
   temporal layers (`scalabilityMode` L1T3): half the frames are referenced by
   nothing and a quarter by one other, so a loss usually costs one frame
   instead of stalling the picture until it's resent or a new keyframe
   arrives. WebRTC already keeps the frame rate and lowers resolution when
   bandwidth drops (`MAINTAIN_FRAMERATE`), so motion stays smooth.
 - **Software encoding when the link is weak.** Android's WebRTC uses the
-  phone's hardware VP8 encoder whenever there is one, with software only as
-  a fallback for errors (`sdk/android/src/jni/video_encoder_fallback.cc`
-  passes `prefer_temporal_support=false`). Hardware encoders make no
-  temporal layers, so on most phones the line above did nothing, and their
-  rate control is at its worst at low bitrates. WebRTC only scales the camera
-  down to 360p or less when bandwidth is short, and each resolution change
-  re-initialises the encoder; with `WebRTC-VP8-Forced-Fallback-Encoder-v2`
-  set, the fallback wrapper then switches to libvpx below that size. So a
-  weak link gets temporal layers and libvpx's rate control, and a good one
-  keeps the cheaper hardware encoder
+  phone's hardware encoder whenever there is one, with software only as a
+  fallback for errors (`sdk/android/src/jni/video_encoder_fallback.cc` passes
+  `prefer_temporal_support=false`). Hardware encoders make no temporal
+  layers, so on most phones the line above did nothing, and their rate
+  control is at its worst at low bitrates. WebRTC only scales the camera down
+  to 360p or less when bandwidth is short, and each resolution change
+  re-initialises the encoder; with
+  `WebRTC-Video-EncoderFallbackSettings/resolution_threshold_px:230400/` set,
+  the fallback wrapper then switches to libvpx below that size, for VP9 and
+  VP8 alike (the older `WebRTC-VP8-Forced-Fallback-Encoder-v2` only switches
+  VP8). So a weak link gets temporal layers and libvpx's rate control, and a
+  good one keeps the cheaper hardware encoder
   ([`call/WebRtcTuning.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/WebRtcTuning.kt)).
 - **Wi-Fi out of power save.** A phone in power save lets the router hold its
   packets and fetches them in bursts. The call holds Android's low-latency
@@ -227,6 +241,10 @@ against the WebRTC source the app ships with
   your packets going missing (RTCP `fractionLost`) or your voice had to get
   leaner, or video pause, to fit. Tap the delay readout for both directions
   (good, fair or poor, with the numbers) and the packet length in use.
+- **A report for every call.** Route, round trip, audio lost and repaired,
+  jitter buffer, video freezes, what held our video back, kept with the call
+  and copyable from Settings, so a bad call can be understood from what really
+  happened ([`call/CallQuality.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/CallQuality.kt)).
 
 ## The two phones look after each other's network
 
@@ -250,18 +268,18 @@ the other about its half (`network`, `uplink` and `radioShared` in
   ([`call/AirtimeShare.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/AirtimeShare.kt)).
 - **A radio shared with earbuds: half as many packets, both ways.** On
   2.4 GHz Wi-Fi next to Bluetooth audio, every Wi-Fi frame is airtime the
-  earbuds can't use, and the voice's 100 packets a second each way are as many
-  frames as the video's. While either phone is in that spot, both ask for
-  20 ms audio packets at least ([`PacketTime.floor`](../android/app/src/main/java/io/github/nomskis/earshot/call/PacketTime.kt)):
-  10 ms more delay, half the voice's frames, the earbuds get their turns
-  back. The phone on the shared radio can't ask for its own sending to change
+  earbuds can't use, and at 10 ms the voice's 100 packets a second each way
+  are as many frames as the video's. While either phone is in that spot,
+  neither steps below 20 ms audio packets, however calm the link
+  ([`PacketTime.floor`](../android/app/src/main/java/io/github/nomskis/earshot/call/PacketTime.kt)):
+  half the voice's frames, the earbuds get their turns back. The phone on the shared radio can't ask for its own sending to change
   (the other side decides that), so it says `radioShared` and the other side
   asks for it.
 
 ## Calls that remember the route
 
 Every call otherwise starts blind: WebRTC guesses 300 kbps and finds the real
-figure over the first seconds, the voice starts as HD voice in 10 ms packets,
+figure over the first seconds, the voice starts as HD voice in 20 ms packets,
 and on a weak international route it takes the first half minute to settle on
 what works (voice first, longer packets). Two people who call each other keep
 calling over much the same route, so each call remembers, per contact and per

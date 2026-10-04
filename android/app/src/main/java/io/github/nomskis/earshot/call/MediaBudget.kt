@@ -11,7 +11,8 @@ import kotlin.math.min
  * WebRTC splits its bandwidth estimate between the two itself, but it only
  * counts the voice's codec bitrate and headers, not the three copies RED adds
  * ([WebRtcTuning.RED_REDUNDANCY]; audio_send_stream.cc registers the codec
- * rate with the bitrate allocator). HD voice is about 250 kbps on the wire,
+ * rate with the bitrate allocator). HD voice is about 220 kbps on the wire at
+ * 20 ms packets (250 at 10 ms),
  * WebRTC reserves about 100, and video is handed the difference on top of
  * what the connection has. On a fast connection that's noise. On one under
  * about 1.2 Mbps (a weak uplink in another country, say) the call sends more
@@ -201,7 +202,8 @@ class MediaBudget(
         /** Video that just came back isn't judged until the estimate has had time to grow with it. */
         const val PROBE_GRACE_MS = 6_000L
         /** 10 ms packets. */
-        const val PACKETS_PER_SECOND = 100
+        /** Until measured: a call starts at [PacketTime.START]'s packets. */
+        val PACKETS_PER_SECOND = 1000 / PacketTime.START.ms
         /** IPv4, UDP, RTP with its usual extensions, and the SRTP tag. */
         const val HEADER_BYTES = 58
         /** What each packet costs below RTP, which WebRTC's byte counters leave out: IPv4, UDP, SRTP tag. */

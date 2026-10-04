@@ -7,6 +7,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.SystemClock
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -17,6 +18,7 @@ import io.github.nomskis.earshot.audio.CodecInfo
 import io.github.nomskis.earshot.audio.DeviceKind
 import io.github.nomskis.earshot.audio.LatencyProbe
 import io.github.nomskis.earshot.audio.LinkConditions
+import io.github.nomskis.earshot.calls.CallRecords
 import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.calls.InboxKeys
 import io.github.nomskis.earshot.calls.IncomingRing
@@ -93,6 +95,8 @@ class CallManager(
     /** The ring the current call sends, if it's a call to a contact. */
     @Volatile
     private var outgoing: OutgoingRing? = null
+    /** Left for their call when we rang each other at once; not a call of its own in the history. */
+    private var supersededRing: OutgoingRing? = null
 
     /** On a call, or about to be. */
     val busy: Boolean get() = _session.value != null || starting.value
@@ -250,6 +254,7 @@ class CallManager(
     fun switchTo(ring: IncomingRing, withVideo: Boolean) {
         scope.launch {
             starting.first { !it }
+            supersededRing = outgoing
             _session.value?.hangUp()
             _session.first { it == null }
             answerCall(ring, withVideo)
@@ -284,6 +289,7 @@ class CallManager(
             }
             // A direct call's room is single-use; the room box keeps the one you typed.
             if (calling == null && answering == null) settings.update { it.copy(lastRoom = room) }
+            val startedAtMillis = System.currentTimeMillis()
             val plan = plan(current, calling?.address ?: answering?.callerAddress)
             val route = plan.route
             val radioPlan = plan.radioPlan
@@ -320,6 +326,9 @@ class CallManager(
             } else {
                 session.start()
             }
+            // Their name as the call went, for the history (they may have left by the end).
+            var peerName: String? = null
+            val nameJob = launch { session.state.collect { s -> s.remotePeer?.name?.takeIf { it.isNotBlank() }?.let { peerName = it } } }
             // If the system kills the app mid-call, the next launch can offer to rejoin.
             val aliveJob = launch {
                 while (true) {
@@ -370,7 +379,23 @@ class CallManager(
             }
 
             val end = session.state.first { !it.isActive }
+            val endedAt = SystemClock.elapsedRealtime()
+            nameJob.cancel()
             aliveJob.cancel()
+            if (outgoing == null || outgoing !== supersededRing) {
+                CallRecords.ended(
+                    calling = calling,
+                    answering = answering,
+                    room = room,
+                    peerName = peerName,
+                    learnedAddress = session.theirAddress,
+                    ringStatus = outgoing?.status,
+                    connectedForMs = end.connectedAt?.let { endedAt - it },
+                    video = withVideo,
+                    startedAtMillis = startedAtMillis,
+                    quality = end.quality,
+                )?.let { settings.addCallRecord(it) }
+            }
             settings.clearActiveCall()
             lipSyncJob?.cancel()
             routeJob.cancel()

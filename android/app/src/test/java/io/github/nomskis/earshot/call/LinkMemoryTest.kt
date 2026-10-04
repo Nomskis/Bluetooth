@@ -21,7 +21,7 @@ class LinkMemoryTest {
         assertEquals(LinkMemory.MAX_START_BPS, memory.copy(sendEstimateBps = 20_000_000).startBitrateBps)
         assertNull(memory.copy(sendEstimateBps = null).startBitrateBps)
         // Anything unexpected falls back to the usual start.
-        assertEquals(PacketTime.Step.SHORT, memory.copy(packetMs = 33).packetStep)
+        assertEquals(PacketTime.START, memory.copy(packetMs = 33).packetStep)
         assertEquals(MediaBudget.Level.FULL, memory.copy(voiceLevel = "LOUD").level)
     }
 

@@ -30,32 +30,33 @@ class SdpTuningTest {
     ).joinToString("\r\n")
 
     @Test
-    fun asksForTenMillisecondAudioPacketsOnly() {
-        val tuned = SdpTuning.preferLowLatencyAudio(offer)
+    fun asksForTheAudioPacketLengthOnly() {
+        // A browser peer may have asked for 10 ms; ours asks for 20 back.
+        val tuned = SdpTuning.askForPacketTime(offer.replace("a=ptime:20", "a=ptime:10"), 20)
         val lines = tuned.split("\r\n")
         val audioIndex = lines.indexOfFirst { it.startsWith("m=audio") }
         val videoIndex = lines.indexOfFirst { it.startsWith("m=video") }
-        assertEquals("a=ptime:10", lines[audioIndex + 1])
+        assertEquals("a=ptime:20", lines[audioIndex + 1])
         assertEquals(1, lines.count { it.startsWith("a=ptime:") })
         assertFalse(lines.subList(videoIndex, lines.size).any { it.startsWith("a=ptime") })
         assertTrue(tuned.endsWith("\r\n"))
         // Everything else is untouched.
-        assertEquals(offer.replace("a=ptime:20\r\n", ""), tuned.replace("a=ptime:10\r\n", ""))
+        assertEquals(offer.replace("a=ptime:20\r\n", ""), tuned.replace("a=ptime:20\r\n", ""))
     }
 
     @Test
     fun asksForLongerPacketsOnARoughLink() {
-        val tuned = SdpTuning.askForPacketTime(SdpTuning.preferLowLatencyAudio(offer), 40)
+        val tuned = SdpTuning.askForPacketTime(SdpTuning.askForPacketTime(offer, 10), 40)
         val lines = tuned.split("\r\n")
         assertEquals("a=ptime:40", lines[lines.indexOfFirst { it.startsWith("m=audio") } + 1])
         assertEquals(1, lines.count { it.startsWith("a=ptime:") })
-        assertEquals(SdpTuning.preferLowLatencyAudio(offer), SdpTuning.askForPacketTime(tuned, 10))
+        assertEquals(SdpTuning.askForPacketTime(offer, 10), SdpTuning.askForPacketTime(tuned, 10))
     }
 
     @Test
     fun isIdempotent() {
-        val once = SdpTuning.preferLowLatencyAudio(offer)
-        assertEquals(once, SdpTuning.preferLowLatencyAudio(once))
+        val once = SdpTuning.askForPacketTime(offer, 20)
+        assertEquals(once, SdpTuning.askForPacketTime(once, 20))
     }
 
     @Test

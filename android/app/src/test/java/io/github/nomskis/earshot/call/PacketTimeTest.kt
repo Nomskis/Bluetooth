@@ -7,7 +7,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PacketTimeTest {
-    private val packetTime = PacketTime()
+    // Most of these follow the steps from the shortest packets; a call starts at 20 ms (below).
+    private var packetTime = PacketTime(Step.SHORT)
     private var now = 0L
     private var received = 0.0
     private var lost = 0.0
@@ -23,6 +24,27 @@ class PacketTimeTest {
         total += 96_000.0
         concealed += 96_000.0 * concealment
         return packetTime.update(PacketTime.Counters(received, lost, concealed, total), now)
+    }
+
+    @Test
+    fun aCallStartsAtTwentyMillisecondsAndAsksForTenOnlyOnceItsCalm() {
+        packetTime = PacketTime()
+        assertEquals(20, packetTime.ms)
+        assertFalse(tick(0.0, 0.0)) // the first report only sets the baseline
+        var downAt = -1L
+        val calmFrom = now
+        while (downAt < 0) if (tick(0.0, 0.0)) downAt = now
+        assertEquals(10, packetTime.ms)
+        assertTrue(downAt - calmFrom >= PacketTime.CALM_MS)
+    }
+
+    @Test
+    fun aRoughStartGoesStraightToFortyMilliseconds() {
+        packetTime = PacketTime()
+        tick(0.0, 0.0)
+        tick(0.06, 0.03)
+        assertTrue(tick(0.06, 0.03))
+        assertEquals(40, packetTime.ms)
     }
 
     @Test
