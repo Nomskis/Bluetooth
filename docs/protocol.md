@@ -197,7 +197,7 @@ a `4000` close.
 | `answer` | `session`, `sdp` | the answerer |
 | `candidate` | `session`, `candidate: { candidate, sdpMid, sdpMLineIndex, usernameFragment? }` | both |
 | `request-offer` | `session` (may be null), `iceRestart?` | the answerer, when it needs a fresh offer |
-| `media-state` | `micMuted`, `cameraOff`, `audioMode?` (`hifi`, `headset`, `standard`), `inPocket?`, `weakConnection?`, `network?`, `uplink?`, `radioShared?`, `ringing?` | both, after connecting and on every change |
+| `media-state` | `micMuted`, `cameraOff`, `audioMode?` (`hifi`, `headset`, `standard`), `inPocket?`, `weakConnection?`, `network?`, `uplink?`, `radioShared?`, `ringing?`, `screenKbps?` | both, after connecting and on every change |
 
 `inPocket: true` (with `cameraOff: true`) means the camera paused itself
 because the phone's proximity sensor is covered, a pocket usually; show that
@@ -278,6 +278,44 @@ receiver shows each `id` once. Messages still unacknowledged when someone with
 a different `peerId` takes the seat are marked as not sent. Examples live in
 [`protocol/fixtures/peer`](../protocol/fixtures/peer); ignore kinds you don't
 know.
+
+## Screen sharing
+
+A shared screen doesn't travel on the call's connection. It goes through
+Cloudflare's Realtime SFU on a connection of its own: the sharer publishes it
+to the Cloudflare site nearest them, the viewer pulls it from the one nearest
+them, and lost packets are resent from there (docs/research/screen-share.md).
+The server holds the Cloudflare app secret and only talks to Cloudflare for
+members of a room; clients exchange SDP with it over the WebSocket.
+
+A server that has a Cloudflare SFU app configured lists `features: ["screen"]`
+in `joined`, and `screen: { from }` there while someone in the room is
+sharing. A client that can watch a screen lists `screen` in its
+`client.capabilities`, and `screen-av1` if it can decode AV1; only offer to
+share when the server has the feature and the other person can watch.
+
+| Client → server | Fields | Meaning |
+| --- | --- | --- |
+| `screen-publish` | `sdp` (offer), `mid` | Share our screen; the screen is the sendonly video on transceiver `mid`. Sent again with a new offer to replace a connection that failed. |
+| `screen-stop` | | We stopped sharing. |
+| `screen-watch` | | We'd like to watch the screen being shared in our room. |
+| `screen-answer` | `watch`, `sdp` (answer) | Our answer to the offer `screen-offer` gave us. |
+
+| Server → client | Fields | Meaning |
+| --- | --- | --- |
+| `screen-published` | `sdp` | Cloudflare's answer to our offer: the share is live once ICE connects. |
+| `screen-started` | `from` | Someone started sharing (or published again); send `screen-watch` to see it. |
+| `screen-stopped` | `from` | The share is over (also when the sharer leaves the room). |
+| `screen-offer` | `watch`, `sdp` | An offer from Cloudflare for the screen; answer it with `screen-answer`. |
+| `screen-error` | `code`, `message` | `unavailable` (no Cloudflare app here), `in-use` (the other person is sharing), `relay` (Cloudflare unreachable; try again), `busy` (asking too often), `stale` (an answer for an old offer). |
+
+One person shares at a time. The sharer marks its source as a screen, keeps
+the resolution when bandwidth runs short, and sends the last frame again while
+the screen is still (Cloudflare drops a track that sends nothing for 30
+seconds). The viewer measures what arrives and asks the sharer for at most
+`screenKbps` in its `media-state` when its link can't keep up; absent means no
+limit. Examples live in [`protocol/fixtures`](../protocol/fixtures)
+(`screen-*.json`, `joined-screen.json`).
 
 ## Versioning
 

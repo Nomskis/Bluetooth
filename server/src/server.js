@@ -4,6 +4,8 @@ import { buildIceServers } from './ice.js';
 import { ErrorCode, ProtocolError, parseClientMessage } from './protocol.js';
 import { Inbox } from './inbox.js';
 import { RoomManager } from './rooms.js';
+import { createScreenRelay } from './screen-relay.js';
+import { ScreenShares } from './screens.js';
 import { createStaticHandler } from './static.js';
 import { createTurnService } from './turn-service.js';
 
@@ -21,10 +23,13 @@ const RATE_REFILL_PER_SECOND = 50;
  */
 export function createEarshotServer(config, { log = console, fetchImpl = globalThis.fetch } = {}) {
   const turnService = createTurnService(config.ice, { fetchImpl, log });
+  const screens = new ScreenShares({ relay: createScreenRelay(config.screen ?? {}, { fetchImpl }), log });
   const rooms = new RoomManager({
     maxPeersPerRoom: config.maxPeersPerRoom,
     reconnectGraceMs: config.reconnectGraceMs,
     iceServersFor: (peerId) => [...buildIceServers(config.ice, peerId), ...(turnService?.current() ?? [])],
+    describeRoom: (room) => screens.describe(room),
+    onRemoved: (member) => screens.memberRemoved(member),
   });
   const inbox = new Inbox({ ringTimeoutMs: config.ringTimeoutMs });
   const serveStatic = createStaticHandler(config.webRoot);
@@ -35,7 +40,7 @@ export function createEarshotServer(config, { log = console, fetchImpl = globalT
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       // Whether calls can fall back to a relay, so the apps can say when they can't.
       const relay = config.ice.turnUrls.length > 0 || (turnService?.current().length ?? 0) > 0;
-      res.end(JSON.stringify({ status: 'ok', relay }));
+      res.end(JSON.stringify({ status: 'ok', relay, screen: screens.available }));
       return;
     }
     try {
@@ -138,6 +143,18 @@ export function createEarshotServer(config, { log = console, fetchImpl = globalT
         case 'message-read':
           inbox.messageRead(conn, msg);
           break;
+        case 'screen-publish':
+          screens.publish(conn, msg).catch((err) => log.error('screen publish', err));
+          break;
+        case 'screen-stop':
+          screens.stop(conn);
+          break;
+        case 'screen-watch':
+          screens.watch(conn).catch((err) => log.error('screen watch', err));
+          break;
+        case 'screen-answer':
+          screens.answer(conn, msg).catch((err) => log.error('screen answer', err));
+          break;
       }
     });
 
@@ -164,6 +181,7 @@ export function createEarshotServer(config, { log = console, fetchImpl = globalT
   return {
     httpServer,
     rooms,
+    screens,
     turnService,
     inbox,
     async listen(port = config.port, host = config.host) {

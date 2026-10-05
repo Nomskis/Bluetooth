@@ -1,0 +1,19 @@
+{
+  "type": "joined",
+  "protocol": 1,
+  "room": "blue-otter-42",
+  "peerId": "Zk3pQ81wLa_x",
+  "seq": 2,
+  "resumed": false,
+  "peers": [
+    {
+      "peerId": "p8Gm2Lq0Vt-a",
+      "name": "Salma",
+      "client": { "platform": "android", "version": "0.1.0", "capabilities": ["chat", "screen", "screen-av1"] },
+      "seq": 1
+    }
+  ],
+  "iceServers": [{ "urls": ["stun:stun.l.google.com:19302"] }],
+  "features": ["screen"],
+  "screen": { "from": "p8Gm2Lq0Vt-a" }
+}

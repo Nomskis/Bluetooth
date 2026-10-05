@@ -120,6 +120,17 @@ this list works with every pair of classic Bluetooth earbuds.
   a quick reply ("Can't hear you", "One sec", or your own, set in Settings),
   also straight from the notification with the phone in your pocket. Messages go phone to phone,
   encrypted, and are re-sent if the connection drops.
+- **Screen sharing that stays sharp.** **Share screen** (in a call's More
+  menu) shows your whole screen or one app. It doesn't squeeze into the
+  call's video the way WhatsApp's does: it goes through Cloudflare on its own
+  connection, so a lost packet is resent from the server nearest the viewer
+  instead of across the whole route. Text keeps its resolution (the frame
+  rate gives way instead), a still screen gets sharper over a couple of
+  seconds, the viewer's phone sets the pace its connection can take, and
+  pinch or double-tap zoom shows the real pixels. Turning the phone doesn't
+  end the share. Needs a free Cloudflare SFU app on your server
+  ([docs/deploy.md](docs/deploy.md)); the research is in
+  [docs/research/screen-share.md](docs/research/screen-share.md).
 - **Looks like it belongs on your phone.** Two tabs, **Chats** and **Calls**,
   as in WhatsApp and Signal, with one **Invite** button for something new.
   Your wallpaper's colours on Android 12 and later, light or dark as your
@@ -283,9 +294,9 @@ Android clients.
 
 | Tested | How |
 | --- | --- |
-| Server | 76 unit and integration tests, including messages between contacts (held for a phone that's offline until it confirms them, read receipts), mangled invite links still opening the call, the app-link file, ringing (who can ring whom, first answer wins, cancel and timeout, connecting while it rings), hosted-TURN credentials and the browser client's voice detector, delay readout (which way it's weak), chat, packet-length policy and SDP tweaks |
+| Server | 91 unit and integration tests, including screen sharing (one sharer per room, late joiners, the Cloudflare relay's requests and errors), messages between contacts (held for a phone that's offline until it confirms them, read receipts), mangled invite links still opening the call, the app-link file, ringing (who can ring whom, first answer wins, cancel and timeout, connecting while it rings), hosted-TURN credentials and the browser client's voice detector, delay readout (which way it's weak), chat, packet-length policy and SDP tweaks |
 | Browser calls | 16 end-to-end tests: two real Chromium browsers calling each other through the server (video, audio, reloads, dropped connections, room full, camera-less join, 10 ms packets, fewer packets next to earbuds, redundant audio, HD voice, talking cue, text chat across a reload, the open-in-app link, home-screen install), three of them over a simulated bad connection, a relay that drops packets (lost voice resent; longer packets asked for and renegotiated in place, both ways round) |
-| Android app | 345 tests: protocol and chat against the shared examples, the Chats and Calls tabs, read receipts and blocking, the bar back to a call, quick replies, the update button, message copy and delete, notification actions, less data, calls in conversations, signaling reconnects against a scripted server, incoming calls end to end against a scripted server (ringing, accept, decline, busy, missed call, calling each other at once, which calls connect while they ring, a caller ringing again after reconnecting), opening invite links, the outgoing ring's states (including a phone that joined while still ringing), audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio, path-steering, voice-first bandwidth sharing, packet length, relay route, heat and lip-sync planning, which way the connection is weak, the bad-Wi-Fi tuning, keeping calls off mobile data next to working Wi-Fi, call history and call reports, SDP tweaks, plus Robolectric tests that start the real app and render every screen. Android lint, debug and release builds |
+| Android app | 363 tests: protocol and chat against the shared examples, screen sharing (capture sizes, codec choice, the viewer's pacing, zoom, the menu and banner), the Chats and Calls tabs, read receipts and blocking, the bar back to a call, quick replies, the update button, message copy and delete, notification actions, less data, calls in conversations, signaling reconnects against a scripted server, incoming calls end to end against a scripted server (ringing, accept, decline, busy, missed call, calling each other at once, which calls connect while they ring, a caller ringing again after reconnecting), opening invite links, the outgoing ring's states (including a phone that joined while still ringing), audio-mode decisions, the sonar meter's signal processing on simulated recordings, every earbud protocol against a simulated pair of earbuds, radio, path-steering, voice-first bandwidth sharing, packet length, relay route, heat and lip-sync planning, which way the connection is weak, the bad-Wi-Fi tuning, keeping calls off mobile data next to working Wi-Fi, call history and call reports, SDP tweaks, plus Robolectric tests that start the real app and render every screen. Android lint, debug and release builds |
 | Android on a real phone | **Not yet.** The audio routing and the earbud drivers have to be confirmed on real hardware; the in-app audio check and the delay tuner are there for exactly that. |
 
 ## Trade-offs to know about

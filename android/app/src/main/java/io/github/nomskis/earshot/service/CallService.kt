@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.media.projection.MediaProjectionManager
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.SystemClock
@@ -16,6 +17,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import io.github.nomskis.earshot.MainActivity
@@ -38,6 +40,9 @@ class CallService : LifecycleService() {
 
     private var wifiLocks: List<WifiManager.WifiLock> = emptyList()
     private lateinit var chatNotifier: ChatNotifier
+    /** Capturing the screen for a share: the service says so to Android while it lasts. */
+    private var projecting = false
+    private var lastInfo: NotificationInfo? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -74,10 +79,17 @@ class CallService : LifecycleService() {
                                 it.outputHeld,
                                 calling = it.outgoing?.takeIf { o -> o.status == OutgoingRing.Status.CALLING || o.status == OutgoingRing.Status.RINGING }?.name,
                                 connectedAt = it.connectedAt,
+                                sharingScreen = it.sharingScreen,
                             )
                         }
                         .distinctUntilChanged()
                         .collect { info ->
+                            lastInfo = info
+                            // The share is over: the service stops saying it captures the screen.
+                            if (projecting && !info.sharingScreen) {
+                                projecting = false
+                                ServiceCompat.startForeground(this@CallService, NOTIFICATION_ID, buildNotification(info), foregroundTypes())
+                            }
                             getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(info))
                         }
                 }
@@ -93,6 +105,8 @@ class CallService : LifecycleService() {
             ACTION_REPLY -> ChatNotifier.replyText(intent)?.let { text ->
                 appGraph.callManager.session.value?.sendChat(text) ?: chatNotifier.clear()
             }
+            ACTION_SHARE_SCREEN -> shareScreen(intent)
+            ACTION_STOP_SHARE -> appGraph.callManager.session.value?.stopScreenShare()
         }
         return START_NOT_STICKY
     }
@@ -103,9 +117,39 @@ class CallService : LifecycleService() {
         super.onDestroy()
     }
 
+    /**
+     * The consent Android gave for a share: the service first says it captures the screen (Android
+     * 14 refuses the capture otherwise, and only allows saying so after consent), then makes the
+     * capture and hands it to the call.
+     */
+    private fun shareScreen(intent: Intent) {
+        val session = appGraph.callManager.session.value ?: return
+        val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
+        val consent = IntentCompat.getParcelableExtra(intent, EXTRA_RESULT_DATA, Intent::class.java) ?: return
+        projecting = true
+        try {
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(lastInfo), foregroundTypes())
+            val projection = getSystemService(MediaProjectionManager::class.java).getMediaProjection(resultCode, consent)
+            if (projection != null) session.startScreenShare(projection) else stopProjecting()
+        } catch (e: RuntimeException) {
+            // SecurityException, or the consent was used already.
+            android.util.Log.w("EarshotScreen", "Could not start capturing the screen", e)
+            stopProjecting()
+        }
+    }
+
+    private fun stopProjecting() {
+        projecting = false
+        ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(lastInfo), foregroundTypes())
+    }
+
     private fun foregroundTypes(): Int {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return 0
+        // Android 10 already asks for the screen-capture type; the others came with Android 11.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return if (projecting && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0
+        }
         var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        if (projecting) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
         val cameraGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
         if (cameraGranted) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
@@ -152,6 +196,7 @@ class CallService : LifecycleService() {
         val calling: String? = null,
         /** When it connected (SystemClock.elapsedRealtime), for the timer. */
         val connectedAt: Long? = null,
+        val sharingScreen: Boolean = false,
     )
 
     private fun buildNotification(state: NotificationInfo?): Notification {
@@ -179,6 +224,8 @@ class CallService : LifecycleService() {
         val text = if (state?.outputHeld == true) {
             // The banner in the app may not be visible (pocket, picture-in-picture).
             getString(R.string.notification_output_held)
+        } else if (state?.sharingScreen == true) {
+            getString(R.string.notification_sharing_screen)
         } else {
             buildString {
                 append(state?.room ?: "")
@@ -214,6 +261,15 @@ class CallService : LifecycleService() {
                         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
                     )
                     addAction(0, getString(if (state.micMuted) R.string.unmute else R.string.mute), mute)
+                    if (state.sharingScreen) {
+                        val stop = PendingIntent.getService(
+                            this@CallService,
+                            3,
+                            Intent(this@CallService, CallService::class.java).setAction(ACTION_STOP_SHARE),
+                            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                        )
+                        addAction(0, getString(R.string.stop_sharing), stop)
+                    }
                 }
             }
             .build()
@@ -225,9 +281,23 @@ class CallService : LifecycleService() {
         private const val ACTION_HANG_UP = "io.github.nomskis.earshot.HANG_UP"
         private const val ACTION_TOGGLE_MUTE = "io.github.nomskis.earshot.TOGGLE_MUTE"
         private const val ACTION_REPLY = "io.github.nomskis.earshot.CHAT_REPLY"
+        private const val ACTION_SHARE_SCREEN = "io.github.nomskis.earshot.SHARE_SCREEN"
+        private const val ACTION_STOP_SHARE = "io.github.nomskis.earshot.STOP_SHARE"
+        private const val EXTRA_RESULT_CODE = "io.github.nomskis.earshot.RESULT_CODE"
+        private const val EXTRA_RESULT_DATA = "io.github.nomskis.earshot.RESULT_DATA"
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, CallService::class.java))
+        }
+
+        /** Android's consent to capture the screen ([resultCode], [data]) for the call's share. */
+        fun shareScreen(context: Context, resultCode: Int, data: Intent) {
+            val intent = Intent(context, CallService::class.java)
+                .setAction(ACTION_SHARE_SCREEN)
+                .putExtra(EXTRA_RESULT_CODE, resultCode)
+                .putExtra(EXTRA_RESULT_DATA, data)
+            // The service is already running for the call, and the app is in front: a plain start.
+            context.startService(intent)
         }
     }
 }

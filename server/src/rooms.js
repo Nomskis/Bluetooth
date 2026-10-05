@@ -34,12 +34,16 @@ export class RoomManager {
    * @param {number} options.maxPeersPerRoom
    * @param {number} options.reconnectGraceMs
    * @param {(peerId: string) => object[]} options.iceServersFor
+   * @param {(room: Room) => object} [options.describeRoom] more to tell a joining member (screen sharing)
+   * @param {(member: Member) => void} [options.onRemoved] a member left for good
    * @param {{ setTimeout: typeof setTimeout, clearTimeout: typeof clearTimeout }} [options.timers]
    */
-  constructor({ maxPeersPerRoom, reconnectGraceMs, iceServersFor, timers = globalThis }) {
+  constructor({ maxPeersPerRoom, reconnectGraceMs, iceServersFor, describeRoom = () => ({}), onRemoved = () => {}, timers = globalThis }) {
     this.maxPeersPerRoom = maxPeersPerRoom;
     this.reconnectGraceMs = reconnectGraceMs;
     this.iceServersFor = iceServersFor;
+    this.describeRoom = describeRoom;
+    this.onRemoved = onRemoved;
     this.timers = timers;
     /** @type {Map<string, Room>} */
     this.rooms = new Map();
@@ -169,6 +173,7 @@ export class RoomManager {
     if (room.members.get(member.peerId) !== member) return;
     this.timers.clearTimeout(member.graceTimer);
     room.members.delete(member.peerId);
+    this.onRemoved(member);
     if (room.members.size === 0) {
       this.rooms.delete(room.code);
       return;
@@ -191,6 +196,7 @@ export class RoomManager {
       resumed,
       peers,
       iceServers: this.iceServersFor(member.peerId),
+      ...this.describeRoom(member.room),
     });
   }
 

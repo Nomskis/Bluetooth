@@ -1,6 +1,8 @@
 package io.github.nomskis.earshot.ui
 
 import android.Manifest
+import android.app.Activity
+import android.media.projection.MediaProjectionManager
 import android.os.PowerManager
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
@@ -37,6 +39,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ScreenShare
+import androidx.compose.material.icons.automirrored.filled.StopScreenShare
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Close
@@ -102,6 +106,7 @@ import io.github.nomskis.earshot.call.LinkQuality
 import io.github.nomskis.earshot.call.LipSync
 import io.github.nomskis.earshot.calls.OutgoingRing
 import io.github.nomskis.earshot.earbuds.EarbudBoost
+import io.github.nomskis.earshot.service.CallService
 import io.github.nomskis.earshot.settings.QuickReplies
 import io.github.nomskis.earshot.ui.theme.CallTheme
 import kotlin.math.roundToInt
@@ -151,11 +156,13 @@ fun CallScreen(
         bubble = null
     }
 
-    val showRemoteVideo = state.hasRemoteVideo && !state.remoteMedia.cameraOff
-    val showOwnVideo = state.hasCamera && !state.cameraOff && !state.cameraPaused
+    // Their shared screen takes the place of their camera (which rests while they share).
+    val showTheirScreen = state.theirScreen
+    val showRemoteVideo = state.hasRemoteVideo && !state.remoteMedia.cameraOff && !showTheirScreen
+    val showOwnVideo = state.hasCamera && !state.cameraOff && !state.cameraPaused && !state.sharingScreen
     // Screen off at your ear, as in a phone call; never while there's video on the screen.
     val atEar = state.speakerOn == false
-    PocketGuard(enabled = (pocketGuard || atEar) && !inPictureInPicture && !showRemoteVideo && !showOwnVideo)
+    PocketGuard(enabled = (pocketGuard || atEar) && !inPictureInPicture && !showRemoteVideo && !showOwnVideo && !showTheirScreen)
     // The head-start cue: lights up as her voice enters the phone, before the
     // Bluetooth delay lets you hear it, so you know not to talk over her.
     val glow by animateFloatAsState(
@@ -171,7 +178,7 @@ fun CallScreen(
 
     // Once the call is going the buttons get out of the way, and a tap anywhere brings them back
     // or puts them away. While it's still connecting they stay up.
-    val videoOnScreen = showRemoteVideo || showOwnVideo
+    val videoOnScreen = showRemoteVideo || showOwnVideo || showTheirScreen
     var controlsShown by rememberSaveable(session) { mutableStateOf(true) }
     var sheet by rememberSaveable(session) { mutableStateOf<CallSheet?>(null) }
     val connected = state.phase == CallPhase.CONNECTED
@@ -213,6 +220,17 @@ fun CallScreen(
         }
     }
 
+    // Sharing the screen: Android asks first (whole screen or one app), then the call's service
+    // takes the consent, as Android requires, and hands the capture to the call.
+    val screenConsent = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val data = result.data
+        if (result.resultCode == Activity.RESULT_OK && data != null) CallService.shareScreen(context, result.resultCode, data)
+    }
+    fun shareScreen() {
+        val projections = context.getSystemService(MediaProjectionManager::class.java) ?: return
+        runCatching { screenConsent.launch(projections.createScreenCaptureIntent()) }
+    }
+
     CallTheme {
         DarkSystemBars()
         Box(
@@ -221,7 +239,19 @@ fun CallScreen(
                 .background(Color.Black)
                 .onSizeChanged { area = it },
         ) {
-            if (ownVideoBig) {
+            if (showTheirScreen) {
+                ScreenView(
+                    sink = session.screenVideo,
+                    eglContext = session.eglContext,
+                    modifier = Modifier.fillMaxSize(),
+                    onTap = {
+                        controlsShown = !controlsShown
+                        if (controlsShown) shownAt = SystemClock.uptimeMillis()
+                    },
+                    description = "${state.remotePeer?.name?.takeIf { it.isNotBlank() }?.let { "$it's" } ?: "Their"} screen: pinch or double-tap to zoom",
+                )
+                if (!state.theirScreenShowing) ScreenLoading(state, Modifier.align(Alignment.Center))
+            } else if (ownVideoBig) {
                 // The frames as sent, Flip included: what you see is what they see.
                 VideoRenderer(sink = session.localPreview, eglContext = session.eglContext, modifier = Modifier.fillMaxSize())
             } else if (showRemoteVideo) {
@@ -244,7 +274,8 @@ fun CallScreen(
 
             if (inPictureInPicture) return@Box
 
-            if (connected) {
+            // A shared screen takes its own taps (zoom), and a single one shows the buttons.
+            if (connected && !showTheirScreen) {
                 // Over the video's own surface, which doesn't take touches.
                 Box(
                     Modifier
@@ -277,6 +308,27 @@ fun CallScreen(
                     key = session,
                     onTap = { if (showRemoteVideo) swapped = !swapped },
                     description = if (ownVideoBig) "Their video: drag to move, tap to swap" else "Your video: drag to move, tap to swap",
+                )
+            }
+
+            // Sharing is easy to forget: always on screen, with Stop right there.
+            if (state.sharingScreen) {
+                SharingBanner(
+                    live = state.screenLive,
+                    onStop = session::stopScreenShare,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = 112.dp),
+                )
+            }
+            state.screenNote?.let { note ->
+                ScreenNote(
+                    text = note,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = 112.dp),
                 )
             }
 
@@ -362,6 +414,10 @@ fun CallScreen(
                         onReplay = session::toggleReplay,
                         onEarbudMic = { session.setEarbudMic(!state.earbudMic) },
                         onInfo = { sheet = CallSheet.INFO },
+                        onShareScreen = {
+                            sheet = null
+                            if (state.sharingScreen) session.stopScreenShare() else shareScreen()
+                        },
                     )
                 }
                 CallSheet.INFO -> CallSheetHost(onDismiss = { sheet = null }) {
@@ -882,12 +938,19 @@ internal fun MoreMenu(
     onReplay: () -> Unit,
     onEarbudMic: () -> Unit,
     onInfo: () -> Unit,
+    /** Share our screen, or stop; only offered when the server and their app can do it. */
+    onShareScreen: () -> Unit = {},
 ) {
     val cameraOn = state.hasCamera && !state.cameraOff
     var volume by remember(state.voiceVolume) { mutableFloatStateOf(state.voiceVolume) }
     Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
         if (state.chatAvailable) {
             MenuItem(Icons.AutoMirrored.Filled.Chat, if (unreadChat > 0) "Chat ($unreadChat new)" else "Chat", onChat)
+        }
+        if (state.sharingScreen) {
+            MenuItem(Icons.AutoMirrored.Filled.StopScreenShare, "Stop sharing", onShareScreen)
+        } else if (state.canShareScreen && !state.theirScreen) {
+            MenuItem(Icons.AutoMirrored.Filled.ScreenShare, "Share screen", onShareScreen)
         }
         // On video the row has the camera switch; the loudspeaker lives here then.
         if (cameraOn && state.speakerOn != null) {
@@ -939,3 +1002,56 @@ private fun MenuItem(icon: ImageVector, label: String, onClick: () -> Unit) {
         Text(label, style = MaterialTheme.typography.bodyLarge)
     }
 }
+
+/** "Sharing your screen", always up while it lasts, with Stop. */
+@Composable
+internal fun SharingBanner(live: Boolean, onStop: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = modifier
+            .padding(horizontal = 16.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(colors.errorContainer)
+            .padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(Icons.AutoMirrored.Filled.ScreenShare, contentDescription = null, tint = colors.onErrorContainer, modifier = Modifier.size(20.dp))
+        Text(
+            if (live) "Sharing your screen" else "Starting to share…",
+            color = colors.onErrorContainer,
+            style = MaterialTheme.typography.labelLarge,
+        )
+        TextButton(onClick = onStop) { Text("Stop", color = colors.onErrorContainer) }
+    }
+}
+
+/** A word about sharing that didn't work, for a few seconds. */
+@Composable
+private fun ScreenNote(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        color = MaterialTheme.colorScheme.inverseOnSurface,
+        style = MaterialTheme.typography.bodyMedium,
+        textAlign = TextAlign.Center,
+        modifier = modifier
+            .padding(horizontal = 24.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.inverseSurface)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+    )
+}
+
+/** Their screen is on its way. */
+@Composable
+private fun ScreenLoading(state: CallState, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        CircularProgressIndicator()
+        Text(
+            "Loading ${state.remotePeer?.name?.takeIf { it.isNotBlank() }?.let { "$it's" } ?: "their"} screen…",
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.bodyLarge,
+        )
+    }
+}
+

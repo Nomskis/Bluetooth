@@ -143,6 +143,34 @@ input:not([type='checkbox']) {
   background: #000;
 }
 
+/* Their shared screen: fitted, with wheel, pinch and double-click zoom (app.js zoomable). */
+.screen-view {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.screen-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform-origin: 0 0;
+}
+
+.screen-label {
+  position: absolute;
+  left: 50%;
+  top: calc(4.5rem + env(safe-area-inset-top));
+  transform: translateX(-50%);
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+
 .call-overlay {
   position: absolute;
   inset: 0;

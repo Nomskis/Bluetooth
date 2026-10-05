@@ -4,6 +4,7 @@ import { DelayTracker, isWeak, weakLabel } from './delay.js';
 import { generateRoomCode, normalizeRoom } from './rooms.js';
 import { SignalingClient } from './signaling.js';
 import { RemoteVoiceWatcher } from './voice.js';
+import { SCREEN_AV1_CAPABILITY, SCREEN_CAPABILITY, ScreenWatcher, decodesAv1 } from './screen.js';
 
 const VERSION = '0.1.0';
 const $ = (id) => document.getElementById(id);
@@ -43,6 +44,9 @@ const ui = {
   chatForm: $('chat-form'),
   chatInput: $('chat-input'),
   chatBubble: $('chat-bubble'),
+  screenView: $('screen-view'),
+  screenVideo: $('screen-video'),
+  screenLabel: $('screen-label'),
 };
 
 const STATUS_TEXT = {
@@ -220,9 +224,15 @@ function startCall(room, name, stream) {
     room,
     peerId: tabPeerId(),
     name,
-    client: { platform: 'web', version: VERSION, capabilities: [CHAT_CAPABILITY, RENEGOTIATE_CAPABILITY] },
+    client: {
+      platform: 'web',
+      version: VERSION,
+      capabilities: [CHAT_CAPABILITY, RENEGOTIATE_CAPABILITY, SCREEN_CAPABILITY, ...(decodesAv1() ? [SCREEN_AV1_CAPABILITY] : [])],
+    },
   });
   engine = new CallEngine(signaling, stream);
+  const screens = new ScreenWatcher(signaling, engine);
+  screens.addEventListener('screen', (e) => showScreen(e.detail.stream));
 
   engine.addEventListener('status', (e) => renderStatus(e.detail));
   engine.addEventListener('peer', (e) => {
@@ -250,7 +260,7 @@ function startCall(room, name, stream) {
   signaling.connect();
   renderStatus(engine.status);
   // Handy from the devtools console, and used by the end-to-end tests.
-  window.earshot = { engine, signaling, voice };
+  window.earshot = { engine, signaling, voice, screens };
   requestWakeLock();
   clearInterval(delayTimer);
   delayTimer = setInterval(updateDelay, 2000);
@@ -340,6 +350,108 @@ function renderBadges(media) {
   else if (media.weakConnection) add('Video paused: weak connection');
   else if (media.cameraOff) add('Camera off');
   if (media.audioMode === 'hifi') add('Hi-Fi audio', 'hifi');
+}
+
+// --- Their shared screen ---------------------------------------------------------
+
+const screenZoom = zoomable(ui.screenView, ui.screenVideo);
+
+function showScreen(stream) {
+  if (!stream) {
+    ui.screenView.hidden = true;
+    ui.screenVideo.srcObject = null;
+    screenZoom.reset();
+    return;
+  }
+  const name = engine?.remotePeer?.name;
+  ui.screenLabel.textContent = name ? `${name}'s screen` : 'Their screen';
+  ui.screenVideo.srcObject = stream;
+  ui.screenView.hidden = false;
+  ui.screenVideo.play().catch(() => {});
+}
+
+/**
+ * Wheel or pinch to zoom, drag to move, double-click (or double-tap) to zoom in at a point or
+ * back out. The video keeps its full resolution underneath, so zooming shows real pixels.
+ */
+function zoomable(container, video) {
+  let scale = 1;
+  let x = 0;
+  let y = 0;
+  const pointers = new Map();
+  let pinch = null;
+
+  function apply() {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    scale = Math.min(6, Math.max(1, scale));
+    x = Math.min(0, Math.max(w - w * scale, x));
+    y = Math.min(0, Math.max(h - h * scale, y));
+    video.style.transform = scale === 1 ? '' : `translate(${x}px, ${y}px) scale(${scale})`;
+  }
+  function zoomAt(next, px, py) {
+    const ratio = Math.min(6, Math.max(1, next)) / scale;
+    x = px - (px - x) * ratio;
+    y = py - (py - y) * ratio;
+    scale *= ratio;
+    apply();
+  }
+  function point(e) {
+    const r = container.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top];
+  }
+  container.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const [px, py] = point(e);
+    zoomAt(scale * Math.exp(-e.deltaY * 0.002), px, py);
+  }, { passive: false });
+  container.addEventListener('dblclick', (e) => {
+    const [px, py] = point(e);
+    if (scale > 1.05) {
+      scale = 1;
+      x = 0;
+      y = 0;
+      apply();
+    } else {
+      zoomAt(2.5, px, py);
+    }
+  });
+  container.addEventListener('pointerdown', (e) => {
+    pointers.set(e.pointerId, point(e));
+    container.setPointerCapture(e.pointerId);
+  });
+  container.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    const prev = pointers.get(e.pointerId);
+    const now = point(e);
+    pointers.set(e.pointerId, now);
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      const dist = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      if (pinch) zoomAt(scale * (dist / pinch), mid[0], mid[1]);
+      pinch = dist;
+    } else if (pointers.size === 1 && scale > 1) {
+      x += now[0] - prev[0];
+      y += now[1] - prev[1];
+      apply();
+    }
+  });
+  const up = (e) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch = null;
+  };
+  container.addEventListener('pointerup', up);
+  container.addEventListener('pointercancel', up);
+  window.addEventListener('resize', apply);
+  return {
+    reset() {
+      scale = 1;
+      x = 0;
+      y = 0;
+      apply();
+    },
+  };
 }
 
 function attachRemote(stream) {

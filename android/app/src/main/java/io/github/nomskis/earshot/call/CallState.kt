@@ -109,6 +109,16 @@ data class CallState(
     val chat: List<ChatMessage> = emptyList(),
     /** Their latest message, for the bubble and the notification. */
     val lastIncomingChat: ChatMessage? = null,
+    /** The server can relay a screen and their app can watch one: Share screen is offered. */
+    val canShareScreen: Boolean = false,
+    /** We're sharing our screen ([ScreenShare]); [screenLive] once Cloudflare has it and it's flowing. */
+    val sharingScreen: Boolean = false,
+    val screenLive: Boolean = false,
+    /** They're sharing their screen with us ([ScreenWatch]); [theirScreenShowing] once its frames arrive. */
+    val theirScreen: Boolean = false,
+    val theirScreenShowing: Boolean = false,
+    /** Why sharing didn't work or ended, for a moment on the screen. */
+    val screenNote: String? = null,
     val error: String? = null,
 ) {
     val isActive: Boolean

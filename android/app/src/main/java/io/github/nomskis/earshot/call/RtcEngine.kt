@@ -24,6 +24,9 @@ import org.webrtc.MediaStreamTrack
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.Priority
+import org.webrtc.RtpParameters
+import org.webrtc.RtpSender
+import org.webrtc.RtpTransceiver
 import org.webrtc.SurfaceTextureHelper
 import org.webrtc.VideoFrame
 import org.webrtc.VideoSink
@@ -211,6 +214,63 @@ class RtcEngine(
             runCatching { transceiver.setCodecPreferences(red + rest) }
                 .onFailure { Log.w(TAG, "Could not prefer RED", it) }
         }
+    }
+
+    // --- a shared screen, on a connection of its own (ScreenShare, ScreenWatch) ----------
+
+    /** A video source marked as a screen: WebRTC keeps its resolution and lets the frame rate give way. */
+    fun createScreenSource(): VideoSource = factory.createVideoSource(true)
+
+    fun createScreenTrack(source: VideoSource): VideoTrack = factory.createVideoTrack(Ids.random(6, "s"), source)
+
+    /** Whether this phone can decode AV1 (WebRTC's dav1d), so a sharer may send it the sharpest codec. */
+    fun decodesAv1(): Boolean =
+        factory.getRtpReceiverCapabilities(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO).codecs.any { it.name.equals("AV1", ignoreCase = true) }
+
+    /** Whether this phone can encode AV1 at all (in software, libaom). */
+    fun encodesAv1(): Boolean =
+        factory.getRtpSenderCapabilities(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO).codecs.any { it.name.equals("AV1", ignoreCase = true) }
+
+    /**
+     * A connection for a screen to or from Cloudflare: the call's STUN and TURN servers (TURN gets
+     * through networks that block UDP, and Cloudflare doesn't charge twice for TURN to its SFU)
+     * plus Cloudflare's own STUN. Mobile data follows the call's rule ([mobileDataNextToWifi]).
+     */
+    fun createScreenPeerConnection(
+        iceServers: List<IceServerConfig>,
+        observer: PeerConnection.Observer,
+        mobileDataNextToWifi: Boolean,
+    ): PeerConnection? {
+        val servers = iceServers + IceServerConfig(listOf(ScreenTuning.CLOUDFLARE_STUN))
+        val config = rtcConfiguration(servers, preferCellular = false, fixed = Fixed(mobileDataNextToWifi, relayOnly = false))
+        return factory.createPeerConnection(config, observer)
+    }
+
+    /**
+     * The screen's codecs, best for screens first ([ScreenTuning.codecOrder]); the rest (resends,
+     * other codecs) stay behind them, so Cloudflare still finds something if a favourite's missing.
+     */
+    fun preferScreenCodecs(transceiver: RtpTransceiver, order: List<String>) {
+        val codecs = factory.getRtpSenderCapabilities(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO).codecs
+        fun rank(name: String) = order.indexOfFirst { it.equals(name, ignoreCase = true) }.let { if (it < 0) order.size else it }
+        val sorted = codecs.sortedBy { rank(it.name) }
+        runCatching { transceiver.setCodecPreferences(sorted) }.onFailure { Log.w(TAG, "Could not order the screen's codecs", it) }
+    }
+
+    /**
+     * How the screen is sent: resolution kept and the frame rate giving way when bandwidth or the
+     * processor runs short (blurred text is the one thing a screen can't afford), at most [kbps]
+     * and [ScreenTuning.MAX_FPS].
+     */
+    fun tuneScreenSender(sender: RtpSender, kbps: Int) {
+        val parameters = sender.parameters
+        parameters.degradationPreference = RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION
+        parameters.encodings.forEach {
+            it.maxBitrateBps = kbps * 1000
+            it.maxFramerate = ScreenTuning.MAX_FPS
+            it.networkPriority = Priority.MEDIUM
+        }
+        if (!sender.setParameters(parameters)) Log.w(TAG, "Could not tune the screen at $kbps kbps")
     }
 
     fun createSendTracks(): SendTracks = SendTracks(

@@ -1,0 +1,5 @@
+{
+  "type": "screen-error",
+  "code": "in-use",
+  "message": "The other person is already sharing their screen."
+}

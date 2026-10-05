@@ -122,7 +122,31 @@ sealed interface ClientMessage {
     @Serializable
     @SerialName("message-read")
     data class MessageRead(val to: String, val id: String) : ClientMessage
+
+    /** Our screen's offer, for the server to publish through Cloudflare; the screen is on transceiver [mid]. */
+    @Serializable
+    @SerialName("screen-publish")
+    data class ScreenPublish(val sdp: String, val mid: String) : ClientMessage
+
+    /** We stopped sharing. */
+    @Serializable
+    @SerialName("screen-stop")
+    data object ScreenStop : ClientMessage
+
+    /** We'd like to watch the screen being shared in our room; answered with [ServerMessage.ScreenOffer]. */
+    @Serializable
+    @SerialName("screen-watch")
+    data object ScreenWatch : ClientMessage
+
+    /** Our answer to the offer [watch] came with. */
+    @Serializable
+    @SerialName("screen-answer")
+    data class ScreenAnswer(val watch: String, val sdp: String) : ClientMessage
 }
+
+/** Who is sharing their screen in a room. */
+@Serializable
+data class ScreenInfo(val from: String)
 
 /** Who's calling: the name they gave, and their inbox address when they proved it. */
 @Serializable
@@ -141,6 +165,10 @@ sealed interface ServerMessage {
         val resumed: Boolean = false,
         val peers: List<PeerInfo> = emptyList(),
         val iceServers: List<IceServerConfig> = emptyList(),
+        /** What this server can do beyond calls: "screen" when it can relay a shared screen. */
+        val features: List<String> = emptyList(),
+        /** Someone in the room is sharing their screen. */
+        val screen: ScreenInfo? = null,
     ) : ServerMessage
 
     @Serializable
@@ -202,6 +230,31 @@ sealed interface ServerMessage {
     @Serializable
     @SerialName("ring-answered")
     data class RingAnswered(val ringId: String, val accepted: Boolean, val reason: String? = null) : ServerMessage
+
+    /** Cloudflare's answer to our screen's offer: the share is live. */
+    @Serializable
+    @SerialName("screen-published")
+    data class ScreenPublished(val sdp: String) : ServerMessage
+
+    /** [from] started sharing their screen (or started again on a new connection). */
+    @Serializable
+    @SerialName("screen-started")
+    data class ScreenStarted(val from: String) : ServerMessage
+
+    /** The share in our room ended (or there isn't one to watch). */
+    @Serializable
+    @SerialName("screen-stopped")
+    data class ScreenStopped(val from: String? = null) : ServerMessage
+
+    /** Cloudflare's offer for watching the screen; answer with [ClientMessage.ScreenAnswer] naming [watch]. */
+    @Serializable
+    @SerialName("screen-offer")
+    data class ScreenOffer(val watch: String, val sdp: String) : ServerMessage
+
+    /** Something about sharing didn't work: "unavailable", "in-use", "relay", "busy", "stale". */
+    @Serializable
+    @SerialName("screen-error")
+    data class ScreenError(val code: String, val message: String = "") : ServerMessage
 }
 
 /** Peer-to-peer payloads. The server relays these untouched. */
@@ -249,6 +302,8 @@ sealed interface SignalData {
         val radioShared: Boolean? = null,
         /** Our phone is still ringing ([Capabilities.RINGING]); absent once answered. */
         val ringing: Boolean? = null,
+        /** Watching their screen: the most it should send us, in kbps ([io.github.nomskis.earshot.call.ScreenPace]); absent = no limit. */
+        val screenKbps: Int? = null,
     ) : SignalData
 }
 
@@ -267,6 +322,17 @@ object Capabilities {
      * `preconnect`, and once answered it's an ordinary call, whatever its join said.
      */
     const val RINGING = "ringing"
+
+    /** Can watch a shared screen ([ServerMessage.ScreenStarted]); without it, nobody shares to this client. */
+    const val SCREEN = "screen"
+
+    /** Can decode AV1, the sharpest codec for a screen ([io.github.nomskis.earshot.call.ScreenTuning.codecOrder]). */
+    const val SCREEN_AV1 = "screen-av1"
+}
+
+/** What a server can do, in its `joined` message's features. */
+object Features {
+    const val SCREEN = "screen"
 }
 
 object ErrorCodes {
