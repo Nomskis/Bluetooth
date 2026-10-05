@@ -632,7 +632,8 @@ internal fun TopBar(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClickLabel = "Call details", onClick = onInfo)
+                // Only where there's something to tap: without the name it's an empty strip.
+                .then(if (showWho) Modifier.clickable(onClickLabel = "Call details", onClick = onInfo) else Modifier)
                 .padding(horizontal = 56.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp),
