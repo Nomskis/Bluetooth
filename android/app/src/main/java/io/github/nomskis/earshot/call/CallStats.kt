@@ -36,6 +36,17 @@ object CallStats {
         return received to lost
     }
 
+    /** Cumulative counters for the video coming in (a shared screen, on its own connection). */
+    fun inboundVideoCounters(report: Map<String, Entry>): ScreenPace.Counters? {
+        val inbound = report.values.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "video" } ?: return null
+        return ScreenPace.Counters(
+            bytesReceived = number(inbound.members["bytesReceived"]) ?: return null,
+            packetsReceived = number(inbound.members["packetsReceived"]) ?: return null,
+            packetsLost = number(inbound.members["packetsLost"]) ?: 0.0,
+            freezeCount = number(inbound.members["freezeCount"]) ?: 0.0,
+        )
+    }
+
     /** Cumulative (concealedSamples, totalSamplesReceived) for her audio. */
     fun audioConcealment(report: Map<String, Entry>): Pair<Double, Double>? {
         val inbound = report.values.firstOrNull { it.type == "inbound-rtp" && it.members["kind"] == "audio" } ?: return null

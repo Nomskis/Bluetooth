@@ -12,6 +12,8 @@
     <string name="notification_calling">Calling %1$s…</string>
     <string name="notification_hifi">Hi-Fi audio</string>
     <string name="notification_output_held">Earbuds disconnected. Their voice is paused.</string>
+    <string name="notification_sharing_screen">Sharing your screen</string>
+    <string name="stop_sharing">Stop sharing</string>
     <string name="notification_channel_chat">Chat messages during calls</string>
     <string name="channel_incoming_calls">Incoming calls</string>
     <string name="channel_missed_calls">Missed calls</string>

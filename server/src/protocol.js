@@ -73,6 +73,12 @@ function cleanClient(client) {
   };
 }
 
+/** A session description; a screen's offer or answer is a few kilobytes. */
+const MAX_SDP_LENGTH = 32 * 1024;
+const MID_PATTERN = /^[A-Za-z0-9_-]{1,16}$/;
+/** Cloudflare's session ids, as handed out in `screen-offer`. */
+const SESSION_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+
 /** Why a call wasn't taken: turned down, or already on another call. */
 const RING_DECLINE_REASONS = new Set(['declined', 'busy']);
 
@@ -183,6 +189,28 @@ export function parseClientMessage(raw) {
       }
       return { type: msg.type, to: msg.to, id: messageIdOf(msg) };
     }
+    case 'screen-publish': {
+      // The sharer's offer for Cloudflare, with the screen on transceiver `mid` (docs/protocol.md).
+      if (typeof msg.sdp !== 'string' || msg.sdp.length === 0 || msg.sdp.length > MAX_SDP_LENGTH) {
+        throw new ProtocolError(ErrorCode.BAD_REQUEST, 'screen-publish needs an "sdp" offer');
+      }
+      if (typeof msg.mid !== 'string' || !MID_PATTERN.test(msg.mid)) {
+        throw new ProtocolError(ErrorCode.BAD_REQUEST, 'screen-publish needs the screen\'s "mid"');
+      }
+      return { type: 'screen-publish', sdp: msg.sdp, mid: msg.mid };
+    }
+    case 'screen-answer': {
+      if (typeof msg.sdp !== 'string' || msg.sdp.length === 0 || msg.sdp.length > MAX_SDP_LENGTH) {
+        throw new ProtocolError(ErrorCode.BAD_REQUEST, 'screen-answer needs an "sdp" answer');
+      }
+      if (typeof msg.watch !== 'string' || !SESSION_PATTERN.test(msg.watch)) {
+        throw new ProtocolError(ErrorCode.BAD_REQUEST, 'screen-answer needs the "watch" session it answers');
+      }
+      return { type: 'screen-answer', watch: msg.watch, sdp: msg.sdp };
+    }
+    case 'screen-watch':
+    case 'screen-stop':
+      return { type: msg.type };
     case 'leave':
       return { type: 'leave' };
     case 'ping':

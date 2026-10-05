@@ -50,5 +50,10 @@ export function loadConfig(env = process.env) {
       cloudflareTurnApiToken: env.CLOUDFLARE_TURN_API_TOKEN || null,
       turnCredentialsUrl: env.TURN_CREDENTIALS_URL || null,
     },
+    // Screen sharing through Cloudflare's Realtime SFU (screen-relay.js); off without both.
+    screen: {
+      appId: env.CLOUDFLARE_SFU_APP_ID || null,
+      appSecret: env.CLOUDFLARE_SFU_APP_SECRET || null,
+    },
   };
 }

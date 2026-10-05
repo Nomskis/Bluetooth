@@ -5,6 +5,7 @@
 # Optional relay for networks that block direct calls (mobile data, gym
 # Wi-Fi): after the first deploy, open the service's Environment tab and add
 # CLOUDFLARE_TURN_KEY_ID and CLOUDFLARE_TURN_API_TOKEN (see docs/deploy.md).
+# Screen sharing, the same way: CLOUDFLARE_SFU_APP_ID and CLOUDFLARE_SFU_APP_SECRET.
 # They aren't listed here because Render would ask for them during setup.
 services:
   - type: web

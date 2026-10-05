@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ScreenShare
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Videocam
@@ -56,9 +57,15 @@ internal fun OngoingCallBar(state: CallState, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         val video = !state.cameraOff || (state.hasRemoteVideo && !state.remoteMedia.cameraOff)
-        Icon(if (video) Icons.Filled.Videocam else Icons.Filled.Call, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+        val icon = when {
+            state.sharingScreen -> Icons.AutoMirrored.Filled.ScreenShare
+            video -> Icons.Filled.Videocam
+            else -> Icons.Filled.Call
+        }
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
         Text(
-            "$name · ${callStatus(state, now)}",
+            // Sharing is the thing not to forget while you're in another screen.
+            if (state.sharingScreen) "$name · Sharing your screen" else "$name · ${callStatus(state, now)}",
             color = Color.White,
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 1,

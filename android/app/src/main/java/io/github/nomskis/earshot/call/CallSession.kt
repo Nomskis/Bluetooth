@@ -1,6 +1,8 @@
 package io.github.nomskis.earshot.call
 
 import android.content.Context
+import android.media.projection.MediaProjection
+import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import io.github.nomskis.earshot.BuildConfig
@@ -21,6 +23,7 @@ import io.github.nomskis.earshot.signaling.CandidatePayload
 import io.github.nomskis.earshot.signaling.ClientInfo
 import io.github.nomskis.earshot.signaling.ClientMessage
 import io.github.nomskis.earshot.signaling.ErrorCodes
+import io.github.nomskis.earshot.signaling.Features
 import io.github.nomskis.earshot.signaling.IceServerConfig
 import io.github.nomskis.earshot.signaling.PeerInfo
 import io.github.nomskis.earshot.signaling.ServerMessage
@@ -137,6 +140,8 @@ class CallSession(
     /** Sits between her video track and [remoteVideo], holding frames back for lip sync. */
     private val lipSyncSink = DelayedVideoSink(remoteVideo)
     val localPreview = ProxyVideoSink()
+    /** Their shared screen, when they share one ([ScreenWatch]). */
+    val screenVideo = ProxyVideoSink()
     val eglContext: EglBase.Context get() = eglBase.eglBaseContext
 
     private lateinit var engine: RtcEngine
@@ -218,6 +223,13 @@ class CallSession(
     private var pendingCard: Chat.Frame.Contact? = null
     /** Answered here; the hold lifts once the sound has somewhere to go ([answerNow]). */
     private var answered = false
+    /** What the server can do beyond calls ([Features]); from its latest `joined`. */
+    private var serverFeatures: List<String> = emptyList()
+    /** Our screen, while we share it. */
+    private var screenShare: ScreenShare? = null
+    /** Their screen, while they share it; made once the engine is up. */
+    private var screenWatch: ScreenWatch? = null
+    private var screenNoteJob: Job? = null
 
     /** One RTCPeerConnection and everything tied to it. */
     private class Link(
@@ -293,6 +305,11 @@ class CallSession(
         data object Answer : Event
         data object Unhold : Event
         data object Rejoin : Event
+        class StartScreenShare(val projection: MediaProjection) : Event
+        data object StopScreenShare : Event
+        data object ClearScreenNote : Event
+        /** Work handed back to the call thread by a helper ([ScreenShare], [ScreenWatch]). */
+        class Run(val block: suspend () -> Unit) : Event
         data object HangUp : Event
     }
 
@@ -346,6 +363,9 @@ class CallSession(
     fun setThermal(plan: ThermalPlan?) = post(Event.SetThermal(plan))
     /** A call that was ringing here ([ringing]) was answered: start the sound and camera over the connection made meanwhile. */
     fun answer() = post(Event.Answer)
+    /** Share our screen, with the consent Android gave ([projection]); see [ScreenShare]. */
+    fun startScreenShare(projection: MediaProjection) = post(Event.StartScreenShare(projection))
+    fun stopScreenShare() = post(Event.StopScreenShare)
     fun hangUp() = post(Event.HangUp)
 
     private fun post(event: Event) {
@@ -374,6 +394,18 @@ class CallSession(
             )
         }
         if (!ringing) beginLocalMedia()
+        screenWatch = ScreenWatch(
+            engine = engine,
+            iceServers = { iceServers },
+            mobileDataNextToWifi = { mobileDataUse() != null },
+            sink = screenVideo,
+            send = { signaling.send(it) },
+            post = { block -> post(Event.Run(block)) },
+            scope = scope,
+            onShared = { on -> _state.update { it.copy(theirScreen = on) } },
+            onShowing = { on -> _state.update { it.copy(theirScreenShowing = on) } },
+            onCap = { sendMediaState() },
+        )
 
         join = ClientMessage.Join(
             room = room,
@@ -388,6 +420,8 @@ class CallSession(
                     Capabilities.RENEGOTIATE,
                     Capabilities.RELAY_ROUTE.takeIf { settings.relayRoute },
                     Capabilities.RINGING.takeIf { ringing },
+                    Capabilities.SCREEN,
+                    Capabilities.SCREEN_AV1.takeIf { engine.decodesAv1() },
                 ),
             ),
         )
@@ -423,6 +457,9 @@ class CallSession(
             engine.setPlaybackMuted(true)
             it.pc.setAudioPlayout(true)
         }
+        screenShare?.stop()
+        screenShare = null
+        screenWatch?.end()
         closeLink()
         lipSyncSink.release()
         if (::signaling.isInitialized) signaling.close()
@@ -583,6 +620,13 @@ class CallSession(
             Event.Unhold -> unholdHere()
             // Only while connected; a reconnect joins by itself.
             Event.Rejoin -> if (_state.value.signalingOnline) signaling.send(join)
+            is Event.StartScreenShare -> startScreenShareNow(event.projection)
+            Event.StopScreenShare -> screenShare?.let {
+                it.stop()
+                screenShareEnded(null)
+            }
+            Event.ClearScreenNote -> _state.update { it.copy(screenNote = null) }
+            is Event.Run -> event.block()
             Event.HangUp -> {
                 outgoing?.hangUp()?.let(signaling::send)
                 finish(CallPhase.ENDED)
@@ -1008,6 +1052,14 @@ class CallSession(
             // be answering on a fresh connection (voice only, another device). That connection's own
             // media-state, or its voice arriving, lifts the hold (theyAnswered).
             is ServerMessage.RingStatus, is ServerMessage.RingAnswered -> if (outgoing?.onMessage(message) == true) onOutgoingChanged()
+            is ServerMessage.ScreenPublished -> screenShare?.onPublished(message.sdp)
+            is ServerMessage.ScreenStarted -> if (message.from == remote?.peerId) screenWatch?.begin(message.from)
+            is ServerMessage.ScreenStopped -> if (message.from == null || message.from == screenWatch?.from) screenWatch?.end()
+            is ServerMessage.ScreenOffer -> screenWatch?.onOffer(message.watch, message.sdp)
+            is ServerMessage.ScreenError -> {
+                val share = screenShare
+                if (share != null) share.onError(message.code, message.message) else screenWatch?.onError()
+            }
         }
     }
 
@@ -1036,8 +1088,12 @@ class CallSession(
         if (message.iceServers != iceServers) link?.let { engine.updateIceServers(it.pc, message.iceServers, preferCellular) }
         iceServers = message.iceServers
         mySeq = message.seq
+        serverFeatures = message.features
+        // A share of ours we've stopped, whose stop was lost with the old connection to the server.
+        if (message.screen?.from == peerId && screenShare == null) signaling.send(ClientMessage.ScreenStop)
         val peer = message.peers.firstOrNull()
         if (peer == null) {
+            screenWatch?.end()
             closeLink()
             setRemote(null)
             setPhase(CallPhase.WAITING)
@@ -1052,6 +1108,13 @@ class CallSession(
         // Our ring went with our old connection, so their phone would stop ringing; ring again
         // (their inbox takes it as the same call, keeping the connection it made).
         if (remoteRinging) ringContact()
+        // A share that started while we were away, or the one we were watching.
+        val sharing = message.screen?.from
+        if (sharing != null && sharing == peer.peerId) {
+            if (screenWatch?.from != sharing || !_state.value.theirScreenShowing) screenWatch?.begin(sharing)
+        } else {
+            screenWatch?.end()
+        }
         ensureNegotiated()
     }
 
@@ -1068,6 +1131,7 @@ class CallSession(
 
     private fun onPeerLeft(peerId: String) {
         if (remote?.peerId != peerId) return
+        screenWatch?.end()
         closeLink()
         setRemote(null)
         setPhase(CallPhase.WAITING)
@@ -1083,6 +1147,7 @@ class CallSession(
             is SignalData.MediaState -> {
                 if (data.ringing != true) theyAnswered()
                 updateRemoteMedia(data)
+                screenShare?.setViewerKbps(data.screenKbps)
             }
         }
     }
@@ -1352,6 +1417,61 @@ class CallSession(
         }
     }
 
+    // --- sharing our screen ---------------------------------------------------------------
+
+    private suspend fun startScreenShareNow(projection: MediaProjection) {
+        val peer = remote
+        if (finished || screenShare != null || peer == null || !_state.value.canShareScreen) {
+            projection.stop()
+            return
+        }
+        val cellular = _state.value.callPath == CallPath.CELLULAR
+        val av1 = Capabilities.SCREEN_AV1 in peer.client.capabilities && engine.encodesAv1() &&
+            ScreenTuning.encodesAv1(Build.VERSION.SDK_INT, Runtime.getRuntime().availableProcessors())
+        val share = ScreenShare(
+            context = appContext,
+            engine = engine,
+            eglContext = eglBase.eglBaseContext,
+            projection = projection,
+            iceServers = { iceServers },
+            mobileDataNextToWifi = mobileDataUse() != null,
+            av1 = av1,
+            maxKbps = if (cellular) ScreenTuning.MAX_KBPS_CELLULAR else ScreenTuning.MAX_KBPS_WIFI,
+            maxShortSide = if (cellular) ScreenTuning.MAX_SHORT_SIDE_CELLULAR else ScreenTuning.MAX_SHORT_SIDE_WIFI,
+            send = { signaling.send(it) },
+            post = { block -> post(Event.Run(block)) },
+            scope = scope,
+            onLive = { live -> _state.update { it.copy(screenLive = live) } },
+            onEnded = { why -> screenShareEnded(why) },
+        )
+        screenShare = share
+        Log.i(TAG, "Sharing our screen (${if (av1) "AV1" else "VP9/VP8"}, ${if (cellular) "mobile data" else "Wi-Fi"})")
+        _state.update { it.copy(sharingScreen = true, screenLive = false, screenNote = null) }
+        applyCamera()
+        sendMediaState()
+        try {
+            share.start()
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not share the screen", e)
+            share.stop()
+            screenShareEnded("Couldn't start sharing")
+        }
+    }
+
+    private fun screenShareEnded(why: String?) {
+        screenShare = null
+        _state.update { it.copy(sharingScreen = false, screenLive = false, screenNote = why) }
+        applyCamera()
+        sendMediaState()
+        if (why != null) {
+            screenNoteJob?.cancel()
+            screenNoteJob = scope.launch {
+                delay(SCREEN_NOTE_MS)
+                post(Event.ClearScreenNote)
+            }
+        }
+    }
+
     // --- chat -------------------------------------------------------------------------------
 
     private fun publishChat() {
@@ -1545,6 +1665,7 @@ class CallSession(
                 uplink = linkReport.uplink,
                 radioShared = linkReport.radioShared.takeIf { it },
                 ringing = ringing.takeIf { it },
+                screenKbps = screenWatch?.capKbps,
             ),
         )
     }
@@ -1556,7 +1677,8 @@ class CallSession(
         if (off) engine.stopCamera() else engine.startCamera()
     }
 
-    private val CallState.sendsNoVideo: Boolean get() = cameraOff || cameraPaused
+    /** The camera rests while we share our screen: the screen gets the upload, and the voice stays clear. */
+    private val CallState.sendsNoVideo: Boolean get() = cameraOff || cameraPaused || sharingScreen
 
     private fun setRemote(peer: PeerInfo?) {
         if (peer != null && lastPeerId != null && peer.peerId != lastPeerId) {
@@ -1568,8 +1690,9 @@ class CallSession(
         remote = peer
         // Until their phone is answered they aren't in the call yet, as far as the screen goes.
         val shown = peer.takeUnless { remoteRinging }
+        val canShare = shown != null && Features.SCREEN in serverFeatures && Capabilities.SCREEN in shown.client.capabilities
         _state.update {
-            it.copy(remotePeer = shown, remoteMedia = if (shown == null) RemoteMedia() else it.remoteMedia)
+            it.copy(remotePeer = shown, remoteMedia = if (shown == null) RemoteMedia() else it.remoteMedia, canShareScreen = canShare)
         }
     }
 
@@ -1624,6 +1747,8 @@ class CallSession(
         const val ROOM_FULL_RETRIES = 4
         /** Longest wait, after answering, for Bluetooth earbuds' call link before the call flows anyway. */
         const val BLUETOOTH_ROUTE_WAIT_MS = 1_500L
+        /** How long a note about sharing stays up. */
+        const val SCREEN_NOTE_MS = 6_000L
         const val ROUTE_POLL_MS = 50L
     }
 }

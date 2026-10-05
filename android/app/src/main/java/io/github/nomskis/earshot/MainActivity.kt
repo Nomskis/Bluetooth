@@ -25,9 +25,15 @@ import io.github.nomskis.earshot.signaling.ServerUrls
 import io.github.nomskis.earshot.ui.EarshotRoot
 import io.github.nomskis.earshot.ui.MainViewModel
 import io.github.nomskis.earshot.ui.theme.EarshotTheme
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
@@ -60,7 +66,11 @@ class MainActivity : ComponentActivity() {
         // you can keep watching while you pick songs in your music app.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.session.collect { updatePictureInPictureParams(inCall = it != null) }
+                // Not while sharing the screen: the floating call would sit on what you're showing, in the share.
+                viewModel.session
+                    .flatMapLatest { session -> session?.state?.map { it.sharingScreen } ?: flowOf(null) }
+                    .distinctUntilChanged()
+                    .collect { sharing -> updatePictureInPictureParams(inCall = sharing == false) }
             }
         }
         lifecycleScope.launch {
@@ -127,7 +137,8 @@ class MainActivity : ComponentActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         // Android 12+ enters picture-in-picture by itself (setAutoEnterEnabled).
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && viewModel.session.value != null) {
+        val session = viewModel.session.value
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && session != null && !session.state.value.sharingScreen) {
             enterPictureInPictureMode(pipParams())
         }
     }

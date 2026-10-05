@@ -96,6 +96,8 @@ export class CallEngine extends EventTarget {
   #relayFailed = false;
   #relayTimer = null;
   #everConnected = false;
+  /** Watching their screen: the most it should send us (screen.js ScreenPace); null = no limit. */
+  #screenKbps = null;
   chat = new ChatLog({ newId: () => randomId('m') });
 
   /**
@@ -140,6 +142,13 @@ export class CallEngine extends EventTarget {
   setCameraOff(off) {
     this.#localMedia.cameraOff = off;
     for (const track of this.#localStream.getVideoTracks()) track.enabled = !off;
+    this.#sendMediaState();
+  }
+
+  /** Asks the sharer for at most [kbps] of screen (null: no limit); travels in our media-state. */
+  setScreenKbps(kbps) {
+    if (kbps === this.#screenKbps) return;
+    this.#screenKbps = kbps;
     this.#sendMediaState();
   }
 
@@ -559,6 +568,7 @@ export class CallEngine extends EventTarget {
       micMuted: this.#localMedia.micMuted,
       cameraOff: this.#localMedia.cameraOff,
       audioMode: 'standard',
+      ...(this.#screenKbps !== null ? { screenKbps: this.#screenKbps } : {}),
     });
   }
 

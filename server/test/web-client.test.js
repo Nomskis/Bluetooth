@@ -271,3 +271,34 @@ test('packet time: a floor while their radio is shared with earbuds', () => {
   assert.equal(changed, true);
   assert.equal(packetTime.ms, 10);
 });
+
+test('screen pace: backs off just under what got through, lifts after a calm spell', async () => {
+  const { ScreenPace } = await import('../../web/js/screen.js');
+  const pace = new ScreenPace();
+  const at = (seconds, kbit, received, lost, freezes = 0) => ({
+    bytesReceived: (kbit * 1000) / 8,
+    packetsReceived: received,
+    packetsLost: lost,
+    freezeCount: freezes,
+  });
+  assert.equal(pace.update(at(0, 0, 0, 0), 0), false);
+  // 2 s at 1000 kbps with 10% loss: ask for 80% of what arrived.
+  assert.equal(pace.update(at(2, 2000, 180, 20), 2000), true);
+  assert.equal(pace.capKbps, 800);
+  // While the sharer slows down, more trouble doesn't cut it again.
+  assert.equal(pace.update(at(4, 3000, 360, 40), 4000), false);
+  // A freeze counts too, once the hold is over.
+  assert.equal(pace.update(at(10, 4200, 600, 40, 1), 10_000), true);
+  assert.equal(pace.capKbps, 160);
+  // Calm, and using what it's allowed: a quarter more after ten seconds.
+  let bytes = 4200;
+  let now = 10_000;
+  for (let i = 0; i < 5; i++) {
+    bytes += 0.16 * 2 * 1000;
+    now += 2000;
+    pace.update(at(0, bytes, 600 + 100 * (i + 1), 40, 1), now);
+  }
+  assert.equal(pace.capKbps, 200);
+  pace.reset();
+  assert.equal(pace.capKbps, null);
+});

@@ -76,6 +76,25 @@ class ProtocolFixturesTest {
     }
 
     @Test
+    fun screenSharingMessagesDecode() {
+        val joined = decodeServerMessage(File(fixtures, "server/joined-screen.json").readText()) as ServerMessage.Joined
+        assertEquals(listOf(Features.SCREEN), joined.features)
+        assertEquals("p8Gm2Lq0Vt-a", joined.screen?.from)
+        assertTrue(Capabilities.SCREEN_AV1 in joined.peers.single().client.capabilities)
+        val offer = decodeServerMessage(File(fixtures, "server/screen-offer.json").readText()) as ServerMessage.ScreenOffer
+        assertEquals("a3f2c9e01b7d4e5f8a6b0c1d2e3f4a5b", offer.watch)
+        assertTrue(offer.sdp.startsWith("v=0"))
+        assertEquals("p8Gm2Lq0Vt-a", (decodeServerMessage(File(fixtures, "server/screen-started.json").readText()) as ServerMessage.ScreenStarted).from)
+        assertEquals("in-use", (decodeServerMessage(File(fixtures, "server/screen-error.json").readText()) as ServerMessage.ScreenError).code)
+        val media = decodeServerMessage(File(fixtures, "server/signal-media-state-screen.json").readText()) as ServerMessage.Signal
+        assertEquals(480, (media.data as SignalData.MediaState).screenKbps)
+        // An older joined, without either, still reads.
+        val plain = decodeServerMessage(File(fixtures, "server/joined.json").readText()) as ServerMessage.Joined
+        assertEquals(emptyList<String>(), plain.features)
+        assertNull(plain.screen)
+    }
+
+    @Test
     fun ringMessagesDecodeAsTheServerSendsThem() {
         val incoming = decodeServerMessage(File(fixtures, "server/incoming.json").readText()) as ServerMessage.Incoming
         assertEquals("calm-otter-4821", incoming.room)

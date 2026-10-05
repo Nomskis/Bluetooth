@@ -82,7 +82,7 @@ for example Render, Fly.io or Railway:
 Settings › **Test connection** says whether the server answers, how far away
 it is (round trips to it slow every call setup and reconnect, so a server
 nearer both callers helps), and whether it has a relay for calls that can't
-connect directly. `/healthz` answers `{"status":"ok","relay":true|false}`.
+connect directly. `/healthz` answers `{"status":"ok","relay":true|false,"screen":true|false}`.
 
 ## TURN (when calls won't connect)
 
@@ -119,6 +119,24 @@ value you set) and are renewed every quarter of that, so a caller always gets
 ones with most of their lifetime left. If the service can't be reached, the
 server keeps handing out the last good set and retries every minute. The
 server's start-up log says which relay it uses.
+
+### Screen sharing
+
+Screen sharing goes through Cloudflare's Realtime SFU, which resends lost
+packets from the Cloudflare site nearest each person, and keeps the picture
+sharp on a long, lossy route (docs/research/screen-share.md). It shares the
+same free 1,000 GB a month as Cloudflare's TURN; an hour of sharing is about
+0.5 GB. To turn it on, in the Cloudflare dashboard open **Realtime**, then
+**SFU**, create an application, and set its two values (on Render: the
+service's **Environment** tab, then save):
+
+```sh
+CLOUDFLARE_SFU_APP_ID=...
+CLOUDFLARE_SFU_APP_SECRET=...
+```
+
+The secret never leaves the server. `/healthz` then says `"screen":true`, and
+**Share screen** appears in a call's More menu when both apps can do it.
 
 ### Running your own
 
@@ -166,6 +184,7 @@ offers TCP or TLS on port 443, which almost every network allows.
 | `TURN_TTL_SECONDS` | `43200` | Lifetime of issued TURN credentials |
 | `CLOUDFLARE_TURN_KEY_ID`, `CLOUDFLARE_TURN_API_TOKEN` | none | Cloudflare's hosted relay; the server fetches credentials |
 | `TURN_CREDENTIALS_URL` | none | Any URL that returns an ICE server list (`[...]` or `{ "iceServers": [...] }`) on GET |
+| `CLOUDFLARE_SFU_APP_ID`, `CLOUDFLARE_SFU_APP_SECRET` | none | Cloudflare's Realtime SFU app, for screen sharing |
 
 ## Privacy
 

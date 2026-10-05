@@ -1,0 +1,5 @@
+{
+  "type": "signal",
+  "from": "p8Gm2Lq0Vt-a",
+  "data": { "kind": "media-state", "micMuted": false, "cameraOff": true, "screenKbps": 480 }
+}
