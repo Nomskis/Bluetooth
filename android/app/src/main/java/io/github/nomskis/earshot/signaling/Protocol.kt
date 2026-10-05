@@ -285,6 +285,11 @@ sealed interface SignalData {
     @SerialName("candidate")
     data class Candidate(val session: String, val candidate: CandidatePayload) : SignalData
 
+    /** Watching their shared screen: we're pointing at ([x], [y]), 0 to 1 across and down the picture. */
+    @Serializable
+    @SerialName("point")
+    data class Point(val x: Double, val y: Double) : SignalData
+
     /**
      * Sent by the answering side when it needs a (new) offer. [iceRestart] false: the
      * connection is fine, it just wants to change what it asks for (packet time), so

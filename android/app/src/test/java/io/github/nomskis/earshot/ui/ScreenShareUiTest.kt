@@ -2,8 +2,12 @@ package io.github.nomskis.earshot.ui
 
 import android.app.Application
 import android.os.SystemClock
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import io.github.nomskis.earshot.call.CallPhase
@@ -88,6 +92,17 @@ class ScreenShareUiTest {
         compose.onNodeWithText("Sharing your screen").assertIsDisplayed()
         compose.onNodeWithText("Stop").performClick()
         assertEquals(1, stops)
+    }
+
+    @Test
+    fun theBannerOffersToLetThemPointUntilItsAllowed() {
+        var asked = 0
+        var allowed by mutableStateOf(false)
+        compose.setContent { EarshotTheme { SharingBanner(live = true, onStop = {}, canPoint = allowed, onAllowPointing = { asked++ }) } }
+        compose.onNodeWithContentDescription("Let them point at your screen").performClick()
+        assertEquals(1, asked)
+        allowed = true
+        compose.onNodeWithContentDescription("Let them point at your screen").assertDoesNotExist()
     }
 
     @Test

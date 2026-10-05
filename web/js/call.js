@@ -152,6 +152,12 @@ export class CallEngine extends EventTarget {
     this.#sendMediaState();
   }
 
+  /** Watching their shared screen: point at ([x], [y]), 0 to 1 across and down it. */
+  point(x, y) {
+    const round = (v) => Math.round(Math.min(1, Math.max(0, v)) * 10_000) / 10_000;
+    this.#sendSignal({ kind: 'point', x: round(x), y: round(y) });
+  }
+
   /** Swaps the outgoing camera track, e.g. after flipping front/back. */
   async replaceVideoTrack(track) {
     for (const old of this.#localStream.getVideoTracks()) {

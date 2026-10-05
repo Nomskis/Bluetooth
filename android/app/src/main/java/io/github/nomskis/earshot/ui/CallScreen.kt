@@ -2,9 +2,11 @@ package io.github.nomskis.earshot.ui
 
 import android.Manifest
 import android.app.Activity
+import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.PowerManager
 import android.os.SystemClock
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -53,6 +55,7 @@ import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material3.BadgedBox
@@ -95,6 +98,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.call.CallPhase
@@ -231,6 +236,30 @@ fun CallScreen(
         runCatching { screenConsent.launch(projections.createScreenCaptureIntent()) }
     }
 
+    // Pointing: showing their ring over other apps needs "Display over other apps", asked for
+    // from the sharing banner; checked again whenever the call screen comes back.
+    var canPoint by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    LifecycleResumeEffect(Unit) {
+        canPoint = Settings.canDrawOverlays(context)
+        onPauseOrDispose {}
+    }
+    fun allowPointing() {
+        runCatching {
+            context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:${context.packageName}".toUri()))
+        }
+    }
+    // Watching: once a call, a word on how to point.
+    var pointHintShown by remember { mutableStateOf(false) }
+    var pointHint by remember { mutableStateOf(false) }
+    LaunchedEffect(state.theirScreenShowing) {
+        if (state.theirScreenShowing && !pointHintShown) {
+            pointHintShown = true
+            pointHint = true
+            delay(POINT_HINT_MS)
+        }
+        pointHint = false
+    }
+
     CallTheme {
         DarkSystemBars()
         Box(
@@ -248,7 +277,8 @@ fun CallScreen(
                         controlsShown = !controlsShown
                         if (controlsShown) shownAt = SystemClock.uptimeMillis()
                     },
-                    description = "${state.remotePeer?.name?.takeIf { it.isNotBlank() }?.let { "$it's" } ?: "Their"} screen: pinch or double-tap to zoom",
+                    onPoint = session::pointAt,
+                    description = "${state.remotePeer?.name?.takeIf { it.isNotBlank() }?.let { "$it's" } ?: "Their"} screen: pinch or double-tap to zoom, hold to point",
                 )
                 if (!state.theirScreenShowing) ScreenLoading(state, Modifier.align(Alignment.Center))
             } else if (ownVideoBig) {
@@ -316,13 +346,15 @@ fun CallScreen(
                 SharingBanner(
                     live = state.screenLive,
                     onStop = session::stopScreenShare,
+                    canPoint = canPoint,
+                    onAllowPointing = ::allowPointing,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .statusBarsPadding()
                         .padding(top = 112.dp),
                 )
             }
-            state.screenNote?.let { note ->
+            (state.screenNote ?: "Hold to point".takeIf { pointHint && showTheirScreen && !inPictureInPicture })?.let { note ->
                 ScreenNote(
                     text = note,
                     modifier = Modifier
@@ -485,6 +517,9 @@ private const val VOICE_CONTROLS_HIDE_MS = 6_000L
 private const val HANG_UP_GUARD_MS = 600L
 
 private const val BUBBLE_MS = 6_000L
+
+/** "Hold to point", the first time their screen shows in a call. */
+private const val POINT_HINT_MS = 3_000L
 
 /**
  * Screen off while the proximity sensor is covered, as in a phone call: in a
@@ -1003,9 +1038,18 @@ private fun MenuItem(icon: ImageVector, label: String, onClick: () -> Unit) {
     }
 }
 
-/** "Sharing your screen", always up while it lasts, with Stop. */
+/**
+ * "Sharing your screen", always up while it lasts, with Stop; and, until it's allowed, a way
+ * to let the other person's pointing show over other apps.
+ */
 @Composable
-internal fun SharingBanner(live: Boolean, onStop: () -> Unit, modifier: Modifier = Modifier) {
+internal fun SharingBanner(
+    live: Boolean,
+    onStop: () -> Unit,
+    modifier: Modifier = Modifier,
+    canPoint: Boolean = true,
+    onAllowPointing: () -> Unit = {},
+) {
     val colors = MaterialTheme.colorScheme
     Row(
         modifier = modifier
@@ -1022,6 +1066,11 @@ internal fun SharingBanner(live: Boolean, onStop: () -> Unit, modifier: Modifier
             color = colors.onErrorContainer,
             style = MaterialTheme.typography.labelLarge,
         )
+        if (!canPoint) {
+            IconButton(onClick = onAllowPointing) {
+                Icon(Icons.Filled.TouchApp, contentDescription = "Let them point at your screen", tint = colors.onErrorContainer)
+            }
+        }
         TextButton(onClick = onStop) { Text("Stop", color = colors.onErrorContainer) }
     }
 }

@@ -37,8 +37,11 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -142,6 +145,10 @@ class CallSession(
     val localPreview = ProxyVideoSink()
     /** Their shared screen, when they share one ([ScreenWatch]). */
     val screenVideo = ProxyVideoSink()
+
+    private val _points = MutableSharedFlow<ScreenPoint>(extraBufferCapacity = 8)
+    /** While we share our screen: where they point on it (the call's service shows a ring there). */
+    val points: SharedFlow<ScreenPoint> = _points.asSharedFlow()
     val eglContext: EglBase.Context get() = eglBase.eglBaseContext
 
     private lateinit var engine: RtcEngine
@@ -307,6 +314,7 @@ class CallSession(
         data object Rejoin : Event
         class StartScreenShare(val projection: MediaProjection) : Event
         data object StopScreenShare : Event
+        class PointAt(val x: Float, val y: Float) : Event
         data object ClearScreenNote : Event
         /** Work handed back to the call thread by a helper ([ScreenShare], [ScreenWatch]). */
         class Run(val block: suspend () -> Unit) : Event
@@ -366,6 +374,9 @@ class CallSession(
     /** Share our screen, with the consent Android gave ([projection]); see [ScreenShare]. */
     fun startScreenShare(projection: MediaProjection) = post(Event.StartScreenShare(projection))
     fun stopScreenShare() = post(Event.StopScreenShare)
+
+    /** Point at ([x], [y]) on their shared screen, 0 to 1 across and down. */
+    fun pointAt(x: Float, y: Float) = post(Event.PointAt(x, y))
     fun hangUp() = post(Event.HangUp)
 
     private fun post(event: Event) {
@@ -627,6 +638,10 @@ class CallSession(
                 screenShareEnded(null)
             }
             Event.ClearScreenNote -> _state.update { it.copy(screenNote = null) }
+            is Event.PointAt -> if (_state.value.theirScreen) {
+                // Four places is a tenth of a pixel on any phone.
+                sendSignal(SignalData.Point(round4(event.x), round4(event.y)))
+            }
             is Event.Run -> event.block()
             Event.HangUp -> {
                 outgoing?.hangUp()?.let(signaling::send)
@@ -1151,6 +1166,9 @@ class CallSession(
                 if (data.ringing != true) theyAnswered()
                 updateRemoteMedia(data)
                 screenShare?.setViewerKbps(data.screenKbps)
+            }
+            is SignalData.Point -> if (screenShare != null && data.x in 0.0..1.0 && data.y in 0.0..1.0) {
+                _points.tryEmit(ScreenPoint(data.x.toFloat(), data.y.toFloat()))
             }
         }
     }
@@ -1769,3 +1787,8 @@ class CallSession(
         const val ROUTE_POLL_MS = 50L
     }
 }
+
+/** Where the other person points on our shared screen: 0 to 1 across and down. */
+data class ScreenPoint(val x: Float, val y: Float)
+
+private fun round4(value: Float): Double = Math.round(value.coerceIn(0f, 1f) * 10_000.0) / 10_000.0

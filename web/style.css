@@ -159,6 +159,25 @@ input:not([type='checkbox']) {
   transform-origin: 0 0;
 }
 
+.point-ring {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  margin: -18px 0 0 -18px;
+  border-radius: 50%;
+  border: 3px solid #ffc23d;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  animation: point-ring 1.4s linear forwards;
+}
+
+@keyframes point-ring {
+  to {
+    transform: scale(2.7);
+    opacity: 0;
+  }
+}
+
 .screen-label {
   position: absolute;
   left: 50%;
