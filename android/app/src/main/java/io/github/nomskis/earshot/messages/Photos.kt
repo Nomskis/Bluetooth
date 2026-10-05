@@ -11,6 +11,7 @@ import android.graphics.Matrix
 import android.media.ExifInterface
 import android.net.Uri
 import android.util.Log
+import androidx.core.graphics.scale
 import io.github.nomskis.earshot.call.Ids
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -99,7 +100,7 @@ class Photos(context: Context) : Messenger.PhotoFiles {
 
     private fun scaled(bitmap: Bitmap, maxEdge: Int): Bitmap {
         val (w, h) = PhotoSizing.fit(bitmap.width, bitmap.height, maxEdge)
-        return if (w == bitmap.width && h == bitmap.height) bitmap else Bitmap.createScaledBitmap(bitmap, w, h, true)
+        return if (w == bitmap.width && h == bitmap.height) bitmap else bitmap.scale(w, h)
     }
 
     private fun jpeg(bitmap: Bitmap, quality: Int): ByteArray =

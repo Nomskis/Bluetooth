@@ -3,14 +3,15 @@ package io.github.nomskis.earshot.messages
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
+import androidx.core.graphics.scale
+import java.io.ByteArrayOutputStream
+import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import java.io.ByteArrayOutputStream
-import java.io.File
 
 /**
  * Profile pictures: ours, set in Settings, and the ones contacts sent us, as small square
@@ -68,7 +69,7 @@ class Profiles(context: Context) : Messenger.ProfileFiles {
     /** Ours, from [square] (cropped already): kept at [SIDE] px, and on its way to every contact. */
     @Synchronized
     fun setMine(square: Bitmap): Boolean {
-        val scaled = if (square.width == SIDE && square.height == SIDE) square else Bitmap.createScaledBitmap(square, SIDE, SIDE, true)
+        val scaled = if (square.width == SIDE && square.height == SIDE) square else square.scale(SIDE, SIDE)
         val bytes = ByteArrayOutputStream().also { scaled.compress(Bitmap.CompressFormat.JPEG, QUALITY, it) }.toByteArray()
         if (scaled !== square) scaled.recycle()
         if (!write(file(ME), bytes)) return false
