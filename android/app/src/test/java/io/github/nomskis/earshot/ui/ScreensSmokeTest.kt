@@ -68,14 +68,16 @@ class ScreensSmokeTest {
                 )
             }
         }
-        // Inviting comes first, without scrolling; a room code is folded away until asked for.
-        compose.onNodeWithText("Invite someone").assertIsDisplayed()
-        assertTrue(compose.onAllNodesWithText("Room").fetchSemanticsNodes().isEmpty())
-        compose.onNodeWithText("Join with a room code").performClick()
-        compose.onNodeWithText("Room").assertIsDisplayed()
         compose.onNodeWithText("Your earbuds have a game mode").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Use it for calls").performScrollTo().performClick()
         assertEquals(true, updated?.autoGameMode)
+        // One button for something new; a room code is folded away in it until asked for.
+        assertTrue(compose.onAllNodesWithText("Room").fetchSemanticsNodes().isEmpty())
+        compose.onNodeWithText("Invite").performClick()
+        compose.onNodeWithText("Video call").assertIsDisplayed()
+        compose.onNodeWithText("Voice call").assertIsDisplayed()
+        compose.onNodeWithText("Join with a room code").performClick()
+        compose.onNodeWithText("Room").assertIsDisplayed()
     }
 
     @Test

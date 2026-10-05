@@ -3,7 +3,6 @@ package io.github.nomskis.earshot.ui
 import android.app.Application
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import io.github.nomskis.earshot.calls.IncomingRing
@@ -34,9 +33,9 @@ class IncomingCallScreenTest {
         }
         compose.onNodeWithText("Salma").assertIsDisplayed()
         compose.onNodeWithText("Earshot video call").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Accept").performClick()
+        compose.onNodeWithText("Accept").performClick()
         compose.onNodeWithText("Voice only").performClick()
-        compose.onNodeWithContentDescription("Decline").performClick()
+        compose.onNodeWithText("Decline").performClick()
         assertEquals(listOf("accept", "voice", "decline"), taps)
     }
 

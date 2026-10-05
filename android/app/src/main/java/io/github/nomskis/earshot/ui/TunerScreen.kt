@@ -37,6 +37,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,8 +61,7 @@ import io.github.nomskis.earshot.audio.WifiBand
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.DelayRun
 import io.github.nomskis.earshot.settings.DelayRuns
-import io.github.nomskis.earshot.ui.theme.Accent
-import io.github.nomskis.earshot.ui.theme.Warning
+import io.github.nomskis.earshot.ui.theme.Tones
 import java.text.DateFormat
 import java.util.Date
 
@@ -114,12 +114,14 @@ fun TunerScreen(
         !context.hasPermission(Manifest.permission.BLUETOOTH_CONNECT)
 
     Scaffold(
+        containerColor = Tones.page,
         topBar = {
             TopAppBar(
                 title = { Text("Delay tuner") },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Tones.page, scrolledContainerColor = Tones.page),
             )
         },
     ) { padding ->
@@ -128,7 +130,7 @@ fun TunerScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             RouteCard(route, settings.audioMode, codec = codec)
@@ -146,7 +148,7 @@ fun TunerScreen(
 
             ResultCard(sonar)
 
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Card(colors = CardDefaults.cardColors(containerColor = Tones.row)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("How to measure", style = MaterialTheme.typography.titleSmall)
                     Text(
@@ -215,7 +217,7 @@ fun TunerScreen(
 
             earbuds()
 
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Card(colors = CardDefaults.cardColors(containerColor = Tones.row)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Does Wi-Fi slow your earbuds?", style = MaterialTheme.typography.titleSmall)
                     Text(
@@ -236,7 +238,7 @@ fun TunerScreen(
 
             turbo()
 
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Card(colors = CardDefaults.cardColors(containerColor = Tones.row)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Call audio path", style = MaterialTheme.typography.titleSmall)
                     LabelledSwitch(
@@ -301,16 +303,16 @@ private fun ResultCard(sonar: SonarState) {
                                     SonarMeter.Warning.FEW_HITS -> "Only heard ${s.hits} of ${s.attempts} chirps; hold the earbud closer."
                                 },
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Warning,
+                                color = Tones.warning,
                             )
                         }
                     }
                     SonarMeter.Outcome.NotHeard -> Text(
                         "Didn't hear the chirps. Hold the earbud's speaker right against the phone's microphone and turn the volume up.",
-                        color = Warning,
+                        color = Tones.warning,
                     )
-                    SonarMeter.Outcome.NoEarbuds -> Text("Connect your Bluetooth earbuds first.", color = Warning)
-                    is SonarMeter.Outcome.Failed -> Text("Measurement failed: ${outcome.reason}", color = Warning)
+                    SonarMeter.Outcome.NoEarbuds -> Text("Connect your Bluetooth earbuds first.", color = Tones.warning)
+                    is SonarMeter.Outcome.Failed -> Text("Measurement failed: ${outcome.reason}", color = Tones.warning)
                 }
             }
         }
@@ -322,7 +324,7 @@ private fun History(runs: List<DelayRun>, onClear: () -> Unit) {
     if (runs.isEmpty()) return
     val fastest = DelayRuns.fastestFor(runs, runs.first().device)
     val format = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+    Card(colors = CardDefaults.cardColors(containerColor = Tones.row)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Your measurements", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
@@ -340,7 +342,7 @@ private fun History(runs: List<DelayRun>, onClear: () -> Unit) {
                         )
                     }
                     if (run === fastest) {
-                        Text("Fastest", color = Accent, style = MaterialTheme.typography.labelMedium)
+                        Text("Fastest", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
                         Spacer(Modifier.width(10.dp))
                     }
                     Text("${run.delayMs.toInt()} ms", style = MaterialTheme.typography.titleMedium)
@@ -357,7 +359,7 @@ private fun TipCard(
     context: Context,
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
 ) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+    Card(colors = CardDefaults.cardColors(containerColor = Tones.row)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(tip.title, style = MaterialTheme.typography.titleSmall)
             Text(tip.body, style = MaterialTheme.typography.bodySmall)

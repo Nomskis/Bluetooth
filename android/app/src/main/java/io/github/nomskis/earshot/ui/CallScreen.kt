@@ -34,13 +34,11 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.Flip
@@ -56,7 +54,6 @@ import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -79,9 +76,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -89,11 +87,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.call.CallPhase
@@ -106,8 +103,7 @@ import io.github.nomskis.earshot.call.LipSync
 import io.github.nomskis.earshot.calls.OutgoingRing
 import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.settings.QuickReplies
-import io.github.nomskis.earshot.ui.theme.Accent
-import io.github.nomskis.earshot.ui.theme.Danger
+import io.github.nomskis.earshot.ui.theme.CallTheme
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
@@ -217,159 +213,162 @@ fun CallScreen(
         }
     }
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .onSizeChanged { area = it },
-    ) {
-        if (ownVideoBig) {
-            // The frames as sent, Flip included: what you see is what they see.
-            VideoRenderer(sink = session.localPreview, eglContext = session.eglContext, modifier = Modifier.fillMaxSize())
-        } else if (showRemoteVideo) {
-            VideoRenderer(
-                sink = session.remoteVideo,
-                eglContext = session.eglContext,
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            RemotePlaceholder(state, compact = inPictureInPicture)
-        }
-
-        if (glow > 0f) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .border(width = if (inPictureInPicture) 3.dp else 6.dp, color = Accent.copy(alpha = glow)),
-            )
-        }
-
-        if (inPictureInPicture) return@Box
-
-        if (connected) {
-            // Over the video's own surface, which doesn't take touches.
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures {
-                            controlsShown = !controlsShown
-                            if (controlsShown) shownAt = SystemClock.uptimeMillis()
-                        }
-                    }
-                    .semantics { contentDescription = if (showControls) "Hide call buttons" else "Show call buttons" },
-            )
-        }
-
-        // Without video there's nothing to uncover, so who and how long stay up.
-        AnimatedVisibility(
-            visible = showControls || !videoOnScreen,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.TopCenter),
+    CallTheme {
+        DarkSystemBars()
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .onSizeChanged { area = it },
         ) {
-            TopBar(state, onInfo = { sheet = CallSheet.INFO }, onMinimize = onLeaveScreen)
-        }
+            if (ownVideoBig) {
+                // The frames as sent, Flip included: what you see is what they see.
+                VideoRenderer(sink = session.localPreview, eglContext = session.eglContext, modifier = Modifier.fillMaxSize())
+            } else if (showRemoteVideo) {
+                VideoRenderer(
+                    sink = session.remoteVideo,
+                    eglContext = session.eglContext,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                RemotePlaceholder(state, compact = inPictureInPicture)
+            }
 
-        if (showOwnVideo && !chatOpen && area != IntSize.Zero) {
-            FloatingVideo(
-                sink = if (ownVideoBig) session.remoteVideo else session.localPreview,
-                eglContext = session.eglContext,
-                area = area,
-                key = session,
-                onTap = { if (showRemoteVideo) swapped = !swapped },
-                description = if (ownVideoBig) "Their video: drag to move, tap to swap" else "Your video: drag to move, tap to swap",
-            )
-        }
+            if (glow > 0f) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .border(width = if (inPictureInPicture) 3.dp else 6.dp, color = MaterialTheme.colorScheme.primary.copy(alpha = glow)),
+                )
+            }
 
-        if (weakOffer && !weakOfferDismissed && !chatOpen) {
-            WeakVideoOffer(
-                onTurnOff = {
-                    weakOfferDismissed = true
-                    session.setCameraOff(true)
-                },
-                onDismiss = { weakOfferDismissed = true },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 112.dp),
-            )
-        }
+            if (inPictureInPicture) return@Box
 
-        if (state.outputHeld) {
-            OutputHeldBanner(
-                name = state.remotePeer?.name?.takeIf { it.isNotBlank() },
-                onPlayOutLoud = { session.setOutputHeld(false) },
-                modifier = Modifier.align(Alignment.Center),
-            )
-        }
+            if (connected) {
+                // Over the video's own surface, which doesn't take touches.
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures {
+                                controlsShown = !controlsShown
+                                if (controlsShown) shownAt = SystemClock.uptimeMillis()
+                            }
+                        }
+                        .semantics { contentDescription = if (showControls) "Hide call buttons" else "Show call buttons" },
+                )
+            }
 
-        bubble?.let { message ->
-            ChatBubble(
-                name = state.remotePeer?.name?.takeIf { it.isNotBlank() } ?: "They",
-                message = message,
-                onOpen = { chatOpen = true },
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .navigationBarsPadding()
-                    .padding(start = 16.dp, end = 136.dp, bottom = 180.dp),
-            )
-        }
-
-        if (chatOpen && state.chatAvailable) {
-            ChatPanel(
-                messages = state.chat,
-                onSend = session::sendChat,
-                onClose = { chatOpen = false },
-                modifier = Modifier.align(Alignment.BottomCenter),
-                quickReplies = quickReplies,
-            )
-        } else {
+            // Without video there's nothing to uncover, so who and how long stay up.
             AnimatedVisibility(
-                visible = showControls,
+                visible = showControls || !videoOnScreen,
                 enter = fadeIn(),
                 exit = fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier.align(Alignment.TopCenter),
             ) {
-                Controls(
-                    state = state,
-                    onMic = { session.setMicMuted(!state.micMuted) },
-                    onCamera = ::toggleCamera,
-                    onSwitchCamera = session::switchCamera,
-                    onSpeaker = { session.setSpeaker(state.speakerOn != true) },
-                    onMore = { sheet = CallSheet.MORE },
-                    onHangUp = { if (SystemClock.uptimeMillis() - shownAt >= HANG_UP_GUARD_MS) session.hangUp() },
-                    unreadChat = unread,
-                )
+                TopBar(state, onInfo = { sheet = CallSheet.INFO }, onMinimize = onLeaveScreen, showWho = videoOnScreen)
             }
-        }
 
-        when (sheet) {
-            CallSheet.MORE -> CallSheetHost(onDismiss = { sheet = null }) {
-                MoreMenu(
-                    state = state,
-                    unreadChat = unread,
-                    onChat = {
-                        sheet = null
-                        chatOpen = true
-                    },
-                    onSpeaker = { session.setSpeaker(state.speakerOn != true) },
-                    onSwitchCamera = session::switchCamera,
-                    onFlip = {
-                        session.setFlipped(!state.flipped)
-                        onFlipSaved(!state.flipped)
-                    },
-                    onVolume = session::setVoiceVolume,
-                    onVolumeDone = onVoiceVolumeSaved,
-                    onReplay = session::toggleReplay,
-                    onEarbudMic = { session.setEarbudMic(!state.earbudMic) },
-                    onInfo = { sheet = CallSheet.INFO },
+            if (showOwnVideo && !chatOpen && area != IntSize.Zero) {
+                FloatingVideo(
+                    sink = if (ownVideoBig) session.remoteVideo else session.localPreview,
+                    eglContext = session.eglContext,
+                    area = area,
+                    key = session,
+                    onTap = { if (showRemoteVideo) swapped = !swapped },
+                    description = if (ownVideoBig) "Their video: drag to move, tap to swap" else "Your video: drag to move, tap to swap",
                 )
             }
-            CallSheet.INFO -> CallSheetHost(onDismiss = { sheet = null }) {
-                CallInfo(state, route, listOfNotNull(earbudBoost?.text, turboNote))
+
+            if (weakOffer && !weakOfferDismissed && !chatOpen) {
+                WeakVideoOffer(
+                    onTurnOff = {
+                        weakOfferDismissed = true
+                        session.setCameraOff(true)
+                    },
+                    onDismiss = { weakOfferDismissed = true },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = ABOVE_CONTROLS),
+                )
             }
-            null -> Unit
+
+            if (state.outputHeld) {
+                OutputHeldBanner(
+                    name = state.remotePeer?.name?.takeIf { it.isNotBlank() },
+                    onPlayOutLoud = { session.setOutputHeld(false) },
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
+
+            bubble?.let { message ->
+                ChatBubble(
+                    name = state.remotePeer?.name?.takeIf { it.isNotBlank() } ?: "They",
+                    message = message,
+                    onOpen = { chatOpen = true },
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .navigationBarsPadding()
+                        .padding(start = 16.dp, end = 136.dp, bottom = ABOVE_CONTROLS + 72.dp),
+                )
+            }
+
+            if (chatOpen && state.chatAvailable) {
+                ChatPanel(
+                    messages = state.chat,
+                    onSend = session::sendChat,
+                    onClose = { chatOpen = false },
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    quickReplies = quickReplies,
+                )
+            } else {
+                AnimatedVisibility(
+                    visible = showControls,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                ) {
+                    Controls(
+                        state = state,
+                        onMic = { session.setMicMuted(!state.micMuted) },
+                        onCamera = ::toggleCamera,
+                        onSwitchCamera = session::switchCamera,
+                        onSpeaker = { session.setSpeaker(state.speakerOn != true) },
+                        onMore = { sheet = CallSheet.MORE },
+                        onHangUp = { if (SystemClock.uptimeMillis() - shownAt >= HANG_UP_GUARD_MS) session.hangUp() },
+                        unreadChat = unread,
+                    )
+                }
+            }
+
+            when (sheet) {
+                CallSheet.MORE -> CallSheetHost(onDismiss = { sheet = null }) {
+                    MoreMenu(
+                        state = state,
+                        unreadChat = unread,
+                        onChat = {
+                            sheet = null
+                            chatOpen = true
+                        },
+                        onSpeaker = { session.setSpeaker(state.speakerOn != true) },
+                        onSwitchCamera = session::switchCamera,
+                        onFlip = {
+                            session.setFlipped(!state.flipped)
+                            onFlipSaved(!state.flipped)
+                        },
+                        onVolume = session::setVoiceVolume,
+                        onVolumeDone = onVoiceVolumeSaved,
+                        onReplay = session::toggleReplay,
+                        onEarbudMic = { session.setEarbudMic(!state.earbudMic) },
+                        onInfo = { sheet = CallSheet.INFO },
+                    )
+                }
+                CallSheet.INFO -> CallSheetHost(onDismiss = { sheet = null }) {
+                    CallInfo(state, route, listOfNotNull(earbudBoost?.text, turboNote))
+                }
+                null -> Unit
+            }
         }
     }
 }
@@ -401,20 +400,26 @@ internal enum class CallSheet { MORE, INFO }
 /** How long the connection has to stay weak with our camera on before voice-only is offered. */
 private const val WEAK_VIDEO_OFFER_AFTER_MS = 10_000L
 
-/** "Weak connection" with Turn off video, over the call. */
+/** "Weak connection" with Turn off video, over the call, in a snackbar's colours. */
 @Composable
 internal fun WeakVideoOffer(onTurnOff: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
     Row(
         modifier = modifier
-            .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(24.dp))
+            .padding(horizontal = 16.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(colors.inverseSurface)
             .padding(start = 16.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Weak connection", color = Color.White, style = MaterialTheme.typography.bodyMedium)
-        TextButton(onClick = onTurnOff) { Text("Turn off video", color = Accent) }
-        IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Dismiss", tint = Color.White) }
+        Text("Weak connection", color = colors.inverseOnSurface, style = MaterialTheme.typography.bodyMedium)
+        TextButton(onClick = onTurnOff) { Text("Turn off video", color = colors.inversePrimary) }
+        IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Dismiss", tint = colors.inverseOnSurface) }
     }
 }
+
+/** Clear of the control panel at the bottom: two rows of call buttons and its margins. */
+private val ABOVE_CONTROLS = 200.dp
 
 /** How long the call buttons stay up after the last tap: over video, and in a voice call. */
 private const val CONTROLS_HIDE_MS = 4_000L
@@ -459,16 +464,17 @@ internal fun OutputHeldBanner(name: String?, onPlayOutLoud: () -> Unit, modifier
     Column(
         modifier = modifier
             .padding(24.dp)
-            .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
-            .padding(16.dp),
+            .clip(RoundedCornerShape(28.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
             "Earbuds disconnected. ${name?.let { "$it's" } ?: "Their"} voice is paused.",
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyLarge,
         )
         FilledTonalButton(onClick = onPlayOutLoud) {
             Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null)
@@ -478,63 +484,96 @@ internal fun OutputHeldBanner(name: String?, onPlayOutLoud: () -> Unit, modifier
     }
 }
 
+/**
+ * The middle of the screen when there's no video: who, large, as in the phone app, then the
+ * timer once you're talking and a word on what's happening.
+ */
 @Composable
 internal fun RemotePlaceholder(state: CallState, compact: Boolean) {
     val context = LocalContext.current
+    val colors = MaterialTheme.colorScheme
+    var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    LaunchedEffect(state.connectedAt) {
+        while (state.connectedAt != null) {
+            now = SystemClock.elapsedRealtime()
+            delay(1_000)
+        }
+    }
+    val peerName = state.remotePeer?.name?.takeIf { it.isNotBlank() }
+    val outgoing = state.outgoing
+    val who = peerName ?: state.contactName ?: outgoing?.name?.takeIf { it.isNotBlank() }
+    val text = callingText(state) ?: when (state.phase) {
+        CallPhase.CONNECTING -> state.error ?: "Connecting to the server…"
+        CallPhase.WAITING -> who?.let { "Waiting for $it to join" } ?: "Waiting for the other person to join\n${state.room}"
+        CallPhase.NEGOTIATING -> "Connecting…"
+        CallPhase.RECONNECTING -> "Reconnecting…"
+        CallPhase.CONNECTED -> when {
+            state.remoteMedia.inPocket -> "${peerName?.let { "$it's" } ?: "Their"} camera is paused"
+            state.remoteMedia.weakConnection -> "Video paused: weak connection"
+            // Neither camera on: a voice call, which either side can turn into video.
+            state.remoteMedia.cameraOff && state.cameraOff -> "Voice call"
+            state.remoteMedia.cameraOff -> "${peerName ?: "They"} turned the camera off"
+            else -> "Connected"
+        }
+        CallPhase.ENDED -> "Call ended"
+        CallPhase.FAILED -> state.error ?: "Call failed"
+    }
+    val connectedAt = state.connectedAt?.takeIf { state.phase == CallPhase.CONNECTED }
+    val working = state.phase == CallPhase.CONNECTING || state.phase == CallPhase.NEGOTIATING || state.phase == CallPhase.RECONNECTING
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.radialGradient(listOf(Color(0xFF1B5E4B), Color.Black)))
+            .background(colors.surface)
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        val peerName = state.remotePeer?.name?.takeIf { it.isNotBlank() }
-        val calling = callingText(state)
-        val text = calling ?: when (state.phase) {
-            CallPhase.CONNECTING -> state.error ?: "Connecting to the server…"
-            CallPhase.WAITING -> state.contactName?.let { "Waiting for $it to join" } ?: "Waiting for the other person to join\n${state.room}"
-            CallPhase.NEGOTIATING -> "Connecting to ${peerName ?: "the other person"}…"
-            CallPhase.RECONNECTING -> "Reconnecting…"
-            CallPhase.CONNECTED -> when {
-                state.remoteMedia.inPocket -> "${peerName?.let { "$it's" } ?: "Their"} camera is paused"
-                state.remoteMedia.weakConnection -> "Video paused: weak connection"
-                // Neither camera on: a voice call, which either side can turn into video.
-                state.remoteMedia.cameraOff && state.cameraOff -> "Voice call"
-                state.remoteMedia.cameraOff -> "${peerName ?: "They"} turned the camera off"
-                else -> "Connected"
+        if (who != null) {
+            // Gently, and only while their phone is really ringing.
+            val pulse by rememberInfiniteTransition(label = "calling").animateFloat(
+                initialValue = 1f,
+                targetValue = if (outgoing?.status == OutgoingRing.Status.RINGING) 1.06f else 1f,
+                animationSpec = infiniteRepeatable(tween(durationMillis = 1_100), RepeatMode.Reverse),
+                label = "pulse",
+            )
+            Avatar(who, seed = state.contactAddress ?: who, size = if (compact) 44.dp else 120.dp, modifier = Modifier.scale(pulse))
+            Spacer(Modifier.height(if (compact) 8.dp else 24.dp))
+            if (!compact) {
+                Text(
+                    who,
+                    color = colors.onSurface,
+                    style = MaterialTheme.typography.headlineLarge,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(8.dp))
             }
-            CallPhase.ENDED -> "Call ended"
-            CallPhase.FAILED -> state.error ?: "Call failed"
-        }
-        val outgoing = state.outgoing
-        if (calling != null && !compact) {
-            CallingAvatar(state.contactName ?: outgoing?.name.orEmpty(), ringing = outgoing?.status == OutgoingRing.Status.RINGING)
-            Spacer(Modifier.height(24.dp))
-        } else if (state.phase == CallPhase.CONNECTED && !compact) {
-            CallingAvatar(peerName ?: state.contactName.orEmpty(), ringing = false)
-            Spacer(Modifier.height(24.dp))
-        } else if (state.phase == CallPhase.CONNECTING || state.phase == CallPhase.NEGOTIATING || state.phase == CallPhase.RECONNECTING) {
-            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(if (compact) 20.dp else 36.dp))
+        } else if (working) {
+            CircularProgressIndicator(modifier = Modifier.size(if (compact) 20.dp else 36.dp))
             Spacer(Modifier.height(16.dp))
+        }
+        if (!compact && connectedAt != null) {
+            Text(callTimer(now - connectedAt), color = colors.onSurface, style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(4.dp))
         }
         Text(
             text,
-            color = Color.White,
+            color = colors.onSurfaceVariant,
             textAlign = TextAlign.Center,
-            style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.titleMedium,
+            style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyLarge,
         )
         if (!compact) {
             state.connectHint?.let {
                 Spacer(Modifier.height(12.dp))
-                Text(it, color = Color.White.copy(alpha = 0.8f), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall)
+                Text(it, color = colors.onSurfaceVariant, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall)
             }
         }
         // A direct call only offers the link once their phone can't be rung.
         val offerLink = state.phase == CallPhase.WAITING &&
             (outgoing == null || outgoing.status == OutgoingRing.Status.UNREACHABLE)
         if (!compact && offerLink) {
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(24.dp))
             FilledTonalButton(onClick = { context.shareInvite(state.inviteLink) }) {
                 Icon(Icons.Filled.Share, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
@@ -545,59 +584,37 @@ internal fun RemotePlaceholder(state: CallState, compact: Boolean) {
 }
 
 /**
- * What to say while ringing a contact (calling, ringing, declined...), or null when
- * this isn't a call to a contact or they've joined.
+ * What to say while ringing a contact (calling, ringing, declined...), or null when this isn't
+ * a call to a contact or they've joined. Short: their name is always right next to it.
  */
 internal fun callingText(state: CallState): String? {
     val outgoing = state.outgoing ?: return null
     if (state.remotePeer != null || !state.isActive) return null
     if (state.phase == CallPhase.CONNECTING && state.error != null) return null
-    val name = outgoing.name
     return when (outgoing.status) {
-        OutgoingRing.Status.CALLING -> "Calling $name…"
-        OutgoingRing.Status.RINGING -> "Ringing $name…"
-        OutgoingRing.Status.ANSWERED -> "$name answered. Connecting…"
-        OutgoingRing.Status.UNREACHABLE -> if (outgoing.keepsTrying) "Can't reach $name. Still trying…" else "Can't reach $name"
-        OutgoingRing.Status.DECLINED -> "$name declined"
-        OutgoingRing.Status.BUSY -> "$name is on another call"
-        OutgoingRing.Status.NO_ANSWER -> "No answer from $name"
-    }
-}
-
-/** Their initial in a circle, pulsing gently while their phone rings. */
-@Composable
-private fun CallingAvatar(name: String, ringing: Boolean) {
-    val pulse by rememberInfiniteTransition(label = "calling").animateFloat(
-        initialValue = 1f,
-        targetValue = if (ringing) 1.1f else 1f,
-        animationSpec = infiniteRepeatable(tween(durationMillis = 900), RepeatMode.Reverse),
-        label = "pulse",
-    )
-    Box(
-        Modifier
-            .size(120.dp)
-            .scale(pulse)
-            .background(Accent.copy(alpha = 0.25f), CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(Modifier.size(96.dp).background(Accent, CircleShape), contentAlignment = Alignment.Center) {
-            Text(
-                name.trim().take(1).uppercase().ifEmpty { "?" },
-                color = Color.Black,
-                fontSize = 42.sp,
-                fontWeight = FontWeight.Bold,
-            )
-        }
+        OutgoingRing.Status.CALLING -> "Calling…"
+        OutgoingRing.Status.RINGING -> "Ringing…"
+        OutgoingRing.Status.ANSWERED -> "Answered. Connecting…"
+        OutgoingRing.Status.UNREACHABLE -> if (outgoing.keepsTrying) "Can't reach their phone. Still trying…" else "Can't reach their phone"
+        OutgoingRing.Status.DECLINED -> "Declined"
+        OutgoingRing.Status.BUSY -> "On another call"
+        OutgoingRing.Status.NO_ANSWER -> "No answer"
     }
 }
 
 /**
- * Who you're talking to and how the call is going, in one line each: their name, then the
- * timer (or what's happening while it connects), with a word when something needs one.
- * Tapping it opens the call's details.
+ * Over video: who you're talking to and how long, a word when something needs one, and
+ * Minimize. Tapping it opens the call's details. Without video the middle of the screen says
+ * who ([showWho] false), so only Minimize and the words stay up here.
  */
 @Composable
-internal fun TopBar(state: CallState, modifier: Modifier = Modifier, onInfo: () -> Unit = {}, onMinimize: (() -> Unit)? = null) {
+internal fun TopBar(
+    state: CallState,
+    modifier: Modifier = Modifier,
+    onInfo: () -> Unit = {},
+    onMinimize: (() -> Unit)? = null,
+    showWho: Boolean = true,
+) {
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     LaunchedEffect(state.connectedAt) {
         while (state.connectedAt != null) {
@@ -605,10 +622,11 @@ internal fun TopBar(state: CallState, modifier: Modifier = Modifier, onInfo: () 
             delay(1_000)
         }
     }
+    // Readable over any picture, without a band of shade across the video.
+    val overVideo = Shadow(Color.Black.copy(alpha = 0.6f), blurRadius = 8f)
     Box(
         modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)))
             .statusBarsPadding(),
     ) {
         Column(
@@ -619,14 +637,16 @@ internal fun TopBar(state: CallState, modifier: Modifier = Modifier, onInfo: () 
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(
-                state.remotePeer?.name?.takeIf { it.isNotBlank() } ?: state.contactName ?: state.room,
-                color = Color.White,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-            )
-            Text(callStatus(state, now), color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodyMedium)
+            if (showWho) {
+                Text(
+                    state.remotePeer?.name?.takeIf { it.isNotBlank() } ?: state.contactName ?: state.room,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleLarge.copy(shadow = overVideo),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(callStatus(state, now), color = Color.White, style = MaterialTheme.typography.bodyMedium.copy(shadow = overVideo))
+            }
             val badges = buildList {
                 if (state.remoteSpeaking) add("Talking" to true)
                 if (state.remoteMedia.micMuted) add("${state.remotePeer?.name?.takeIf { it.isNotBlank() } ?: "They"} muted" to false)
@@ -640,8 +660,15 @@ internal fun TopBar(state: CallState, modifier: Modifier = Modifier, onInfo: () 
             }
         }
         if (onMinimize != null) {
-            IconButton(onClick = onMinimize, modifier = Modifier.align(Alignment.TopStart).padding(start = 4.dp, top = 6.dp)) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Minimize", tint = Color.White)
+            IconButton(
+                onClick = onMinimize,
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.7f),
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+                modifier = Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 8.dp),
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Minimize")
             }
         }
     }
@@ -756,19 +783,22 @@ private fun CallSheetHost(onDismiss: () -> Unit, content: @Composable () -> Unit
 
 @Composable
 private fun Badge(text: String, highlight: Boolean = false) {
+    val colors = MaterialTheme.colorScheme
     Text(
         text,
-        color = if (highlight) Color.Black else Color.White,
-        style = MaterialTheme.typography.labelSmall,
+        color = if (highlight) colors.onPrimary else colors.onSurface,
+        style = MaterialTheme.typography.labelMedium,
         modifier = Modifier
-            .background(if (highlight) Accent else Color.White.copy(alpha = 0.18f), RoundedCornerShape(50))
-            .padding(horizontal = 8.dp, vertical = 3.dp),
+            .clip(RoundedCornerShape(50))
+            .background(if (highlight) colors.primary else colors.surfaceContainerHigh)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
     )
 }
 
 /**
- * One row, like the phone app: the camera switch while you're on video (the loudspeaker
- * switch otherwise), the camera, mute, more, and hang up.
+ * The call's buttons on one panel, like the phone app: the camera switch while you're on video
+ * (the loudspeaker otherwise), the camera, mute and more, each round when off and a rounded
+ * square when on; under them, hang up, wider and red.
  */
 @Composable
 internal fun Controls(
@@ -783,61 +813,57 @@ internal fun Controls(
     unreadChat: Int = 0,
 ) {
     val cameraOn = state.hasCamera && !state.cameraOff
-    Row(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f))))
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 20.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(12.dp)
+            .clip(RoundedCornerShape(32.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        when {
-            cameraOn -> ControlButton(Icons.Filled.Cameraswitch, "Switch camera", active = false, onClick = onSwitchCamera)
-            state.speakerOn != null -> ControlButton(
-                Icons.AutoMirrored.Filled.VolumeUp,
-                if (state.speakerOn) "Speaker off" else "Speaker on",
-                active = state.speakerOn,
-                onClick = onSpeaker,
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+            when {
+                cameraOn -> CallToggleButton(Icons.Filled.Cameraswitch, "Switch camera", checked = false, onClick = onSwitchCamera)
+                state.speakerOn != null -> CallToggleButton(
+                    Icons.AutoMirrored.Filled.VolumeUp,
+                    if (state.speakerOn) "Speaker off" else "Speaker on",
+                    checked = state.speakerOn,
+                    onClick = onSpeaker,
+                )
+            }
+            if (state.hasCamera) {
+                CallToggleButton(
+                    icon = if (cameraOn) Icons.Filled.Videocam else Icons.Filled.VideocamOff,
+                    label = if (cameraOn) "Turn camera off" else "Turn camera on",
+                    checked = !cameraOn,
+                    onClick = onCamera,
+                )
+            }
+            CallToggleButton(
+                icon = if (state.micMuted) Icons.Filled.MicOff else Icons.Filled.Mic,
+                label = if (state.micMuted) "Unmute" else "Mute",
+                checked = state.micMuted,
+                onClick = onMic,
             )
-        }
-        if (state.hasCamera) {
-            ControlButton(
-                icon = if (cameraOn) Icons.Filled.Videocam else Icons.Filled.VideocamOff,
-                label = if (cameraOn) "Turn camera off" else "Turn camera on",
-                active = !cameraOn,
-                onClick = onCamera,
-            )
-        }
-        ControlButton(
-            icon = if (state.micMuted) Icons.Filled.MicOff else Icons.Filled.Mic,
-            label = if (state.micMuted) "Unmute" else "Mute",
-            active = state.micMuted,
-            onClick = onMic,
-        )
-        BadgedBox(
-            badge = {
-                if (unreadChat > 0) {
-                    androidx.compose.material3.Badge(containerColor = Accent, contentColor = Color.Black) {
-                        Text(if (unreadChat > 9) "9+" else "$unreadChat")
+            BadgedBox(
+                badge = {
+                    if (unreadChat > 0) {
+                        androidx.compose.material3.Badge { Text(if (unreadChat > 9) "9+" else "$unreadChat") }
                     }
-                }
-            },
-        ) {
-            ControlButton(
-                Icons.Filled.MoreHoriz,
-                if (unreadChat > 0) "More, $unreadChat unread messages" else "More",
-                active = false,
-                onClick = onMore,
-            )
+                },
+            ) {
+                CallToggleButton(
+                    Icons.Filled.MoreHoriz,
+                    if (unreadChat > 0) "More, $unreadChat unread messages" else "More",
+                    checked = false,
+                    onClick = onMore,
+                )
+            }
         }
-        FilledIconButton(
-            onClick = onHangUp,
-            colors = IconButtonDefaults.filledIconButtonColors(containerColor = Danger, contentColor = Color.White),
-            modifier = Modifier.size(60.dp),
-        ) {
-            Icon(Icons.Filled.CallEnd, contentDescription = "Hang up")
-        }
+        HangUpButton(onClick = onHangUp, width = 136.dp)
     }
 }
 
@@ -910,20 +936,5 @@ private fun MenuItem(icon: ImageVector, label: String, onClick: () -> Unit) {
     ) {
         Icon(icon, contentDescription = null)
         Text(label, style = MaterialTheme.typography.bodyLarge)
-    }
-}
-
-@Composable
-private fun ControlButton(icon: ImageVector, label: String, active: Boolean, onClick: () -> Unit) {
-    FilledIconButton(
-        onClick = onClick,
-        shape = CircleShape,
-        colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = if (active) Color.White else Color.White.copy(alpha = 0.18f),
-            contentColor = if (active) Color.Black else Color.White,
-        ),
-        modifier = Modifier.size(54.dp),
-    ) {
-        Icon(icon, contentDescription = label)
     }
 }

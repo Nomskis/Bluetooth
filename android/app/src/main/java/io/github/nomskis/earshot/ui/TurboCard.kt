@@ -24,8 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import io.github.nomskis.earshot.turbo.BluetoothOutputDiagnostics
 import io.github.nomskis.earshot.turbo.TurboClient
-import io.github.nomskis.earshot.ui.theme.Accent
-import io.github.nomskis.earshot.ui.theme.Warning
+import io.github.nomskis.earshot.ui.theme.Tones
 
 /** The optional Shizuku-powered controls in the delay tuner. */
 @Composable
@@ -43,7 +42,7 @@ fun TurboCard(
     LaunchedEffect(Unit) { onRefresh() }
     LaunchedEffect(status) { if (status == TurboClient.Status.Ready && info.diagnostics == null) onLoadDiagnostics() }
 
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+    Card(colors = CardDefaults.cardColors(containerColor = Tones.row)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Turbo (advanced)", style = MaterialTheme.typography.titleSmall)
             Text(
@@ -66,7 +65,7 @@ fun TurboCard(
                     Text("Connecting…")
                 }
                 is TurboClient.Status.Failed -> {
-                    Text(status.reason, color = Warning, style = MaterialTheme.typography.bodySmall)
+                    Text(status.reason, color = Tones.warning, style = MaterialTheme.typography.bodySmall)
                     OutlinedButton(onClick = onRefresh) { Text("Try again") }
                 }
                 TurboClient.Status.Ready -> Ready(info, onLoadDiagnostics, onEnableLowLatency, onShortestBuffer, onSweepCodecs)
@@ -91,7 +90,7 @@ private fun Ready(
             Text(it, style = MaterialTheme.typography.bodySmall)
         }
     }
-    info.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Accent) }
+    info.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
     val idle = info.busy == null
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         OutlinedButton(onClick = onSweepCodecs, enabled = idle, modifier = Modifier.fillMaxWidth()) {
@@ -127,7 +126,7 @@ private fun Diagnostics(d: BluetoothOutputDiagnostics) {
             false -> "This phone can't switch Bluetooth latency for apps; earbud game mode and codec choice are your levers."
             null -> null
         }
-        verdict?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (d.gameLabelCanLowerLatency == true) Accent else Warning) }
+        verdict?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (d.gameLabelCanLowerLatency == true) MaterialTheme.colorScheme.primary else Tones.warning) }
     }
 }
 

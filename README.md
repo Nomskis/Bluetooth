@@ -120,6 +120,13 @@ this list works with every pair of classic Bluetooth earbuds.
   a quick reply ("Can't hear you", "One sec", or your own, set in Settings),
   also straight from the notification with the phone in your pocket. Messages go phone to phone,
   encrypted, and are re-sent if the connection drops.
+- **Looks like it belongs on your phone.** Two tabs, **Chats** and **Calls**,
+  as in WhatsApp and Signal, with one **Invite** button for something new.
+  Your wallpaper's colours on Android 12 and later, light or dark as your
+  phone is set; calls are always dark, with big buttons that change shape
+  when they're on and a wide red hang-up. Long-press a person for Rename,
+  Remove or Block (also in your conversation's menu). The research behind
+  it is in [docs/design.md](docs/design.md).
 - **Like a calling app.** Back (or the arrow) during a call goes to the rest
   of the app, with a bar at the top back to the call. The call buttons get
   out of the way after a few seconds, and a tap brings them back; the tap
@@ -127,8 +134,8 @@ this list works with every pair of classic Bluetooth earbuds.
   why ("No answer from Sam") and **Call again**; a video call over a
   connection that stays weak offers to turn your video off.
 - **Messages between calls.** Tap a contact for your conversation with them,
-  like a messaging app, with their latest message and what's unread on the
-  home screen. A message to a phone that's offline waits on your server and
+  like a messaging app, with their latest message and what's unread in
+  **Chats**. A message to a phone that's offline waits on your server and
   arrives when it's back; yours stays "waiting" until their phone confirms
   it, then shows "Delivered" and "Seen". Reply or mark as read right from the
   notification;
@@ -186,7 +193,7 @@ On the phone, download
 (allow "install unknown apps" for your browser). Each new build installs over
 the last and keeps your settings and contacts. The other person installs the
 same file on theirs. After that, Earshot updates itself: when a newer build is
-out, the home screen offers **Update**, which downloads it and has Android
+out, **Chats** offers **Update**, which downloads it and has Android
 install it over the old one (the first time, Android asks you to allow
 Earshot to install apps). **Settings › About** shows your build and has
 **Check for updates**.
@@ -209,16 +216,16 @@ https (`192.168.1.20:8080`), use the debug APK; only it allows plain http.
 
 ### 3. Call someone
 
-The first time, tap **Invite someone**: the call starts and your phone's share
+The first time, tap **Invite**, then **Video call** or **Voice call**: the call starts and your phone's share
 menu opens, so you can send the link on WhatsApp or anywhere. On a phone with
 the app, the link opens Earshot straight away (the server's
 `/.well-known/assetlinks.json` vouches for it) with **You're invited to a
 call**: one tap on **Join**. Without the app, it opens the call in the browser,
-with a link to download the app. A room code still works too (**Join with a
-room code**).
+with a link to download the app. A room code still works too (**Invite ›
+Join with a room code**).
 
 If you both have the Android app, that first call saves you to each other's
-**Call** list on the home screen. From then on it works like a phone call:
+**Chats**. From then on it works like a phone call:
 
 - Tap the phone or camera button next to their name. Their phone **rings and
   vibrates** (following its ringer and Do Not Disturb settings), shows the call
@@ -234,8 +241,8 @@ If you both have the Android app, that first call saves you to each other's
 
 Ringing doesn't use Google's push service: while **Receive calls** is on
 (Settings), the app keeps a small connection to your own server open, with a
-quiet "Ready for calls" notification. The **Ready for calls** card on the home
-screen says whether your phone can be rung right now and walks through the
+quiet "Ready for calls" notification. Until it's set up, a card at the top of
+**Chats** says whether your phone can be rung right now and walks through the
 switches that make it ring properly: notifications, full-screen calls on
 Android 14+, and on Xiaomi/POCO/Redmi phones "Show on Lock screen" and
 "Display pop-up windows while running in the background". On those phones,
@@ -248,16 +255,17 @@ stop the connection and calls won't ring.
 Before relying on it at the gym:
 
 1. Connect your earbuds and start some music in YouTube Music.
-2. In Earshot, check the **Audio output** card on the home screen. It should
-   name your earbuds and say *High-quality music link (A2DP)*. Work through
-   the **Keep calls going with the screen off** card if your phone shows it.
-3. Open the **delay tuner**, hold one earbud's speaker against the phone's
+2. In Earshot, open **Settings › Advanced › Delay tuner** and check the
+   **Audio output** card. It should name your earbuds and say *High-quality
+   music link (A2DP)*. Work through the **Keep calls going with the screen
+   off** card in **Chats** if your phone shows it.
+3. In the tuner, hold one earbud's speaker against the phone's
    microphone, and tap **Find my fastest setup**. It measures your earbuds,
    tries their game mode and (with Turbo) every codec, and keeps the fastest
    for calls. On 2.4 GHz Wi-Fi, run the **radio test** too.
 4. Join a call (call yourself from a laptop browser if nobody's around).
-5. During the call, the chip at the top of the call screen should still say
-   **Hi-Fi · (your earbuds)**, the music should sound exactly as good as
+5. During the call, open **More › Call details**: the chip there should still
+   say **Hi-Fi · (your earbuds)**, the music should sound exactly as good as
    before the call, and the readout below it shows roughly how long their
    voice takes to reach you.
 

@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import io.github.nomskis.earshot.earbuds.EarbudDrivers
+import io.github.nomskis.earshot.ui.theme.Tones
 
 /** What the tuner knows about the connected earbuds' own game mode. */
 data class EarbudInfo(
@@ -47,7 +48,7 @@ fun EarbudCard(
     }
     LaunchedEffect(needsPermission) { if (!needsPermission && !info.checked) onDetect() }
 
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+    Card(colors = CardDefaults.cardColors(containerColor = Tones.row)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Earbud game mode", style = MaterialTheme.typography.titleSmall)
             Text(

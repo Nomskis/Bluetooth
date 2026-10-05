@@ -33,13 +33,13 @@ import io.github.nomskis.earshot.audio.RouteQuality
 import io.github.nomskis.earshot.audio.Tone
 import io.github.nomskis.earshot.audio.describeRoute
 import io.github.nomskis.earshot.settings.AudioMode
-import io.github.nomskis.earshot.ui.theme.Accent
-import io.github.nomskis.earshot.ui.theme.Warning
+import io.github.nomskis.earshot.ui.theme.Tones
 
+@Composable
 private fun Tone.color(): Color = when (this) {
-    Tone.GOOD -> Accent
-    Tone.NEUTRAL -> Color(0xFF9AA3B2)
-    Tone.WARNING -> Warning
+    Tone.GOOD -> MaterialTheme.colorScheme.primary
+    Tone.NEUTRAL -> MaterialTheme.colorScheme.onSurfaceVariant
+    Tone.WARNING -> Tones.warning
 }
 
 private fun icon(route: AudioRoute, tone: Tone): ImageVector = when {
@@ -58,7 +58,7 @@ fun RouteCard(route: AudioRoute, mode: AudioMode, modifier: Modifier = Modifier,
     }?.summary
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        colors = CardDefaults.cardColors(containerColor = Tones.row),
     ) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon(route, description.tone), contentDescription = null, tint = description.tone.color())
@@ -86,12 +86,12 @@ fun RouteChip(route: AudioRoute, mode: AudioMode, modifier: Modifier = Modifier)
     }
     Row(
         modifier = modifier
-            .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(50))
             .padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon(route, description.tone), contentDescription = null, tint = description.tone.color(), modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(6.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

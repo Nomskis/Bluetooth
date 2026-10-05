@@ -18,7 +18,7 @@ import io.github.nomskis.earshot.MainActivity
 import io.github.nomskis.earshot.appGraph
 import io.github.nomskis.earshot.settings.QuickReplies
 import io.github.nomskis.earshot.ui.IncomingCallScreen
-import io.github.nomskis.earshot.ui.theme.EarshotTheme
+import io.github.nomskis.earshot.ui.theme.CallTheme
 
 /**
  * The ringing screen: over the lock screen, screen on, Accept or Decline.
@@ -39,7 +39,7 @@ class IncomingCallActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         showOverLockScreen()
         setContent {
-            EarshotTheme {
+            CallTheme {
                 val ring by inbox.ringing.collectAsStateWithLifecycle()
                 val settings by appGraph.settings.settings.collectAsStateWithLifecycle(null)
                 val current = ring

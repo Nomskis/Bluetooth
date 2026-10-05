@@ -11,12 +11,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -36,11 +39,13 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -51,13 +56,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.nomskis.earshot.calls.CallRecord
 import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.messages.Conversation
 import io.github.nomskis.earshot.messages.TextMessage
+import io.github.nomskis.earshot.ui.theme.Tones
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -68,9 +77,9 @@ import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 /**
- * A conversation with one contact, like a messaging app: their name with call buttons
- * at the top, the messages, and a box to type in. Messages to a phone that's offline
- * wait on the server and arrive when it's back.
+ * A conversation with one contact, like a messaging app: who, with call buttons, at the top,
+ * the messages and calls in between, and a box to type in. Messages to a phone that's
+ * offline wait on the server and arrive when it's back.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,9 +94,14 @@ fun ConversationScreen(
     onClear: () -> Unit = {},
     /** Calls with them, shown between the messages like a messaging app does. */
     calls: List<CallRecord> = emptyList(),
+    onRename: ((String) -> Unit)? = null,
+    onBlock: (() -> Unit)? = null,
+    onRemove: (() -> Unit)? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
     var clearing by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
+    var blocking by remember { mutableStateOf(false) }
     if (clearing) {
         AlertDialog(
             onDismissRequest = { clearing = false },
@@ -102,6 +116,15 @@ fun ConversationScreen(
             dismissButton = { TextButton(onClick = { clearing = false }) { Text("Cancel") } },
         )
     }
+    if (renaming && onRename != null) {
+        RenameDialog(contact, onDone = { name ->
+            renaming = false
+            if (name != null) onRename(name)
+        })
+    }
+    if (blocking && onBlock != null) {
+        BlockDialog(contact, onBlock = onBlock, onDismiss = { blocking = false })
+    }
     BackHandler(onBack = onBack)
     var draft by rememberSaveable(contact.address) { mutableStateOf("") }
     val messages = conversation?.messages.orEmpty()
@@ -111,9 +134,16 @@ fun ConversationScreen(
     LaunchedEffect(items.size) { if (items.isNotEmpty()) list.animateScrollToItem(list.layoutInfo.totalItemsCount.coerceAtLeast(1) - 1) }
 
     Scaffold(
+        containerColor = Tones.page,
         topBar = {
             TopAppBar(
-                title = { Text(contact.name, maxLines = 1) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Avatar(contact.name, seed = contact.address, size = 36.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Text(contact.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
                 },
@@ -123,6 +153,12 @@ fun ConversationScreen(
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            if (onRename != null) {
+                                DropdownMenuItem(text = { Text("Rename") }, onClick = {
+                                    menu = false
+                                    renaming = true
+                                })
+                            }
                             DropdownMenuItem(
                                 text = { Text("Clear chat") },
                                 enabled = messages.isNotEmpty(),
@@ -131,9 +167,22 @@ fun ConversationScreen(
                                     clearing = true
                                 },
                             )
+                            if (onBlock != null) {
+                                DropdownMenuItem(text = { Text("Block") }, onClick = {
+                                    menu = false
+                                    blocking = true
+                                })
+                            }
+                            if (onRemove != null) {
+                                DropdownMenuItem(text = { Text("Remove") }, onClick = {
+                                    menu = false
+                                    onRemove()
+                                })
+                            }
                         }
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Tones.page, scrolledContainerColor = Tones.page),
             )
         },
     ) { padding ->
@@ -144,12 +193,20 @@ fun ConversationScreen(
                 .imePadding(),
         ) {
             if (items.isEmpty()) {
-                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Avatar(contact.name, seed = contact.address, size = 88.dp)
+                    Spacer(Modifier.height(16.dp))
                     Text(
                         "Say hi to ${contact.name}",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(32.dp),
                     )
                 }
             } else {
@@ -157,7 +214,7 @@ fun ConversationScreen(
                     state = list,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     val zone = ZoneId.systemDefault()
                     val today = LocalDate.now(zone)
@@ -169,7 +226,12 @@ fun ConversationScreen(
                         }
                         when (entry) {
                             is ChatItem.Text -> item(key = (if (entry.message.mine) "me-" else "them-") + entry.message.id) {
-                                MessageBubble(entry.message, onDelete = { onDelete(entry.message) })
+                                MessageBubble(
+                                    entry.message,
+                                    joinsPrevious = sameRun(items.getOrNull(i - 1), entry, zone),
+                                    joinsNext = sameRun(entry, items.getOrNull(i + 1), zone),
+                                    onDelete = { onDelete(entry.message) },
+                                )
                             }
                             is ChatItem.Call -> item(key = "call-${entry.call.atMillis}-$i") {
                                 CallEvent(entry.call, onCall = { onCall(entry.call.video) })
@@ -182,16 +244,23 @@ fun ConversationScreen(
                 Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                OutlinedTextField(
+                TextField(
                     value = draft,
                     onValueChange = { draft = it.take(Conversation.MAX_TEXT) },
                     placeholder = { Text("Message") },
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     maxLines = 5,
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Tones.bubble,
+                        unfocusedContainerColor = Tones.bubble,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                    ),
                     modifier = Modifier.weight(1f),
                 )
                 FilledIconButton(
@@ -200,7 +269,7 @@ fun ConversationScreen(
                         draft = ""
                     },
                     enabled = draft.isNotBlank(),
-                    modifier = Modifier.padding(start = 8.dp),
+                    modifier = Modifier.size(52.dp),
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                 }
@@ -226,6 +295,19 @@ internal sealed interface ChatItem {
 internal fun timeline(messages: List<TextMessage>, calls: List<CallRecord>): List<ChatItem> =
     (messages.map { ChatItem.Text(it) } + calls.map { ChatItem.Call(it) }).sortedBy { it.atMillis }
 
+/**
+ * Two messages from the same person a few minutes apart read as one run: closer together,
+ * with the time only under the last.
+ */
+internal fun sameRun(a: ChatItem?, b: ChatItem?, zone: ZoneId = ZoneId.systemDefault()): Boolean {
+    if (a !is ChatItem.Text || b !is ChatItem.Text) return false
+    if (a.message.mine != b.message.mine) return false
+    if (b.atMillis - a.atMillis > RUN_GAP_MS) return false
+    return Instant.ofEpochMilli(a.atMillis).atZone(zone).toLocalDate() == Instant.ofEpochMilli(b.atMillis).atZone(zone).toLocalDate()
+}
+
+private const val RUN_GAP_MS = 5 * 60_000L
+
 /** "Missed voice call", "Video call · 12:34", "Voice call · No answer". */
 internal fun callEventText(call: CallRecord): String {
     val kind = if (call.video) "Video call" else "Voice call"
@@ -237,34 +319,33 @@ internal fun callEventText(call: CallRecord): String {
 private fun CallEvent(call: CallRecord, onCall: () -> Unit) {
     val time = Instant.ofEpochMilli(call.atMillis).atZone(ZoneId.systemDefault()).toLocalTime().format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT))
     val color = if (call.missed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-    Box(Modifier.fillMaxWidth().padding(vertical = 2.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
         Row(
             Modifier
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(16.dp))
+                .background(Tones.bubble)
                 .clickable(onClickLabel = if (call.video) "Video call back" else "Call back", onClick = onCall)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(if (call.video) Icons.Filled.Videocam else Icons.Filled.Call, contentDescription = null, tint = color, modifier = Modifier.size(16.dp))
-            Text("${callEventText(call)} · $time", style = MaterialTheme.typography.labelMedium, color = color)
+            Text("${callEventText(call)} · $time", style = MaterialTheme.typography.labelLarge, color = color)
         }
     }
 }
 
 @Composable
 private fun DayHeader(label: String) {
-    Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
-                .padding(horizontal = 12.dp, vertical = 4.dp),
-        )
-    }
+    Text(
+        label,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp, bottom = 8.dp),
+    )
 }
 
 /** "Today", "Yesterday", the weekday within a week, then the date. */
@@ -278,27 +359,40 @@ internal fun dayLabel(day: LocalDate, today: LocalDate): String {
     }
 }
 
-/** One message; a long press offers Copy and Delete. */
+/**
+ * One message. Runs from the same person sit close, their inner corners tighter, and only the
+ * last says when (and, for ours, how it's doing). A long press offers Copy and Delete.
+ */
 @Composable
-private fun MessageBubble(message: TextMessage, onDelete: () -> Unit) {
+private fun MessageBubble(message: TextMessage, joinsPrevious: Boolean, joinsNext: Boolean, onDelete: () -> Unit) {
     val mine = message.mine
     val context = LocalContext.current
     var menu by remember { mutableStateOf(false) }
+    val round = 20.dp
+    val tight = 6.dp
+    val shape = if (mine) {
+        RoundedCornerShape(topStart = round, topEnd = if (joinsPrevious) tight else round, bottomEnd = if (joinsNext) tight else round, bottomStart = round)
+    } else {
+        RoundedCornerShape(topStart = if (joinsPrevious) tight else round, topEnd = round, bottomEnd = round, bottomStart = if (joinsNext) tight else round)
+    }
     Column(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .padding(top = if (joinsPrevious) 0.dp else 6.dp),
         horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
     ) {
         Box {
-            Column(
-                Modifier
+            Text(
+                message.text,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (mine) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
                     .widthIn(max = 300.dp)
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(shape)
+                    .background(if (mine) MaterialTheme.colorScheme.primaryContainer else Tones.bubble)
                     .combinedClickable(onLongClickLabel = "Message options", onLongClick = { menu = true }, onClick = {})
-                    .background(if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            ) {
-                Text(message.text, style = MaterialTheme.typography.bodyLarge)
-            }
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
+            )
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(
                     text = { Text("Copy") },
@@ -316,12 +410,14 @@ private fun MessageBubble(message: TextMessage, onDelete: () -> Unit) {
                 )
             }
         }
-        Text(
-            messageMeta(message),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-        )
+        if (!joinsNext) {
+            Text(
+                messageMeta(message),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            )
+        }
     }
 }
 

@@ -29,7 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.nomskis.earshot.call.CallState
-import io.github.nomskis.earshot.ui.theme.Accent
+import io.github.nomskis.earshot.ui.theme.AnswerGreen
 import kotlinx.coroutines.delay
 
 /** The call going on while you use the rest of the app: who, how long, and a tap back to it. */
@@ -43,10 +43,12 @@ internal fun OngoingCallBar(state: CallState, onClick: () -> Unit) {
         }
     }
     val name = state.remotePeer?.name?.takeIf { it.isNotBlank() } ?: state.contactName ?: "Call"
+    // The clock and battery sit on the green, so they turn white.
+    DarkSystemBars(navigation = false)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Accent)
+            .background(AnswerGreen)
             .clickable(onClickLabel = "Return to call", onClick = onClick)
             .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 10.dp),
@@ -54,16 +56,16 @@ internal fun OngoingCallBar(state: CallState, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         val video = !state.cameraOff || (state.hasRemoteVideo && !state.remoteMedia.cameraOff)
-        Icon(if (video) Icons.Filled.Videocam else Icons.Filled.Call, contentDescription = null, tint = Color.Black, modifier = Modifier.size(20.dp))
+        Icon(if (video) Icons.Filled.Videocam else Icons.Filled.Call, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
         Text(
             "$name · ${callStatus(state, now)}",
-            color = Color.Black,
+            color = Color.White,
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        if (state.micMuted) Icon(Icons.Filled.MicOff, contentDescription = "Muted", tint = Color.Black, modifier = Modifier.size(18.dp))
-        Text("Return", color = Color.Black, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        if (state.micMuted) Icon(Icons.Filled.MicOff, contentDescription = "Muted", tint = Color.White, modifier = Modifier.size(18.dp))
+        Text("Return", color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
     }
 }

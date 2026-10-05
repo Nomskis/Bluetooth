@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -22,14 +23,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SuggestionChip
-import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,15 +39,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import io.github.nomskis.earshot.call.Chat
 import io.github.nomskis.earshot.call.ChatMessage
 import io.github.nomskis.earshot.settings.QuickReplies
-import io.github.nomskis.earshot.ui.theme.Accent
 
 /** The conversation, quick replies and a text box; replaces the call controls while open. */
 @Composable
@@ -71,21 +71,20 @@ internal fun ChatPanel(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color.Black.copy(alpha = 0.88f), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer)
             .navigationBarsPadding()
             .imePadding()
             .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 "Chat",
-                color = Color.White,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f).padding(start = 8.dp),
             )
-            IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close chat", tint = Color.White) }
+            IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close chat") }
         }
         if (messages.isNotEmpty()) {
             LazyColumn(
@@ -100,36 +99,28 @@ internal fun ChatPanel(
         }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(quickReplies) { text ->
-                SuggestionChip(
-                    onClick = { onSend(text) },
-                    label = { Text(text) },
-                    colors = SuggestionChipDefaults.suggestionChipColors(labelColor = Color.White),
-                )
+                SuggestionChip(onClick = { onSend(text) }, label = { Text(text) })
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextField(
                 value = draft,
                 onValueChange = { draft = it.take(Chat.MAX_LENGTH) },
                 placeholder = { Text("Message") },
                 maxLines = 3,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { send() }),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    focusedBorderColor = Accent,
-                    unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
-                    cursorColor = Accent,
+                shape = RoundedCornerShape(28.dp),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
                 ),
                 modifier = Modifier.weight(1f),
             )
-            IconButton(onClick = send, enabled = draft.isNotBlank()) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send",
-                    tint = if (draft.isNotBlank()) Accent else Color.White.copy(alpha = 0.4f),
-                )
+            FilledIconButton(onClick = send, enabled = draft.isNotBlank(), modifier = Modifier.size(52.dp)) {
+                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
             }
         }
     }
@@ -141,17 +132,16 @@ private fun ChatRow(message: ChatMessage) {
         Column(
             Modifier
                 .widthIn(max = 280.dp)
-                .background(
-                    if (message.mine) Accent.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.14f),
-                    RoundedCornerShape(14.dp),
-                )
-                .padding(horizontal = 12.dp, vertical = 7.dp),
+                .clip(RoundedCornerShape(18.dp))
+                .background(if (message.mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
-            Text(message.text, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+            val text = if (message.mine) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+            Text(message.text, color = text, style = MaterialTheme.typography.bodyMedium)
             statusLabel(message.status)?.let { (label, failed) ->
                 Text(
                     label,
-                    color = if (failed) Color(0xFFFF8A8D) else Color.White.copy(alpha = 0.6f),
+                    color = if (failed) MaterialTheme.colorScheme.error else text.copy(alpha = 0.7f),
                     style = MaterialTheme.typography.labelSmall,
                 )
             }
@@ -172,14 +162,15 @@ internal fun ChatBubble(name: String, message: ChatMessage, onOpen: () -> Unit, 
     Row(
         modifier = modifier
             .widthIn(max = 420.dp)
-            .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .clickable(onClick = onOpen)
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             "$name: ${message.text}",
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 3,
         )
