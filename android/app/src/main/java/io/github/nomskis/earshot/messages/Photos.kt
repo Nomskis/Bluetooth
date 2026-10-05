@@ -1,5 +1,9 @@
+// Android's own EXIF reader: its known bugs are in versions before the app's oldest (8.0).
+@file:SuppressLint("ExifInterface")
+
 package io.github.nomskis.earshot.messages
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
