@@ -91,13 +91,6 @@ android {
         }
     }
 
-    lint {
-        // androidx's opt-in detector now and then crashes analysing Kotlin ("Unexpected owner
-        // function: null", a lint bug), failing the build at random. The app uses no androidx
-        // opt-in APIs, so there's nothing for it to check.
-        disable += listOf("UnsafeOptInUsageError", "UnsafeOptInUsageWarning")
-    }
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
