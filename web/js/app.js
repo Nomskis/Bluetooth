@@ -367,7 +367,12 @@ function showScreen(stream) {
   ui.screenLabel.textContent = name ? `${name}'s screen` : 'Their screen';
   ui.screenVideo.srcObject = stream;
   ui.screenView.hidden = false;
-  ui.screenVideo.play().catch(() => {});
+  // With the shared app's sound; a browser that won't play sound by itself gets the picture.
+  ui.screenVideo.muted = false;
+  ui.screenVideo.play().catch(() => {
+    ui.screenVideo.muted = true;
+    ui.screenVideo.play().catch(() => {});
+  });
 }
 
 /**

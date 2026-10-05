@@ -103,7 +103,8 @@ internal class ScreenWatch(
         try {
             pc.awaitSetRemote(SessionDescription(SessionDescription.Type.OFFER, sdp))
             if (this.pc !== pc) return
-            val answer = pc.awaitCreateAnswer()
+            // Stereo for the shared app's sound: WebRTC decodes Opus in mono unless asked.
+            val answer = pc.awaitCreateAnswer().let { SessionDescription(it.type, ScreenTuning.stereoOpus(it.description)) }
             if (this.pc !== pc) return
             pc.awaitSetLocal(answer)
             if (this.pc !== pc) return

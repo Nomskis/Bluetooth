@@ -24,6 +24,32 @@ const CONNECT_TIMEOUT_MS = 15_000;
 /** The sharer sends a frame at least every second and a half, even of a still screen. */
 const NO_FRAMES_MS = 8000;
 
+/**
+ * [sdp] with every Opus codec asking for stereo music: the shared app's sound arrives in
+ * stereo only when our answer asks for it (same as ScreenTuning.stereoOpus).
+ */
+export function stereoOpus(sdp, kbps = 128) {
+  const eol = sdp.includes('\r\n') ? '\r\n' : '\n';
+  const lines = sdp.split(eol);
+  const opus = new Set(lines.map((l) => /^a=rtpmap:(\d+) opus\/48000\/2$/i.exec(l)?.[1]).filter(Boolean));
+  const wanted = { stereo: '1', 'sprop-stereo': '1', maxaveragebitrate: String(kbps * 1000) };
+  for (const pt of opus) {
+    const fmtp = lines.findIndex((l) => l.startsWith(`a=fmtp:${pt} `));
+    if (fmtp >= 0) {
+      const params = new Map(
+        lines[fmtp].slice(lines[fmtp].indexOf(' ') + 1).split(';').map((p) => p.trim()).filter(Boolean)
+          .map((p) => [p.split('=')[0], p.includes('=') ? p.slice(p.indexOf('=') + 1) : '']),
+      );
+      for (const [k, v] of Object.entries(wanted)) params.set(k, v);
+      lines[fmtp] = `a=fmtp:${pt} ${[...params].map(([k, v]) => `${k}=${v}`).join(';')}`;
+    } else {
+      const rtpmap = lines.findIndex((l) => l.startsWith(`a=rtpmap:${pt} `));
+      lines.splice(rtpmap + 1, 0, `a=fmtp:${pt} ${Object.entries(wanted).map(([k, v]) => `${k}=${v}`).join(';')}`);
+    }
+  }
+  return lines.join(eol);
+}
+
 /** Whether this browser can decode AV1, so a sharer may send it. */
 export function decodesAv1() {
   try {
@@ -179,15 +205,18 @@ export class ScreenWatcher extends EventTarget {
       bundlePolicy: 'max-bundle',
     });
     this.#pc = pc;
+    // The picture and, when the sharer's app makes some, its sound, in one stream to play.
+    const stream = new MediaStream();
     pc.ontrack = (e) => {
-      if (pc !== this.#pc || e.track.kind !== 'video') return;
+      if (pc !== this.#pc) return;
+      stream.addTrack(e.track);
+      if (e.track.kind !== 'video') return;
       // A little more buffer than a call: a shared screen would rather wait than stutter.
       try {
         e.receiver.jitterBufferTarget = 200;
       } catch {
         // Older browsers.
       }
-      const stream = e.streams[0] ?? new MediaStream([e.track]);
       this.dispatchEvent(new CustomEvent('screen', { detail: { stream, from: this.#from } }));
     };
     pc.oniceconnectionstatechange = () => {
@@ -204,8 +233,9 @@ export class ScreenWatcher extends EventTarget {
       }
     };
     await pc.setRemoteDescription({ type: 'offer', sdp });
-    const answer = await pc.createAnswer();
+    const created = await pc.createAnswer();
     if (pc !== this.#pc) return;
+    const answer = { type: 'answer', sdp: stereoOpus(created.sdp) };
     await pc.setLocalDescription(answer);
     this.#signaling.send({ type: 'screen-answer', watch, sdp: answer.sdp });
   }

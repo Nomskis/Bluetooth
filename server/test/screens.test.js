@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 import { parseClientMessage } from '../src/protocol.js';
 import { RoomManager } from '../src/rooms.js';
-import { createScreenRelay, TRACK_NAME } from '../src/screen-relay.js';
+import { AUDIO_TRACK_NAME, createScreenRelay, TRACK_NAME } from '../src/screen-relay.js';
 import { ScreenShares } from '../src/screens.js';
 
 class FakeConn {
@@ -35,10 +35,10 @@ function fakeRelay() {
   return {
     calls,
     failNext: false,
-    async publish(sdp, mid) {
-      calls.push({ op: 'publish', sdp, mid });
+    async publish(sdp, mid, audioMid) {
+      calls.push({ op: 'publish', sdp, mid, ...(audioMid ? { audioMid } : {}) });
       if (this.failNext) throw new Error('down');
-      return { sessionId: `pub-session-${++next}`, trackName: TRACK_NAME, sdp: 'answer-sdp' };
+      return { sessionId: `pub-session-${++next}`, trackName: TRACK_NAME, ...(audioMid ? { audioTrackName: AUDIO_TRACK_NAME } : {}), sdp: 'answer-sdp' };
     },
     async pull(share) {
       calls.push({ op: 'pull', share });
@@ -124,6 +124,14 @@ describe('screen sharing', () => {
     assert.deepEqual(relay.calls[2], { op: 'answer', sessionId: offer.watch, sdp: 'answer' });
   });
 
+  it('passes the shared sound along with the screen', async () => {
+    await screens.publish(sam, { sdp: 'offer', mid: '0', audioMid: '1' });
+    screens.live(sam);
+    assert.deepEqual(relay.calls[0], { op: 'publish', sdp: 'offer', mid: '0', audioMid: '1' });
+    await screens.watch(salma);
+    assert.equal(relay.calls[1].share.audioTrackName, AUDIO_TRACK_NAME);
+  });
+
   it('only answers for the session it handed out', async () => {
     await share(screens, sam);
     await screens.watch(salma);
@@ -185,6 +193,8 @@ describe('screen sharing', () => {
     assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'screen-publish', sdp: 'v=0', mid: '0' })), { type: 'screen-publish', sdp: 'v=0', mid: '0' });
     assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'screen-publish', sdp: 'v=0', mid: '0', id: 'a1' })), { type: 'screen-publish', sdp: 'v=0', mid: '0', id: 'a1' });
     assert.throws(() => parseClientMessage(JSON.stringify({ type: 'screen-publish', sdp: 'v=0', mid: '0', id: 'not ok' })));
+    assert.equal(parseClientMessage(JSON.stringify({ type: 'screen-publish', sdp: 'v=0', mid: '0', audioMid: '1' })).audioMid, '1');
+    assert.throws(() => parseClientMessage(JSON.stringify({ type: 'screen-publish', sdp: 'v=0', mid: '0', audioMid: '0' })));
     assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'screen-live' })), { type: 'screen-live' });
     assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'screen-watch' })), { type: 'screen-watch' });
     assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'screen-stop' })), { type: 'screen-stop' });
@@ -225,6 +235,27 @@ describe('Cloudflare screen relay', () => {
     });
   });
 
+  it('publishes and pulls the shared sound as a second track', async () => {
+    const { impl, calls } = fakeFetch([
+      { body: { sessionId: 'S1' } },
+      { body: { sessionDescription: { type: 'answer', sdp: 'A' }, tracks: [{ mid: '0' }, { mid: '1' }] } },
+      { body: { sessionId: 'V1' } },
+      { body: { requiresImmediateRenegotiation: true, sessionDescription: { type: 'offer', sdp: 'OFF' }, tracks: [{ mid: '0' }, { mid: '1' }] } },
+    ]);
+    const relay = createScreenRelay({ appId: 'app', appSecret: 's' }, { fetchImpl: impl });
+    const published = await relay.publish('O', '0', '1');
+    assert.deepEqual(published, { sessionId: 'S1', trackName: 'screen', audioTrackName: 'screen-audio', sdp: 'A' });
+    assert.deepEqual(JSON.parse(calls[1].init.body).tracks, [
+      { location: 'local', mid: '0', trackName: 'screen' },
+      { location: 'local', mid: '1', trackName: 'screen-audio' },
+    ]);
+    await relay.pull(published);
+    assert.deepEqual(JSON.parse(calls[3].init.body).tracks, [
+      { location: 'remote', sessionId: 'S1', trackName: 'screen' },
+      { location: 'remote', sessionId: 'S1', trackName: 'screen-audio' },
+    ]);
+  });
+
   it('pulls into a new session and sends the answer back', async () => {
     const { impl, calls } = fakeFetch([
       { body: { sessionId: 'V1' } },
@@ -243,7 +274,7 @@ describe('Cloudflare screen relay', () => {
   it('turns Cloudflare errors into one kind of error', async () => {
     const { impl } = fakeFetch([
       { body: { sessionId: 'S1' } },
-      { body: { tracks: [{ errorCode: 'bad', errorDescription: 'track refused' }] } },
+      { body: { tracks: [{ mid: '0' }, { errorCode: 'bad', errorDescription: 'track refused' }] } },
     ]);
     const relay = createScreenRelay({ appId: 'app', appSecret: 's' }, { fetchImpl: impl });
     await assert.rejects(relay.publish('O', '0'), /track refused/);

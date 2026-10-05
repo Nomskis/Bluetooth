@@ -218,11 +218,6 @@ class RtcEngine(
 
     // --- a shared screen, on a connection of its own (ScreenShare, ScreenWatch) ----------
 
-    /** A video source marked as a screen: WebRTC keeps its resolution and lets the frame rate give way. */
-    fun createScreenSource(): VideoSource = factory.createVideoSource(true)
-
-    fun createScreenTrack(source: VideoSource): VideoTrack = factory.createVideoTrack(Ids.random(6, "s"), source)
-
     /** Whether this phone can decode AV1 (WebRTC's dav1d), so a sharer may send it the sharpest codec. */
     fun decodesAv1(): Boolean =
         factory.getRtpReceiverCapabilities(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO).codecs.any { it.name.equals("AV1", ignoreCase = true) }
@@ -240,18 +235,20 @@ class RtcEngine(
         iceServers: List<IceServerConfig>,
         observer: PeerConnection.Observer,
         mobileDataNextToWifi: Boolean,
+        /** The sharer's own ([ScreenMedia.factory]); a viewer's uses the call's, so the shared sound plays with the call. */
+        on: PeerConnectionFactory = factory,
     ): PeerConnection? {
         val servers = iceServers + IceServerConfig(listOf(ScreenTuning.CLOUDFLARE_STUN))
         val config = rtcConfiguration(servers, preferCellular = false, fixed = Fixed(mobileDataNextToWifi, relayOnly = false))
-        return factory.createPeerConnection(config, observer)
+        return on.createPeerConnection(config, observer)
     }
 
     /**
      * The screen's codecs, best for screens first ([ScreenTuning.codecOrder]); the rest (resends,
      * other codecs) stay behind them, so Cloudflare still finds something if a favourite's missing.
      */
-    fun preferScreenCodecs(transceiver: RtpTransceiver, order: List<String>) {
-        val codecs = factory.getRtpSenderCapabilities(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO).codecs
+    fun preferScreenCodecs(transceiver: RtpTransceiver, order: List<String>, on: PeerConnectionFactory = factory) {
+        val codecs = on.getRtpSenderCapabilities(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO).codecs
         fun rank(name: String) = order.indexOfFirst { it.equals(name, ignoreCase = true) }.let { if (it < 0) order.size else it }
         val sorted = codecs.sortedBy { rank(it.name) }
         runCatching { transceiver.setCodecPreferences(sorted) }.onFailure { Log.w(TAG, "Could not order the screen's codecs", it) }

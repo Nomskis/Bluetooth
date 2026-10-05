@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.webrtc.AudioTrack
 import org.webrtc.CandidatePairChangeEvent
 import org.webrtc.DataChannel
 import org.webrtc.EglBase
@@ -37,6 +38,8 @@ internal class ScreenShare(
     private val engine: RtcEngine,
     eglContext: EglBase.Context,
     projection: MediaProjection,
+    /** The share's own WebRTC, with the shared app's sound when there is some. */
+    private val media: ScreenMedia,
     /** The call's current STUN and TURN servers (TURN credentials are refreshed on rejoin). */
     private val iceServers: () -> List<IceServerConfig>,
     private val mobileDataNextToWifi: Boolean,
@@ -53,12 +56,13 @@ internal class ScreenShare(
     /** It ended by itself (stopped from outside the app, or it couldn't be published); [why] for the screen, or null. */
     private val onEnded: (why: String?) -> Unit,
 ) {
-    private val source = engine.createScreenSource()
+    private val source = media.createScreenSource()
     private val capture = ScreenCapture(context, projection, eglContext, source.capturerObserver, maxShortSide) {
         post { end(null) }
     }
     private var pc: PeerConnection? = null
     private var track: VideoTrack? = null
+    private var soundTrack: AudioTrack? = null
     private var sender: RtpSender? = null
     /** This publish attempt's name; answers and errors for an earlier one are ignored. */
     private var attempt: String? = null
@@ -81,7 +85,9 @@ internal class ScreenShare(
         val pc = pc ?: return
         if (pc.signalingState() != PeerConnection.SignalingState.HAVE_LOCAL_OFFER) return
         try {
-            pc.awaitSetRemote(SessionDescription(SessionDescription.Type.ANSWER, sdp))
+            // Their side decodes stereo when asked; this side encodes it when Cloudflare's answer asks.
+            val answer = if (soundTrack != null) ScreenTuning.stereoOpus(sdp) else sdp
+            pc.awaitSetRemote(SessionDescription(SessionDescription.Type.ANSWER, answer))
         } catch (e: SdpException) {
             Log.w(TAG, "Cloudflare's answer didn't fit our offer", e)
             retryLater()
@@ -140,7 +146,7 @@ internal class ScreenShare(
         if (ended) return
         closeConnection()
         val observer = Observer()
-        val pc = engine.createScreenPeerConnection(iceServers(), observer, mobileDataNextToWifi)
+        val pc = engine.createScreenPeerConnection(iceServers(), observer, mobileDataNextToWifi, media.factory)
         if (pc == null) {
             end("Couldn't start sharing")
             return
@@ -148,14 +154,19 @@ internal class ScreenShare(
         observer.pc = pc
         this.pc = pc
         announced = false
-        val track = engine.createScreenTrack(source).also { track = it }
+        val track = media.createScreenTrack(source).also { track = it }
         val transceiver = pc.addTransceiver(
             track,
             RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY, listOf(STREAM_ID)),
         )
-        engine.preferScreenCodecs(transceiver, ScreenTuning.codecOrder(av1))
+        engine.preferScreenCodecs(transceiver, ScreenTuning.codecOrder(av1), media.factory)
         sender = transceiver.sender
         tune()
+        // The shared app's sound, in the same stream as the picture so the viewer keeps them in step.
+        val sound = media.createSoundTrack()?.let { track ->
+            soundTrack = track
+            pc.addTransceiver(track, RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY, listOf(STREAM_ID)))
+        }
         try {
             val offer = pc.awaitCreateOffer()
             if (this.pc !== pc) return
@@ -163,7 +174,7 @@ internal class ScreenShare(
             val mid = transceiver.mid
             if (this.pc !== pc || mid == null) return
             val id = Ids.random(6).also { attempt = it }
-            send(ClientMessage.ScreenPublish(offer.description, mid, id))
+            send(ClientMessage.ScreenPublish(sdp = offer.description, mid = mid, audioMid = sound?.mid, id = id))
         } catch (e: SdpException) {
             Log.w(TAG, "Could not make the screen's offer", e)
             retryLater()
@@ -234,9 +245,11 @@ internal class ScreenShare(
         sender = null
         attempt = null
         old.dispose()
-        // The connection let go of the track; this is our own hold on it. The source stays.
+        // The connection let go of the tracks; these are our own holds on them. The sources stay.
         track?.dispose()
         track = null
+        soundTrack?.dispose()
+        soundTrack = null
     }
 
     private fun tearDown() {
@@ -244,6 +257,7 @@ internal class ScreenShare(
         closeConnection()
         capture.stop()
         source.dispose()
+        media.release()
         onLive(false)
     }
 
