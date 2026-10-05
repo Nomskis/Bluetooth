@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.nomskis.earshot.calls.CallRecord
+import io.github.nomskis.earshot.calls.Contact
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -133,15 +134,29 @@ internal fun recentWhen(atMillis: Long, now: Long, zone: ZoneId = ZoneId.systemD
 private const val MAX_SHOWN = 5
 private const val MAX_ALL = 50
 
+/** What the home screen says for a moment after a call, and whom "Call again" rings. */
+data class CallEndNote(val text: String, val callAgain: Contact? = null, val video: Boolean = false)
+
 /**
- * "Call ended · 12:34" right after a call you talked in. Nothing for one that didn't connect
- * (the history says what happened), or for a record that isn't from just now.
+ * Right after a call: "Call ended · 12:34" if you talked, or why they didn't pick up ("No answer
+ * from Sam", "Sam declined") with Call again, like the phone app. Nothing for other endings (the
+ * history says what happened), or for a record that isn't from just now.
  */
-internal fun callEndedNote(call: CallRecord, now: Long = System.currentTimeMillis()): String? {
-    if (call.outcome != CallRecord.Outcome.ANSWERED || call.durationSeconds <= 0) return null
+internal fun callEndNote(call: CallRecord, now: Long = System.currentTimeMillis()): CallEndNote? {
     val endedAt = call.atMillis + call.durationSeconds * 1000
     if (now - endedAt > ENDED_NOTE_FRESH_MS) return null
-    return "Call ended · ${callTimer(call.durationSeconds * 1000)}"
+    if (call.outcome == CallRecord.Outcome.ANSWERED) {
+        return if (call.durationSeconds > 0) CallEndNote("Call ended · ${callTimer(call.durationSeconds * 1000)}") else null
+    }
+    val address = call.address ?: return null
+    if (call.direction != CallRecord.Direction.OUTGOING) return null
+    val text = when (call.outcome) {
+        CallRecord.Outcome.NO_ANSWER -> "No answer from ${call.name}"
+        CallRecord.Outcome.DECLINED -> "${call.name} declined"
+        CallRecord.Outcome.BUSY -> "${call.name} is on another call"
+        else -> return null
+    }
+    return CallEndNote(text, Contact(call.name, address), call.video)
 }
 
 /** Ringing and connecting come before the talking, so the end can be a while after [CallRecord.atMillis] plus the talk. */

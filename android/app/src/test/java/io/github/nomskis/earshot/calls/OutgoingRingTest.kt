@@ -172,15 +172,16 @@ class OutgoingRingTest {
         ring.onJoined()
         assertEquals(OutgoingRing.Status.ANSWERED, ring.status)
         assertTrue(ring.joined)
-        assertNull(ring.outcome)
+        assertFalse(ring.gaveUp)
     }
 
     @Test
-    fun theHomeScreenIsToldWhyTheCallEnded() {
+    fun aDeclineEndsTheRinging() {
         val ring = newRing()
         ring.ring("call-abc")
         ring.onMessage(ServerMessage.RingAnswered("r-1", accepted = false, reason = "declined"))
-        assertEquals("Salma declined the call.", ring.outcome)
+        assertEquals(OutgoingRing.Status.DECLINED, ring.status)
+        assertTrue(ring.gaveUp)
     }
 
     @Test

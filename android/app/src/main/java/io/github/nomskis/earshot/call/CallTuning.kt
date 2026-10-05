@@ -45,4 +45,12 @@ object CallTuning {
      * on a single network. Always on when mobile data stands by next to Wi-Fi.
      */
     const val FAST_FAILOVER_WITHOUT_STANDBY = false
+
+    /**
+     * No direct TCP candidates (Signal's RingRTC sets the same,
+     * `tcpCandidatePolicy = DISABLED`): a call never runs over a direct TCP connection, whose
+     * resends stall the voice for seconds on a lossy link. On, unlike the rest: a WebRTC option
+     * a big calling app ships, not a tuning of Earshot's own. The relay over TCP and TLS stays.
+     */
+    const val NO_TCP_CANDIDATES = true
 }

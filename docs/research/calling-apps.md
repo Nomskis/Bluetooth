@@ -19,10 +19,11 @@ are out of scope on purpose.
 | Missed call notification with Call back and Message | ✅ | |
 | Recent calls (incoming, outgoing, missed in red) | ✅ | Home screen; a tap calls back the same way |
 | "Call ended" with how long you talked | ✅ | For a moment on the home screen |
+| No answer, declined or busy: Call again | ✅ | The home screen says why, with one tap to ring again the same way |
 | Busy when already in a call | ✅ | Call waiting (end this call and take the new one) is 🤔 |
 | Both calling each other at once | ✅ | The phones agree on one call |
 | Block someone | ✅ | Their calls don't ring and their messages are dropped; they aren't told. Unblock in Settings |
-| Bluetooth headset and car buttons answer and hang up (Android Telecom) | 🤔 | Needs Android's ConnectionService; Earshot's Hi-Fi audio works around the call system on purpose |
+| Bluetooth headset and car buttons answer and hang up (Android Telecom) | 🤔 | Needs Android's Telecom (Jetpack core-telecom): the call's audio on the voice-call stream and Telecom choosing the route ([Android docs](https://developer.android.com/develop/connectivity/telecom/selfManaged)), which undoes Hi-Fi. Maybe for calls without earbuds, once it can be tried on a real phone |
 
 ## In a call
 
@@ -31,6 +32,7 @@ are out of scope on purpose.
 | Mute, camera on/off, switch camera, hang up | ✅ | One row that hides after a few seconds; a tap brings it back, and that tap can't hang up |
 | Use the rest of the app during a call | ✅ | A bar at the top goes back to the call |
 | Voice call to video call and back, in one tap | ✅ | No reconnecting |
+| "Weak connection: turn off video?" | ✅ | After 10 s of a weak connection with your camera on, once per call, like Meet |
 | Loudspeaker or earpiece, screen off at your ear | ✅ | Like the phone app |
 | Call timer, who's muted, weak connection | ✅ | |
 | Move your own video, swap big and small | ✅ | |

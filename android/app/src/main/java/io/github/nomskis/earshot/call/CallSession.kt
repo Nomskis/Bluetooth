@@ -576,7 +576,8 @@ class CallSession(
             }
             Event.RingRetry -> if (remote == null) ringContact()
             // The reason goes to the home screen, which is where you land.
-            Event.GiveUp -> finish(CallPhase.ENDED, outgoing?.outcome)
+            // The home screen says why, with Call again, from the call's record (callEndNote).
+            Event.GiveUp -> finish(CallPhase.ENDED)
             Event.Answer -> answerNow()
             Event.Unhold -> unholdHere()
             // Only while connected; a reconnect joins by itself.

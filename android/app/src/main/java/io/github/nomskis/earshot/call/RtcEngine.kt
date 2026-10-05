@@ -378,6 +378,10 @@ class RtcEngine(
             enableDscp = true
             // Only relayed candidates: the call goes through the TURN server's network.
             if (fixed.relayOnly) iceTransportsType = PeerConnection.IceTransportsType.RELAY
+            // No direct TCP paths: a voice packet stuck behind a lost one waits for TCP's resend,
+            // seconds on a bad mobile link. Signal's calls do the same; the relay's TCP and TLS
+            // (for networks that block UDP) aren't affected.
+            if (CallTuning.NO_TCP_CANDIDATES) tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.DISABLED
             // LOW_COST: no candidates on mobile data while a cheaper network (Wi-Fi) is up.
             candidateNetworkPolicy = if (fixed.mobileDataNextToWifi) {
                 PeerConnection.CandidateNetworkPolicy.ALL

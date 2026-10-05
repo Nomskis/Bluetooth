@@ -58,6 +58,18 @@ class MidCallAndSettingsTest {
     }
 
     @Test
+    fun aWeakConnectionOffersToTurnOffVideo() {
+        var turnedOff = 0
+        var dismissed = 0
+        compose.setContent { EarshotTheme { WeakVideoOffer(onTurnOff = { turnedOff++ }, onDismiss = { dismissed++ }) } }
+        compose.onNodeWithText("Weak connection").assertIsDisplayed()
+        compose.onNodeWithText("Turn off video").performClick()
+        compose.onNodeWithContentDescription("Dismiss").performClick()
+        assertEquals(1, turnedOff)
+        assertEquals(1, dismissed)
+    }
+
+    @Test
     fun theCallScreenCanBeMinimized() {
         var minimized = 0
         compose.setContent { EarshotTheme { TopBar(call, onMinimize = { minimized++ }) } }

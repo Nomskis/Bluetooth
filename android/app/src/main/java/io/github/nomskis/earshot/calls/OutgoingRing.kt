@@ -59,15 +59,6 @@ class OutgoingRing(
     val alive: Boolean
         get() = !joined && (status == Status.CALLING || status == Status.RINGING || keepsTrying)
 
-    /** Why the call ended without them, for the home screen; null unless [gaveUp]. */
-    val outcome: String?
-        get() = when (status) {
-            Status.DECLINED -> "${contact.name} declined the call."
-            Status.BUSY -> "${contact.name} is on another call."
-            Status.NO_ANSWER -> "No answer from ${contact.name}."
-            else -> null
-        }
-
     /**
      * We're waiting alone in [room]: the ring to send, or null when there's no
      * point (answered, or they already said no). Called again after a
