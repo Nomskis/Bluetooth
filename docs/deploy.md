@@ -127,7 +127,8 @@ packets from the Cloudflare site nearest each person, and keeps the picture
 sharp on a long, lossy route (docs/research/screen-share.md). It shares the
 same free 1,000 GB a month as Cloudflare's TURN; an hour of sharing is about
 0.5 GB. To turn it on, in the Cloudflare dashboard open **Realtime**, then
-**SFU**, create an application, and set its two values (on Render: the
+**Serverless SFU**, create an application, and set its App ID and App Secret
+as these two values (on Render: the
 service's **Environment** tab, then save):
 
 ```sh
