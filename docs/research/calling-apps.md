@@ -32,6 +32,7 @@ are out of scope on purpose.
 | Mute, camera on/off, switch camera, hang up | ✅ | One row that hides after a few seconds; a tap brings it back, and that tap can't hang up |
 | Use the rest of the app during a call | ✅ | A bar at the top goes back to the call |
 | Voice call to video call and back, in one tap | ✅ | No reconnecting |
+| "Weak connection: turn off video?" | ✅ | After 10 s of a weak connection with your camera on, once per call, like Meet |
 | Loudspeaker or earpiece, screen off at your ear | ✅ | Like the phone app |
 | Call timer, who's muted, weak connection | ✅ | |
 | Move your own video, swap big and small | ✅ | |

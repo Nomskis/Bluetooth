@@ -41,6 +41,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CallEnd
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.Flip
 import androidx.compose.material.icons.filled.HeadsetMic
@@ -64,6 +65,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -189,6 +191,19 @@ fun CallScreen(
     LaunchedEffect(showControls) { if (showControls) shownAt = SystemClock.uptimeMillis() }
     val unread = (incoming - seenIncoming).coerceAtLeast(0)
 
+    // Our camera on over a connection that stays weak: offer to go voice-only, as Meet does.
+    // Once per call, and never on its own: the camera is yours to turn off.
+    val weakWithVideo = connected && showOwnVideo && weakConnectionLabel(state.delay, null) != null
+    var weakOfferDismissed by rememberSaveable(session) { mutableStateOf(false) }
+    var weakOffer by remember(session) { mutableStateOf(false) }
+    LaunchedEffect(weakWithVideo) {
+        weakOffer = false
+        if (weakWithVideo) {
+            delay(WEAK_VIDEO_OFFER_AFTER_MS)
+            weakOffer = true
+        }
+    }
+
     // Turning the camera on in a call that started as a voice call may need the permission first.
     val context = LocalContext.current
     val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -264,6 +279,20 @@ fun CallScreen(
                 key = session,
                 onTap = { if (showRemoteVideo) swapped = !swapped },
                 description = if (ownVideoBig) "Their video: drag to move, tap to swap" else "Your video: drag to move, tap to swap",
+            )
+        }
+
+        if (weakOffer && !weakOfferDismissed && !chatOpen) {
+            WeakVideoOffer(
+                onTurnOff = {
+                    weakOfferDismissed = true
+                    session.setCameraOff(true)
+                },
+                onDismiss = { weakOfferDismissed = true },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 112.dp),
             )
         }
 
@@ -368,6 +397,24 @@ private const val RECONNECT_SHOWN_AFTER_MS = 2_000L
 
 /** The sheets a call can open over the video. */
 internal enum class CallSheet { MORE, INFO }
+
+/** How long the connection has to stay weak with our camera on before voice-only is offered. */
+private const val WEAK_VIDEO_OFFER_AFTER_MS = 10_000L
+
+/** "Weak connection" with Turn off video, over the call. */
+@Composable
+internal fun WeakVideoOffer(onTurnOff: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(24.dp))
+            .padding(start = 16.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Weak connection", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+        TextButton(onClick = onTurnOff) { Text("Turn off video", color = Accent) }
+        IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Dismiss", tint = Color.White) }
+    }
+}
 
 /** How long the call buttons stay up after the last tap: over video, and in a voice call. */
 private const val CONTROLS_HIDE_MS = 4_000L
