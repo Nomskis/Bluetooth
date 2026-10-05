@@ -74,6 +74,7 @@ class AppGraph(context: Context) {
         saveContact = settings::saveContact,
         isBlocked = settings::isBlocked,
         notify = { name, address, conversation -> MessageNotifications.show(context, name, address, conversation) },
+        cancelNotification = { address -> MessageNotifications.cancel(context, address) },
     ).also { messenger ->
         callInbox.onChat = messenger::onServerMessage
         callManager.onCallChat = { address, message ->

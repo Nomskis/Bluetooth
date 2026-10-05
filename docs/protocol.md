@@ -152,8 +152,9 @@ inbox, so the server knows (rather than trusts) who a message is from.
 
 | Direction | `type` | Fields | Meaning |
 | --- | --- | --- | --- |
-| client → server | `message` | `to`, `id`, `text`, `name?` | A message to the inbox address `to`. `id`: 8 to 64 URL-safe characters, made by the sender; `text`: 1 to 4000 characters. |
-| server → client | `message` | `id`, `from: { address, name }`, `text`, `sentAt` | A message for us. `from.address` is the sender's proven address. |
+| client → server | `message` | `to`, `id`, `text`, `name?`, `reply?` | A message to the inbox address `to`. `id`: 8 to 64 URL-safe characters, made by the sender; `text`: 1 to 4000 characters. `reply: { id, sender, text }`: the message it answers, `sender` `me` (the sender's own) or `you` (the recipient's), with up to 300 characters of it on one line, so the quote shows even where that message is gone. |
+| client → server | `message` | `to`, `id`, `name?`, `unsend` | Delete for everyone: withdraws our earlier message `unsend`, and says nothing else. Its own `id` is `x-` and the withdrawn id, so sending it again is the same one. If the withdrawn message is still waiting on the server, it's dropped there and never arrives. Apps offer it for 48 hours after sending. |
+| server → client | `message` | `id`, `from: { address, name }`, `text`, `sentAt`, `reply?`, `unsend?` | A message for us (or, with `unsend`, the withdrawal of one: `text` is absent). `from.address` is the sender's proven address. |
 | client → server | `message-ack` | `to`, `id` | We have message `id` from `to`. Sent for every copy, repeats included. |
 | client → server | `message-read` | `to`, `id` | We've seen `to`'s messages up to `id` (their latest we have). Sent when the conversation is on screen. |
 | server → client | `message-status` | `id`, `to`, `status` | How our message to `to` is doing: `sent` (a device of theirs is online), `queued` (none is; it waits), `delivered` (one of their devices has it), `read` (they've seen it, and the ones before it that were delivered). |

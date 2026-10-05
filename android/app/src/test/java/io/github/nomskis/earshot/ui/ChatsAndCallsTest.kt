@@ -76,7 +76,7 @@ class ChatsAndCallsTest {
         var blocked = 0
         compose.setContent {
             EarshotTheme {
-                ConversationScreen(sam, null, onSend = {}, onCall = {}, onBack = {}, onRename = { renamed = it }, onBlock = { blocked++ }, onRemove = {})
+                ConversationScreen(sam, null, onSend = { _, _ -> }, onCall = {}, onBack = {}, onRename = { renamed = it }, onBlock = { blocked++ }, onRemove = {})
             }
         }
         compose.onNodeWithText("Say hi to Sam").assertIsDisplayed()

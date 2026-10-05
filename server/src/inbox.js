@@ -81,8 +81,17 @@ export class Inbox {
       conn.send({ type: 'error', code: 'rate-limited', message: 'Too many messages at once.' });
       return;
     }
-    const out = { type: 'message', id: msg.id, from: { address: from, name: msg.name }, text: msg.text, sentAt: this.#now() };
+    const out = { type: 'message', id: msg.id, from: { address: from, name: msg.name }, sentAt: this.#now() };
+    if (msg.text !== undefined) out.text = msg.text;
+    if (msg.reply) out.reply = msg.reply;
+    if (msg.unsend) out.unsend = msg.unsend;
     const waiting = this.#waitingFor(msg.to);
+    // Withdrawn before their phone took it: it never arrives. The unsend still goes, for a
+    // device of theirs that took it already.
+    if (msg.unsend) {
+      const kept = waiting.filter((m) => !(m.from === from && m.id === msg.unsend));
+      waiting.splice(0, waiting.length, ...kept);
+    }
     // Sent again after a reconnect: still the one message.
     if (!waiting.some((m) => m.from === from && m.id === msg.id)) {
       waiting.push({ out, from, id: msg.id, at: out.sentAt });

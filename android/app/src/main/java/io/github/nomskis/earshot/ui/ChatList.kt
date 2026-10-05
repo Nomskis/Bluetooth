@@ -119,6 +119,7 @@ private fun ChatRow(
     var menu by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var blocking by remember { mutableStateOf(false) }
+    var removing by remember { mutableStateOf(false) }
     if (renaming && onRename != null) {
         RenameDialog(contact, onDone = { name ->
             renaming = false
@@ -127,6 +128,9 @@ private fun ChatRow(
     }
     if (blocking && onBlock != null) {
         BlockDialog(contact, onBlock = { onBlock(contact) }, onDismiss = { blocking = false })
+    }
+    if (removing) {
+        RemoveDialog(contact, onRemove = { onRemove(contact) }, onDismiss = { removing = false })
     }
     val unread = conversation?.unread ?: 0
     Box(modifier) {
@@ -181,7 +185,7 @@ private fun ChatRow(
             }
             DropdownMenuItem(text = { Text("Remove") }, onClick = {
                 menu = false
-                onRemove(contact)
+                removing = true
             })
             if (onBlock != null) {
                 DropdownMenuItem(text = { Text("Block") }, onClick = {
@@ -197,7 +201,10 @@ private fun ChatRow(
 private fun chatSubtitle(contact: Contact, conversation: Conversation?, now: Long): String? {
     val last = conversation?.last
     return when {
-        last != null && last.atMillis >= contact.lastCallAtMillis -> (if (last.mine) "You: " else "") + last.text
+        last != null && last.atMillis >= contact.lastCallAtMillis -> when {
+            last.deleted -> if (last.mine) "You deleted this message" else "This message was deleted"
+            else -> (if (last.mine) "You: " else "") + last.text
+        }
         contact.lastCallAtMillis > 0 -> "Last call ${lastCallText(contact.lastCallAtMillis, now)}"
         else -> null
     }
@@ -226,17 +233,24 @@ internal fun RenameDialog(contact: Contact, onDone: (String?) -> Unit) {
 /** "Block Sam?", since it's quiet: they aren't told, so you'd not notice a mistake. */
 @Composable
 internal fun BlockDialog(contact: Contact, onBlock: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Block ${contact.name}?") },
-        text = { Text("Their calls and messages won't reach you. They aren't told.") },
-        confirmButton = {
-            TextButton(onClick = {
-                onDismiss()
-                onBlock()
-            }) { Text("Block") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    ConfirmDialog(
+        title = "Block ${contact.name}?",
+        text = "Their calls and messages won't reach you. They aren't told.",
+        confirm = "Block",
+        onConfirm = onBlock,
+        onDismiss = onDismiss,
+    )
+}
+
+/** "Remove Sam?": off your list, though a call or message from them brings them back. */
+@Composable
+internal fun RemoveDialog(contact: Contact, onRemove: () -> Unit, onDismiss: () -> Unit) {
+    ConfirmDialog(
+        title = "Remove ${contact.name}?",
+        text = "They leave your list. A call or message from them brings them back.",
+        confirm = "Remove",
+        onConfirm = onRemove,
+        onDismiss = onDismiss,
     )
 }
 

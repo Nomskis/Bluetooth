@@ -157,4 +157,76 @@ class MessengerTest {
         // Delivered in the call, so never sent again through the server.
         assertTrue(m.conversations.value.getValue(sam).outbox.isEmpty())
     }
+
+    @Test
+    fun anAnswerCarriesWhatItAnswersAndTheirsAreReadFromOurSide() {
+        val m = messenger()
+        m.onServerMessage(incoming("m-them-0001"))
+        sent.clear()
+        m.send(sam, "Welcome home", reply = Quote("m-them-0001", mine = false, text = "Landed!"))
+        val out = sent.single() as ClientMessage.Message
+        // From our side, the quoted one is "you": theirs.
+        assertEquals(io.github.nomskis.earshot.signaling.WireReply("m-them-0001", sender = "you", text = "Landed!"), out.reply)
+
+        // Their answer to ours: "you" is us.
+        val mine = out.id
+        m.onServerMessage(
+            ServerMessage.Message(
+                id = "m-them-0002",
+                from = Caller("Sam", sam),
+                text = "Thanks!",
+                reply = io.github.nomskis.earshot.signaling.WireReply(mine, sender = "you", text = "Welcome home"),
+            ),
+        )
+        val theirs = m.conversations.value.getValue(sam).messages.last()
+        assertEquals(Quote(mine, mine = true, text = "Welcome home"), theirs.reply)
+    }
+
+    @Test
+    fun deletedForEveryoneUntilTheirPhoneConfirmsIt() {
+        val m = messenger()
+        m.send(sam, "Wrong chat")
+        val id = (sent.single() as ClientMessage.Message).id
+        sent.clear()
+        m.deleteForEveryone(sam, id)
+        val unsend = sent.single() as ClientMessage.Message
+        assertEquals(id, unsend.unsend)
+        assertEquals(null, unsend.text)
+        val kept = m.conversations.value.getValue(sam)
+        assertTrue(kept.messages.single().deleted)
+        // Neither the message nor its text goes out again; the withdrawal does, until confirmed.
+        sent.clear()
+        m.onServerMessage(ServerMessage.Listening("our-address"))
+        assertEquals(listOf(id), sent.map { (it as ClientMessage.Message).unsend })
+        m.onServerMessage(ServerMessage.MessageStatus(unsend.id, sam, "delivered"))
+        sent.clear()
+        m.onServerMessage(ServerMessage.Listening("our-address"))
+        assertTrue(sent.isEmpty())
+    }
+
+    @Test
+    fun anOldMessageCantBeDeletedForEveryone() {
+        val m = messenger()
+        m.send(sam, "Last week")
+        val id = (sent.single() as ClientMessage.Message).id
+        sent.clear()
+        clock += Conversation.UNSEND_WINDOW_MS
+        m.deleteForEveryone(sam, id)
+        assertTrue(sent.isEmpty())
+        assertEquals("Last week", m.conversations.value.getValue(sam).messages.single().text)
+    }
+
+    @Test
+    fun theirsDeletedForEveryoneLeavesOnlyThatItWas() {
+        val m = messenger()
+        m.onServerMessage(incoming("m-them-0001", text = "Oops, not for you"))
+        sent.clear()
+        m.onServerMessage(ServerMessage.Message(id = "x-m-them-0001", from = Caller("Sam", sam), unsend = "m-them-0001"))
+        // Confirmed, so their phone stops sending it.
+        assertEquals(ClientMessage.MessageAck(to = sam, id = "x-m-them-0001"), sent.single())
+        val message = m.conversations.value.getValue(sam).messages.single()
+        assertTrue(message.deleted)
+        assertEquals("", message.text)
+        assertEquals(0, m.conversations.value.getValue(sam).unread)
+    }
 }

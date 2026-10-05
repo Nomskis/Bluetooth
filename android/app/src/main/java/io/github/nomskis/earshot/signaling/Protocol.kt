@@ -111,7 +111,17 @@ sealed interface ClientMessage {
     /** A chat message to someone's inbox address, sent over our own listening inbox connection. */
     @Serializable
     @SerialName("message")
-    data class Message(val to: String, val id: String, val text: String, val name: String = "") : ClientMessage
+    data class Message(
+        val to: String,
+        val id: String,
+        /** Absent only in an [unsend]. */
+        val text: String? = null,
+        val name: String = "",
+        /** The message this one answers. */
+        val reply: WireReply? = null,
+        /** Delete for everyone: withdraws our earlier message with this id, and says nothing else. */
+        val unsend: String? = null,
+    ) : ClientMessage
 
     /** We have [id] from [to]: the server stops holding it and tells them it was delivered. */
     @Serializable
@@ -152,6 +162,13 @@ sealed interface ClientMessage {
     @SerialName("screen-answer")
     data class ScreenAnswer(val watch: String, val sdp: String) : ClientMessage
 }
+
+/**
+ * The message a chat message answers: its [id], whose it is from the sender's side ([sender]
+ * "me": the sender's own; "you": the recipient's), and a little of what it said.
+ */
+@Serializable
+data class WireReply(val id: String, val sender: String, val text: String = "")
 
 /** Who is sharing their screen in a room. */
 @Serializable
@@ -207,7 +224,15 @@ sealed interface ServerMessage {
     /** A chat message for us; [from] is proven by the server (the address the sender listens on). */
     @Serializable
     @SerialName("message")
-    data class Message(val id: String, val from: Caller, val text: String, val sentAt: Long = 0) : ServerMessage
+    data class Message(
+        val id: String,
+        val from: Caller,
+        val text: String = "",
+        val sentAt: Long = 0,
+        val reply: WireReply? = null,
+        /** They deleted their message with this id for everyone. */
+        val unsend: String? = null,
+    ) : ServerMessage
 
     /** How a message we sent to [to] is doing: "sent", "queued" (their phone is offline) or "delivered". */
     @Serializable

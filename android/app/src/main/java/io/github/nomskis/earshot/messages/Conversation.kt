@@ -11,10 +11,24 @@ data class TextMessage(
     val mine: Boolean,
     val atMillis: Long,
     val status: Status,
+    /** The message this one answers, quoted. */
+    val reply: Quote? = null,
+    /** Deleted for everyone by its sender: only "deleted" shows where it was. */
+    val deleted: Boolean = false,
 ) {
     /** In the order a message we send moves through; theirs are [RECEIVED]. */
     enum class Status { SENDING, WAITING, SENT, DELIVERED, READ, RECEIVED }
+
+    /** As a quote in an answer to it. */
+    fun quoted(): Quote = Quote(id, mine, text.take(Conversation.MAX_QUOTE))
 }
+
+/**
+ * The message an answer quotes: which one ([id], and whether it's [mine], from this phone's
+ * side) and a little of what it said, so the quote shows even after the message is gone.
+ */
+@Serializable
+data class Quote(val id: String, val mine: Boolean, val text: String = "")
 
 /** Everything said with one contact (by inbox address), oldest first. */
 @Serializable
@@ -23,22 +37,65 @@ data class Conversation(
     val messages: List<TextMessage> = emptyList(),
     /** Their messages up to this time have been seen. */
     val readUpTo: Long = 0,
+    /** Ours deleted for everyone whose withdrawal their phone hasn't confirmed: sent again on every reconnect. */
+    val unsending: List<String> = emptyList(),
 ) {
-    val unread: Int get() = messages.count { !it.mine && it.atMillis > readUpTo }
+    val unread: Int get() = messages.count { !it.mine && !it.deleted && it.atMillis > readUpTo }
     val last: TextMessage? get() = messages.lastOrNull()
 
     /** Ours that they haven't confirmed yet: sent again whenever the phone reconnects. */
-    val outbox: List<TextMessage> get() = messages.filter { it.mine && it.status < TextMessage.Status.DELIVERED }
+    val outbox: List<TextMessage> get() = messages.filter { it.mine && !it.deleted && it.status < TextMessage.Status.DELIVERED }
 
     /** Their latest, which a read receipt names. */
     val lastReceived: TextMessage? get() = messages.lastOrNull { !it.mine }
 
-    fun sending(id: String, text: String, nowMs: Long): Conversation =
-        if (messages.any { it.mine && it.id == id }) this else copy(messages = trim(messages + TextMessage(id, text, mine = true, nowMs, TextMessage.Status.SENDING)))
+    fun sending(id: String, text: String, nowMs: Long, reply: Quote? = null): Conversation =
+        if (messages.any { it.mine && it.id == id }) {
+            this
+        } else {
+            copy(messages = trim(messages + TextMessage(id, text, mine = true, nowMs, TextMessage.Status.SENDING, reply = reply)))
+        }
 
     /** Theirs; the same message again (sent again after a reconnect) is kept once. */
-    fun received(id: String, text: String, atMillis: Long): Conversation =
-        if (messages.any { !it.mine && it.id == id }) this else copy(messages = trim(messages + TextMessage(id, text, mine = false, atMillis, TextMessage.Status.RECEIVED)))
+    fun received(id: String, text: String, atMillis: Long, reply: Quote? = null): Conversation =
+        if (messages.any { !it.mine && it.id == id }) {
+            this
+        } else {
+            copy(messages = trim(messages + TextMessage(id, text, mine = false, atMillis, TextMessage.Status.RECEIVED, reply = reply)))
+        }
+
+    /** The message [quote] points at, if it's still here. */
+    fun find(quote: Quote): TextMessage? = messages.firstOrNull { it.id == quote.id && it.mine == quote.mine }
+
+    /**
+     * Whether one of ours can still be deleted for everyone: not long after it was sent, like
+     * WhatsApp, so an old conversation can't be rewritten.
+     */
+    fun canUnsend(message: TextMessage, nowMs: Long): Boolean =
+        message.mine && !message.deleted && nowMs - message.atMillis < UNSEND_WINDOW_MS
+
+    /**
+     * Ours [id], deleted for everyone: what it said is gone from here, "deleted" stays in its
+     * place, and their phone is told until it confirms. One not sent yet simply isn't.
+     */
+    fun unsent(id: String): Conversation {
+        val target = messages.firstOrNull { it.mine && it.id == id && !it.deleted } ?: return this
+        return copy(
+            messages = messages.map { if (it === target) it.withdrawn() else it },
+            unsending = if (id in unsending) unsending else unsending + id,
+        )
+    }
+
+    /** Their phone has the withdrawal of [id]. */
+    fun unsendDelivered(id: String): Conversation = if (id in unsending) copy(unsending = unsending - id) else this
+
+    /** Theirs [id], deleted for everyone by them. */
+    fun withdrawn(id: String): Conversation {
+        if (messages.none { !it.mine && it.id == id && !it.deleted }) return this
+        return copy(messages = messages.map { if (!it.mine && it.id == id) it.withdrawn() else it })
+    }
+
+    private fun TextMessage.withdrawn() = copy(text = "", reply = null, deleted = true)
 
     /** How one of ours is doing; it only moves forward (a late "sent" doesn't undo "delivered"). */
     fun status(id: String, status: TextMessage.Status): Conversation = copy(
@@ -78,6 +135,18 @@ data class Conversation(
 
         /** Same as the server's limit. */
         const val MAX_TEXT = 4_000
+
+        /** How much of a message an answer quotes; the server's limit too. */
+        const val MAX_QUOTE = 300
+
+        /** Ours can be deleted for everyone this long after they're sent. */
+        const val UNSEND_WINDOW_MS = 48 * 60 * 60 * 1000L
+
+        /** An unsend's own message id: one per message it withdraws, so sending it again is the same one. */
+        fun unsendId(id: String): String = "x-$id"
+
+        /** The message an unsend's status is about, or null for an ordinary message. */
+        fun unsendTarget(id: String): String? = id.removePrefix("x-").takeIf { id.startsWith("x-") }
 
         fun statusOf(server: String): TextMessage.Status? = when (server) {
             "queued" -> TextMessage.Status.WAITING

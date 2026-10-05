@@ -1,0 +1,12 @@
+{
+  "type": "message",
+  "to": "bWl0YS1hZGRyZXNzLTAwMD",
+  "id": "m-Rk2xN8qPzT0aLm4v",
+  "text": "Welcome home!",
+  "name": "Sam",
+  "reply": {
+    "id": "m-Ql9sA2vXeW7dHy3k",
+    "sender": "you",
+    "text": "Landed!"
+  }
+}

@@ -99,10 +99,11 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean) {
                         ConversationScreen(
                             contact = contact,
                             conversation = conversations[contact.address],
-                            onSend = { text -> viewModel.sendMessage(contact.address, text) },
+                            onSend = { text, reply -> viewModel.sendMessage(contact.address, text, reply) },
                             onCall = { video -> viewModel.callFromConversation(contact, video) },
                             onBack = { viewModel.openConversation(null) },
                             onDelete = { message -> viewModel.deleteMessage(contact.address, message) },
+                            onDeleteForEveryone = { message -> viewModel.deleteForEveryone(contact.address, message) },
                             onClear = { viewModel.clearConversation(contact.address) },
                             calls = callLog.filter { it.address == contact.address },
                             onRename = { name -> viewModel.renameContact(contact.address, name) },
