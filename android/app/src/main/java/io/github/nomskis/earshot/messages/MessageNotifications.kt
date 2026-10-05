@@ -32,7 +32,7 @@ object MessageNotifications {
         val style = NotificationCompat.MessagingStyle(me)
         // Their unread messages, and what was said just before for context.
         conversation.messages.filterNot { it.deleted }.takeLast(MAX_SHOWN).forEach { m ->
-            style.addMessage(m.text, m.atMillis, if (m.mine) null else them)
+            style.addMessage(m.summary, m.atMillis, if (m.mine) null else them)
         }
         val open = PendingIntent.getActivity(
             context,

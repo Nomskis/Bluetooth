@@ -92,6 +92,17 @@
             </intent-filter>
         </activity>
 
+        <!-- Pictures in chats: where the camera puts one, and sharing one with another app. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- Lets Shizuku hand Earshot its binder (Turbo). -->
         <provider
             android:name="rikka.shizuku.ShizukuProvider"

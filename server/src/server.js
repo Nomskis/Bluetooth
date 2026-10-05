@@ -9,7 +9,8 @@ import { ScreenShares } from './screens.js';
 import { createStaticHandler } from './static.js';
 import { createTurnService } from './turn-service.js';
 
-const MAX_MESSAGE_BYTES = 64 * 1024;
+/** A chat picture is the biggest message (protocol.js MAX_PHOTO_BASE64, plus its envelope). */
+const MAX_MESSAGE_BYTES = 1024 * 1024;
 // Token bucket per connection: bursts of ICE candidates are fine, floods are not.
 const RATE_BUCKET_SIZE = 200;
 const RATE_REFILL_PER_SECOND = 50;

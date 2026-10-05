@@ -1,19 +1,22 @@
 package io.github.nomskis.earshot.ui
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.nomskis.earshot.ui.theme.Tones
@@ -91,6 +94,14 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean) {
                 when {
                     openConversation != null && contacts.any { it.address == openConversation } -> {
                         val contact = contacts.first { it.address == openConversation }
+                        val trouble by viewModel.photoTrouble.collectAsStateWithLifecycle()
+                        val context = LocalContext.current
+                        LaunchedEffect(trouble) {
+                            trouble?.let {
+                                Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+                                viewModel.photoTroubleShown()
+                            }
+                        }
                         // Read as they come only while it's really on screen, not with the app in the background.
                         LifecycleStartEffect(contact.address) {
                             viewModel.conversationOnScreen(contact.address)
@@ -104,6 +115,8 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean) {
                             onBack = { viewModel.openConversation(null) },
                             onDelete = { message -> viewModel.deleteMessage(contact.address, message) },
                             onDeleteForEveryone = { message -> viewModel.deleteForEveryone(contact.address, message) },
+                            onSendPhoto = { uri, caption, reply -> viewModel.sendPhoto(contact.address, uri, caption, reply) },
+                            photoFile = viewModel::photoFile,
                             onClear = { viewModel.clearConversation(contact.address) },
                             calls = callLog.filter { it.address == contact.address },
                             onRename = { name -> viewModel.renameContact(contact.address, name) },

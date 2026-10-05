@@ -1,8 +1,13 @@
 package io.github.nomskis.earshot.ui
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
@@ -36,9 +41,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -87,6 +95,7 @@ import io.github.nomskis.earshot.messages.Conversation
 import io.github.nomskis.earshot.messages.Quote
 import io.github.nomskis.earshot.messages.TextMessage
 import io.github.nomskis.earshot.ui.theme.Tones
+import java.io.File
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -125,7 +134,12 @@ fun ConversationScreen(
     onBlock: (() -> Unit)? = null,
     onRemove: (() -> Unit)? = null,
     now: () -> Long = System::currentTimeMillis,
+    /** A picture from the gallery or the camera, with its caption, to make ready and send. */
+    onSendPhoto: (uri: Uri, caption: String, reply: Quote?) -> Unit = { _, _, _ -> },
+    /** Where a picture in a message is kept; null where there are none (previews, tests). */
+    photoFile: (String) -> File? = { null },
 ) {
+    val context = LocalContext.current
     var menu by remember { mutableStateOf(false) }
     var clearing by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
@@ -164,6 +178,36 @@ fun ConversationScreen(
     BackHandler(onBack = onBack)
     var draft by rememberSaveable(contact.address) { mutableStateOf("") }
     var replyingTo by remember(contact.address) { mutableStateOf<Quote?>(null) }
+    // Pictures: one picked and waiting to be sent, one open on its own.
+    var picked by remember { mutableStateOf<Uri?>(null) }
+    var viewing by remember { mutableStateOf<TextMessage?>(null) }
+    var attaching by remember { mutableStateOf(false) }
+    var shot by remember { mutableStateOf<Uri?>(null) }
+    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) picked = uri }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { taken -> if (taken) picked = shot }
+    fun takePicture() {
+        val uri = runCatching { cameraUri(context) }.getOrNull() ?: return
+        shot = uri
+        runCatching { camera.launch(uri) }
+    }
+    // The camera app needs Earshot's camera permission, which video calls ask for anyway.
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) takePicture() }
+    picked?.let { uri ->
+        PhotoPreview(
+            uri,
+            theirName = contact.name,
+            onSend = { caption ->
+                onSendPhoto(uri, caption, replyingTo)
+                replyingTo = null
+                picked = null
+            },
+            onDismiss = { picked = null },
+        )
+    }
+    viewing?.let { message ->
+        val file = message.photo?.let { photoFile(it.file) }
+        if (file == null) viewing = null else PhotoViewer(file, caption = message.text, onDismiss = { viewing = null })
+    }
     val messages = conversation?.messages.orEmpty()
     val rows = remember(messages, calls) { conversationRows(timeline(messages, calls)) }
     val list = rememberLazyListState()
@@ -277,6 +321,8 @@ fun ConversationScreen(
                                     joinsNext = row.joinsNext,
                                     theirName = contact.name,
                                     highlighted = highlighted == row.key,
+                                    photoFile = entry.message.photo?.let { photoFile(it.file) },
+                                    onOpenPhoto = { viewing = entry.message },
                                     onReply = { answer(entry.message) },
                                     onDelete = { deleting = entry.message },
                                     onQuoteTap = { quote ->
@@ -302,8 +348,29 @@ fun ConversationScreen(
                     .navigationBarsPadding()
                     .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                Box {
+                    IconButton(onClick = { attaching = true }) { Icon(Icons.Filled.AddPhotoAlternate, contentDescription = "Send a picture") }
+                    DropdownMenu(expanded = attaching, onDismissRequest = { attaching = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Gallery") },
+                            leadingIcon = { Icon(Icons.Filled.Image, contentDescription = null) },
+                            onClick = {
+                                attaching = false
+                                runCatching { gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Camera") },
+                            leadingIcon = { Icon(Icons.Filled.PhotoCamera, contentDescription = null) },
+                            onClick = {
+                                attaching = false
+                                if (context.hasPermission(Manifest.permission.CAMERA)) takePicture() else cameraPermission.launch(Manifest.permission.CAMERA)
+                            },
+                        )
+                    }
+                }
                 TextField(
                     value = draft,
                     onValueChange = { draft = it.take(Conversation.MAX_TEXT) },
@@ -459,7 +526,11 @@ private fun ReplyBar(quote: Quote, theirName: String, onCancel: () -> Unit) {
 }
 
 /** What a quote shows of the message it quotes. */
-internal fun quoteText(quote: Quote): String = quote.text.ifBlank { "Message" }
+internal fun quoteText(quote: Quote): String = when {
+    quote.photo && quote.text.isNotBlank() -> "Photo: ${quote.text}"
+    quote.photo -> "Photo"
+    else -> quote.text.ifBlank { "Message" }
+}
 
 /** One line of a conversation: a message, or a call with them. */
 internal sealed interface ChatItem {
@@ -558,6 +629,9 @@ private fun MessageBubble(
     onReply: () -> Unit,
     onDelete: () -> Unit,
     onQuoteTap: (Quote) -> Unit,
+    /** The picture's file, if it's a picture. */
+    photoFile: File? = null,
+    onOpenPhoto: () -> Unit = {},
 ) {
     val mine = message.mine
     val context = LocalContext.current
@@ -623,15 +697,36 @@ private fun MessageBubble(
             horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
         ) {
             Box {
+                val photo = message.photo
                 Column(
                     Modifier
                         .widthIn(max = 300.dp)
                         .clip(shape)
                         .background(color)
                         .combinedClickable(onLongClickLabel = "Message options", onLongClick = { menu = true }, onClick = {})
-                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                        .padding(if (photo != null) PaddingValues(4.dp) else PaddingValues(horizontal = 14.dp, vertical = 9.dp)),
                 ) {
-                    if (message.deleted) {
+                    if (photo != null && !message.deleted) {
+                        message.reply?.let { quote ->
+                            Box(Modifier.padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = 4.dp)) {
+                                QuoteBlock(quote, theirName, mine, onClick = { onQuoteTap(quote) })
+                            }
+                        }
+                        PhotoInBubble(
+                            photo,
+                            photoFile,
+                            sending = mine && message.status == TextMessage.Status.SENDING,
+                            onOpen = onOpenPhoto,
+                        )
+                        if (message.text.isNotBlank()) {
+                            Text(
+                                message.text,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = textColor,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            )
+                        }
+                    } else if (message.deleted) {
                         Text(
                             if (mine) "You deleted this message" else "This message was deleted",
                             style = MaterialTheme.typography.bodyLarge,
@@ -655,13 +750,15 @@ private fun MessageBubble(
                                 onReply()
                             },
                         )
-                        DropdownMenuItem(
-                            text = { Text("Copy") },
-                            onClick = {
-                                menu = false
-                                context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Message", message.text))
-                            },
-                        )
+                        if (message.text.isNotBlank()) {
+                            DropdownMenuItem(
+                                text = { Text("Copy") },
+                                onClick = {
+                                    menu = false
+                                    context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Message", message.text))
+                                },
+                            )
+                        }
                     }
                     DropdownMenuItem(
                         text = { Text("Delete") },

@@ -4,6 +4,7 @@ import io.github.nomskis.earshot.call.Ids
 import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.signaling.ClientMessage
 import io.github.nomskis.earshot.signaling.ServerMessage
+import io.github.nomskis.earshot.signaling.WirePhoto
 import io.github.nomskis.earshot.signaling.WireReply
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -13,6 +14,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Base64
 
 /**
  * Chat with contacts, in a call or not. Messages travel through the server on the same
@@ -40,11 +43,28 @@ class Messenger(
     private val now: () -> Long = System::currentTimeMillis,
     /** Where the files are read and written. */
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** Where pictures are kept ([Photos]). */
+    private val photos: PhotoFiles = NoPhotos,
 ) {
     /** Where conversations are kept. */
     interface Store {
         fun loadAll(): Map<String, Conversation>
         fun save(conversation: Conversation)
+    }
+
+    /** Where pictures are kept, by file name. */
+    interface PhotoFiles {
+        fun read(name: String): ByteArray?
+
+        /** Keeps [bytes] (a JPEG); its new file's name, or null if it couldn't. */
+        fun save(bytes: ByteArray): String?
+        fun delete(names: Collection<String>)
+    }
+
+    private object NoPhotos : PhotoFiles {
+        override fun read(name: String): ByteArray? = null
+        override fun save(bytes: ByteArray): String? = null
+        override fun delete(names: Collection<String>) = Unit
     }
 
     private val _conversations = MutableStateFlow<Map<String, Conversation>>(emptyMap())
@@ -68,6 +88,14 @@ class Messenger(
         if (body.isEmpty()) return
         val id = Ids.random(12, "m")
         change(address) { it.sending(id, body, now(), reply) }
+        val message = _conversations.value[address]?.messages?.lastOrNull { it.mine && it.id == id } ?: return
+        scope.launch { transmit(address, message) }
+    }
+
+    /** A picture ([Photos.prepare] made it ready), with [caption] as its words. */
+    fun sendPhoto(address: String, photo: Photo, caption: String = "", reply: Quote? = null) {
+        val id = Ids.random(12, "m")
+        change(address) { it.sending(id, caption.trim().take(Conversation.MAX_TEXT), now(), reply, photo) }
         val message = _conversations.value[address]?.messages?.lastOrNull { it.mine && it.id == id } ?: return
         scope.launch { transmit(address, message) }
     }
@@ -138,14 +166,18 @@ class Messenger(
             return
         }
         val text = message.text.trim().take(Conversation.MAX_TEXT)
-        if (text.isEmpty()) return
+        if (text.isEmpty() && message.photo == null) return
+        // A picture sent again after a reconnect isn't saved twice.
+        if (_conversations.value[address]?.hasTheirs(message.id) == true) return
+        val photo = message.photo?.let { keep(it) }
+        if (text.isEmpty() && photo == null) return
         val known = contact(address)
         if (known == null) saveContact(Contact(message.from.name.ifBlank { "Someone" }, address, 0))
         val at = now()
         val before = _conversations.value[address]
         // "you" in their reply is us.
-        val reply = message.reply?.let { Quote(it.id, mine = it.sender == "you", text = it.text.take(Conversation.MAX_QUOTE)) }
-        change(address) { it.received(message.id, text, at, reply) }
+        val reply = message.reply?.let { Quote(it.id, mine = it.sender == "you", text = it.text.take(Conversation.MAX_QUOTE), photo = it.photo == true) }
+        change(address) { it.received(message.id, text, at, reply, photo) }
         val after = _conversations.value[address] ?: return
         val isNew = (before?.messages?.size ?: 0) != after.messages.size
         if (!isNew) return
@@ -167,9 +199,20 @@ class Messenger(
         }
     }
 
+    /** Their picture, kept here; null if it isn't one. */
+    private suspend fun keep(wire: WirePhoto): Photo? = withContext(io) {
+        val bytes = runCatching { Base64.getDecoder().decode(wire.data) }.getOrNull() ?: return@withContext null
+        val name = photos.save(bytes) ?: return@withContext null
+        Photo(name, wire.width, wire.height)
+    }
+
     private suspend fun transmit(address: String, message: TextMessage) {
-        val reply = message.reply?.let { WireReply(it.id, sender = if (it.mine) "me" else "you", text = it.text) }
-        send(ClientMessage.Message(to = address, id = message.id, text = message.text, name = myName(), reply = reply))
+        val reply = message.reply?.let { WireReply(it.id, sender = if (it.mine) "me" else "you", text = it.text, photo = it.photo.takeIf { p -> p }) }
+        val photo = message.photo?.let { photo ->
+            val data = withContext(io) { photos.read(photo.file)?.let { Base64.getEncoder().encodeToString(it) } } ?: return
+            WirePhoto(data, type = "image/jpeg", width = photo.width, height = photo.height)
+        }
+        send(ClientMessage.Message(to = address, id = message.id, text = message.text, name = myName(), reply = reply, photo = photo))
     }
 
     private suspend fun transmitUnsend(address: String, id: String) {
@@ -178,13 +221,20 @@ class Messenger(
 
     private fun change(address: String, transform: (Conversation) -> Conversation) {
         var saved: Conversation? = null
+        var dropped: Set<String> = emptySet()
         _conversations.update { all ->
             val before = all[address] ?: Conversation(address)
             val after = transform(before)
             if (after == before) return@update all
             saved = after
+            // Pictures no message uses any more (deleted, withdrawn, cleared, the oldest let go).
+            dropped = before.photoFiles - after.photoFiles
             all + (address to after)
         }
         saved?.let { conversation -> scope.launch(io) { store.save(conversation) } }
+        if (dropped.isNotEmpty()) {
+            val gone = dropped
+            scope.launch(io) { photos.delete(gone) }
+        }
     }
 }

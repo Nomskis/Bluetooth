@@ -22,6 +22,14 @@ class MessengerTest {
     private val newContacts = mutableListOf<Contact>()
     private val blocked = mutableSetOf<String>()
     private var clock = 1_000L
+    private val files = mutableMapOf<String, ByteArray>()
+    private val photoFiles = object : Messenger.PhotoFiles {
+        override fun read(name: String) = files[name]
+        override fun save(bytes: ByteArray): String = "p${files.size + 1}.jpg".also { files[it] = bytes }
+        override fun delete(names: Collection<String>) {
+            names.forEach(files::remove)
+        }
+    }
 
     private val store = object : Messenger.Store {
         override fun loadAll() = saved.toMap()
@@ -43,6 +51,7 @@ class MessengerTest {
             notify = { name, address, _ -> notified += name to address },
             now = { clock },
             io = dispatcher,
+            photos = photoFiles,
         )
     }
 
@@ -228,5 +237,45 @@ class MessengerTest {
         assertTrue(message.deleted)
         assertEquals("", message.text)
         assertEquals(0, m.conversations.value.getValue(sam).unread)
+    }
+
+    @Test
+    fun aPictureGoesAsItsFileWithItsWordsAndIsKept() {
+        val m = messenger()
+        files["mine.jpg"] = byteArrayOf(1, 2, 3)
+        m.sendPhoto(sam, Photo("mine.jpg", 1600, 1200), caption = " The view ")
+        val out = sent.single() as ClientMessage.Message
+        assertEquals("The view", out.text)
+        assertEquals(io.github.nomskis.earshot.signaling.WirePhoto("AQID", "image/jpeg", 1600, 1200), out.photo)
+        assertEquals("Photo: The view", m.conversations.value.getValue(sam).messages.single().summary)
+        // It goes again after a reconnect, file and all.
+        sent.clear()
+        m.onServerMessage(ServerMessage.Listening("our-address"))
+        assertEquals("AQID", (sent.single() as ClientMessage.Message).photo?.data)
+    }
+
+    @Test
+    fun theirPictureIsKeptOnceAndLetGoWithItsMessage() {
+        val m = messenger()
+        val photo = io.github.nomskis.earshot.signaling.WirePhoto("AQID", "image/jpeg", 1200, 1600)
+        val message = ServerMessage.Message(id = "m-them-0001", from = Caller("Sam", sam), photo = photo)
+        m.onServerMessage(message)
+        m.onServerMessage(message)
+        assertEquals(1, files.size)
+        val kept = m.conversations.value.getValue(sam).messages.single()
+        assertEquals(Photo("p1.jpg", 1200, 1600), kept.photo)
+        assertEquals(listOf<Byte>(1, 2, 3), files.getValue("p1.jpg").toList())
+        // Deleted for everyone by them: the picture goes too.
+        m.onServerMessage(ServerMessage.Message(id = "x-m-them-0001", from = Caller("Sam", sam), unsend = "m-them-0001"))
+        assertTrue(files.isEmpty())
+    }
+
+    @Test
+    fun clearingAChatLetsItsPicturesGo() {
+        val m = messenger()
+        files["mine.jpg"] = byteArrayOf(1)
+        m.sendPhoto(sam, Photo("mine.jpg", 10, 10))
+        m.clear(sam)
+        assertTrue(files.isEmpty())
     }
 }

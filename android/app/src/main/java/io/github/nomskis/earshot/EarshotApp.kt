@@ -11,6 +11,7 @@ import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.earbuds.EarbudControl
 import io.github.nomskis.earshot.messages.MessageNotifications
 import io.github.nomskis.earshot.messages.MessageStore
+import io.github.nomskis.earshot.messages.Photos
 import io.github.nomskis.earshot.messages.Messenger
 import io.github.nomskis.earshot.settings.SettingsRepository
 import io.github.nomskis.earshot.turbo.TurboBoost
@@ -64,6 +65,8 @@ class AppGraph(context: Context) {
     val callBack = MutableStateFlow<CallBackRequest?>(null)
     /** Newer builds, installed over this one. */
     val updater = AppUpdater(context, http)
+    /** Pictures in chats. */
+    val photos = Photos(context)
     /** Chat with contacts, in a call or not, over the inbox connection. */
     val messenger = Messenger(
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
@@ -75,6 +78,7 @@ class AppGraph(context: Context) {
         isBlocked = settings::isBlocked,
         notify = { name, address, conversation -> MessageNotifications.show(context, name, address, conversation) },
         cancelNotification = { address -> MessageNotifications.cancel(context, address) },
+        photos = photos,
     ).also { messenger ->
         callInbox.onChat = messenger::onServerMessage
         callManager.onCallChat = { address, message ->

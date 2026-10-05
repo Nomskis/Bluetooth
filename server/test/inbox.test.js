@@ -282,6 +282,49 @@ describe('chat messages', () => {
     assert.throws(() => parseClientMessage(JSON.stringify({ type: 'message', to: SAM, id: 'x-msg-00000002' })));
   });
 
+  it('carry a picture, with or without words, and check it', () => {
+    const inbox = new Inbox({ timers: fakeTimers(), now: () => 1000 });
+    const salma = conn('salma');
+    const sam = conn('sam');
+    inbox.listen(salma, SALMA_KEY);
+    inbox.listen(sam, SAM_KEY);
+    const photo = { data: Buffer.from('not really a jpeg').toString('base64'), type: 'image/jpeg', width: 1600, height: 1200 };
+    const parsed = parseClientMessage(JSON.stringify({ type: 'message', to: SAM, id: 'msg-00000009', name: 'Salma', photo }));
+    assert.equal(parsed.text, '');
+    inbox.message(salma, parsed);
+    assert.deepEqual(sam.last('message').photo, photo);
+    assert.equal(sam.last('message').text, '');
+    const bad = (extra) => () => parseClientMessage(JSON.stringify({ type: 'message', to: SAM, id: 'msg-00000010', photo: { ...photo, ...extra } }));
+    assert.throws(bad({ data: 'not base64!' }));
+    assert.throws(bad({ type: 'image/gif' }));
+    assert.throws(bad({ width: 0 }));
+    assert.throws(bad({ data: 'A'.repeat(900_004) }));
+    // Words alone still need some.
+    assert.throws(() => parseClientMessage(JSON.stringify({ type: 'message', to: SAM, id: 'msg-00000011', text: '  ' })));
+  });
+
+  it('refuse more than a phone can be owed, and count what is delivered or withdrawn', () => {
+    const inbox = new Inbox({ timers: fakeTimers() });
+    const salma = conn('salma');
+    inbox.listen(salma, SALMA_KEY);
+    const big = { data: 'A'.repeat(880_000), type: 'image/jpeg', width: 1600, height: 1200 };
+    for (let i = 0; i < 28; i++) inbox.message(salma, { type: 'message', to: SAM, id: `msg-big-${String(i).padStart(4, '0')}`, text: '', name: 'Salma', photo: big });
+    // 24 MB waiting for Sam's phone: the 29th picture doesn't fit.
+    assert.equal(inbox.waitingMessages(SAM), 28);
+    assert.equal(salma.last('error'), undefined);
+    inbox.message(salma, { type: 'message', to: SAM, id: 'msg-big-0028', text: '', name: 'Salma', photo: big });
+    assert.equal(salma.last('error').code, 'inbox-full');
+    assert.equal(inbox.waitingMessages(SAM), 28);
+    // Withdrawing one, or Sam's phone taking one, makes room again.
+    inbox.message(salma, { type: 'message', to: SAM, id: 'x-msg-big-0000', name: 'Salma', unsend: 'msg-big-0000' });
+    const sam = conn('sam');
+    inbox.listen(sam, SAM_KEY);
+    for (let i = 1; i < 28; i++) inbox.messageAck(sam, { type: 'message-ack', to: SALMA, id: `msg-big-${String(i).padStart(4, '0')}` });
+    inbox.messageAck(sam, { type: 'message-ack', to: SALMA, id: 'x-msg-big-0000' });
+    assert.equal(inbox.waitingMessages(SAM), 0);
+    assert.equal(inbox.waitingBytes, 0);
+  });
+
   it('tell the sender when they have been read', () => {
     const inbox = new Inbox({ timers: fakeTimers() });
     const salma = conn('salma');
