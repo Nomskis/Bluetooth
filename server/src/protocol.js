@@ -202,7 +202,17 @@ export function parseClientMessage(raw) {
       if (msg.id !== undefined && (typeof msg.id !== 'string' || !PUBLISH_ID_PATTERN.test(msg.id))) {
         throw new ProtocolError(ErrorCode.BAD_REQUEST, 'screen-publish "id" must be a short name');
       }
-      return { type: 'screen-publish', sdp: msg.sdp, mid: msg.mid, ...(msg.id !== undefined ? { id: msg.id } : {}) };
+      // The shared app's sound, when there is some, on transceiver `audioMid`.
+      if (msg.audioMid !== undefined && (typeof msg.audioMid !== 'string' || !MID_PATTERN.test(msg.audioMid) || msg.audioMid === msg.mid)) {
+        throw new ProtocolError(ErrorCode.BAD_REQUEST, 'screen-publish "audioMid" must be the sound\'s own mid');
+      }
+      return {
+        type: 'screen-publish',
+        sdp: msg.sdp,
+        mid: msg.mid,
+        ...(msg.audioMid !== undefined ? { audioMid: msg.audioMid } : {}),
+        ...(msg.id !== undefined ? { id: msg.id } : {}),
+      };
     }
     case 'screen-answer': {
       if (typeof msg.sdp !== 'string' || msg.sdp.length === 0 || msg.sdp.length > MAX_SDP_LENGTH) {

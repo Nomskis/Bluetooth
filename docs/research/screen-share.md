@@ -79,8 +79,9 @@ there; Cloudflare's is free at this scale and closer to both people than any one
 
 Checked in the AAR: `VideoSource.setIsScreencast`, `RtpParameters.DegradationPreference`,
 `RtpTransceiver.setCodecPreferences`, `LibaomAv1Encoder` (software AV1) and `Dav1dDecoder`,
-VP9, `JavaAudioDeviceModule.setAudioRecordDataCallback` (could mix in a shared app's sound
-later). The AV1 encoder, for a screen, tunes for screen content and turns on palette mode
+VP9. `JavaAudioDeviceModule.Builder.setAudioRecordDataCallback` is there too, but in
+1.3.10 the builder stores it and never hands it to the recorder (checked in the bytecode),
+so it can't mix in a shared app's sound; see "The shared app's sound" below. The AV1 encoder, for a screen, tunes for screen content and turns on palette mode
 ([source][aom]). Screenshare probing (keeping the bandwidth estimate up while a still screen
 sends little) is on by default ([alr_experiment.cc][alr]).
 
@@ -105,9 +106,31 @@ sends little) is on by default ([alr_experiment.cc][alr]).
 7. **Usage tied to calls**: the server only talks to Cloudflare for two people in the
    same call, so the free allowance can't be used by strangers.
 
-Later, if wanted: the shared app's sound (for watching a video together), a pointer the
-viewer can tap to show something on the sharer's screen, and a direct fallback when no
-Cloudflare app is set up.
+## The shared app's sound
+
+For watching a video together. Android 10 added playback capture
+(`AudioPlaybackCaptureConfiguration`, from the same MediaProjection consent): the sound of
+apps that allow it (media, games, and unlabelled), with Earshot's own left out
+(`excludeUid`), since in Hi-Fi mode the call plays as media and the other person's voice
+would otherwise go back to them. Android's own screen recorder records this next to the
+microphone, so the two don't fight.
+
+WebRTC on Android only records from a microphone, so the share has its own factory and
+audio device next to the call's. Its recorder starts muted; when WebRTC starts it, the
+`AudioRecord` its recording thread reads from (`WebRtcAudioRecord.audioRecord`, read before
+every buffer) is swapped for the playback capture, on that thread, before the first read,
+and only then unmuted. If anything about the swap fails, the share goes without sound and
+the microphone is never heard through it. The library's keep rules keep both names in
+minified builds.
+
+It's stereo Opus at 128 kbps with no voice processing. WebRTC encodes and decodes Opus in
+mono unless the SDP says `stereo=1`, so the sharer adds it to Cloudflare's answer and the
+viewer to its own answer. On the viewer's phone it plays with the call, so the call's echo
+canceller knows about it. On the sharer's loudspeaker the video's sound also reaches their
+microphone; earbuds avoid that.
+
+Later, if wanted: a pointer the viewer can tap to show something on the sharer's screen,
+and a direct fallback when no Cloudflare app is set up.
 
 [engine]: https://webrtc.googlesource.com/src/+/refs/heads/main/media/engine/webrtc_video_engine.cc
 [meta-av1]: https://engineering.fb.com/2026/06/22/video-engineering/adopting-av1-for-real-time-communication-rtc-meta/

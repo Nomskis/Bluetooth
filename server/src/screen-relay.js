@@ -15,6 +15,8 @@ const API_BASE = 'https://rtc.live.cloudflare.com/v1/apps/';
 const FETCH_TIMEOUT_MS = 8000;
 /** Every share is published under this name in its own session. */
 export const TRACK_NAME = 'screen';
+/** And the shared app's sound, when it has some. */
+export const AUDIO_TRACK_NAME = 'screen-audio';
 
 export class ScreenRelayError extends Error {}
 
@@ -53,36 +55,37 @@ export function createScreenRelay({ appId, appSecret }, { fetchImpl = globalThis
     return sessionId;
   }
 
-  function trackError(json) {
-    const track = json.tracks?.[0];
-    if (track?.errorCode) throw new ScreenRelayError(track.errorDescription || track.errorCode);
-    return track;
+  function trackErrors(json) {
+    const failed = json.tracks?.find((track) => track?.errorCode);
+    if (failed) throw new ScreenRelayError(failed.errorDescription || failed.errorCode);
   }
 
   return {
     /**
-     * The sharer's offer, with the screen on transceiver [mid]: Cloudflare answers.
-     * Returns where viewers find it, and the answer for the sharer.
+     * The sharer's offer, with the screen on transceiver [mid] and its sound, if any, on
+     * [audioMid]: Cloudflare answers. Returns where viewers find it, and the answer for the sharer.
      */
-    async publish(offerSdp, mid) {
+    async publish(offerSdp, mid, audioMid) {
       const sessionId = await newSession();
+      const tracks = [{ location: 'local', mid, trackName: TRACK_NAME }];
+      if (audioMid) tracks.push({ location: 'local', mid: audioMid, trackName: AUDIO_TRACK_NAME });
       const json = await call('POST', `/sessions/${sessionId}/tracks/new`, {
         sessionDescription: { type: 'offer', sdp: offerSdp },
-        tracks: [{ location: 'local', mid, trackName: TRACK_NAME }],
+        tracks,
       });
-      trackError(json);
+      trackErrors(json);
       const sdp = json.sessionDescription?.sdp;
       if (typeof sdp !== 'string') throw new ScreenRelayError('Cloudflare gave no answer');
-      return { sessionId, trackName: TRACK_NAME, sdp };
+      return { sessionId, trackName: TRACK_NAME, ...(audioMid ? { audioTrackName: AUDIO_TRACK_NAME } : {}), sdp };
     },
 
-    /** A new session for a viewer, pulling [publisher]'s screen: Cloudflare makes the offer. */
+    /** A new session for a viewer, pulling [publisher]'s screen (and sound): Cloudflare makes the offer. */
     async pull(publisher) {
       const sessionId = await newSession();
-      const json = await call('POST', `/sessions/${sessionId}/tracks/new`, {
-        tracks: [{ location: 'remote', sessionId: publisher.sessionId, trackName: publisher.trackName }],
-      });
-      trackError(json);
+      const tracks = [{ location: 'remote', sessionId: publisher.sessionId, trackName: publisher.trackName }];
+      if (publisher.audioTrackName) tracks.push({ location: 'remote', sessionId: publisher.sessionId, trackName: publisher.audioTrackName });
+      const json = await call('POST', `/sessions/${sessionId}/tracks/new`, { tracks });
+      trackErrors(json);
       const sdp = json.sessionDescription?.sdp;
       if (!json.requiresImmediateRenegotiation || typeof sdp !== 'string') {
         throw new ScreenRelayError('Cloudflare gave no offer for the screen');

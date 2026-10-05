@@ -99,4 +99,26 @@ class ScreenTuningTest {
         assertEquals(ScreenPace.Counters(125_000.0, 140.0, 3.0, 1.0), CallStats.inboundVideoCounters(report))
         assertNull(CallStats.inboundVideoCounters(emptyMap()))
     }
+
+    @Test
+    fun soundAsksForStereoMusicInTheOpusLineOnly() {
+        val sdp = listOf(
+            "v=0",
+            "m=audio 9 UDP/TLS/RTP/SAVPF 111 63",
+            "a=rtpmap:111 opus/48000/2",
+            "a=fmtp:111 minptime=10;useinbandfec=1;stereo=0",
+            "a=rtpmap:63 red/48000/2",
+            "a=fmtp:63 111/111",
+            "",
+        ).joinToString("\r\n")
+        val out = ScreenTuning.stereoOpus(sdp).split("\r\n")
+        assertEquals("a=fmtp:111 minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=128000", out[3])
+        assertEquals("a=fmtp:63 111/111", out[5])
+        // An Opus line without parameters gets them; a description without Opus is left as it was.
+        assertEquals(
+            listOf("a=rtpmap:96 opus/48000/2", "a=fmtp:96 stereo=1;sprop-stereo=1;maxaveragebitrate=128000", ""),
+            ScreenTuning.stereoOpus("a=rtpmap:96 opus/48000/2\n").split("\n"),
+        )
+        assertEquals("m=video 9 RTP 96\r\n", ScreenTuning.stereoOpus("m=video 9 RTP 96\r\n"))
+    }
 }

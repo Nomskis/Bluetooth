@@ -125,11 +125,12 @@ sealed interface ClientMessage {
 
     /**
      * Our screen's offer, for the server to publish through Cloudflare; the screen is on
-     * transceiver [mid]. [id] names this attempt; its answer or error comes back with it.
+     * transceiver [mid], and the shared app's sound, when there is some, on [audioMid]. [id]
+     * names this attempt; its answer or error comes back with it.
      */
     @Serializable
     @SerialName("screen-publish")
-    data class ScreenPublish(val sdp: String, val mid: String, val id: String? = null) : ClientMessage
+    data class ScreenPublish(val sdp: String, val mid: String, val audioMid: String? = null, val id: String? = null) : ClientMessage
 
     /** Our screen's connection to Cloudflare is up: the room is told about the share now. */
     @Serializable

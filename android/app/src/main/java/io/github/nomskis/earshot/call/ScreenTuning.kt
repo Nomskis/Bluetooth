@@ -58,6 +58,37 @@ object ScreenTuning {
         else -> KEEPALIVE_EVERY_MS
     }
 
+    /** The shared app's sound: stereo music at this rate (Opus is transparent for most ears here). */
+    const val SOUND_KBPS = 128
+
+    /**
+     * [sdp] with every Opus codec asking for stereo at [kbps]: on Cloudflare's answer, so the
+     * sharer encodes the shared app's sound in stereo; on the viewer's answer, so it decodes it
+     * in stereo (WebRTC decodes Opus in mono unless its own description asks for stereo).
+     */
+    fun stereoOpus(sdp: String, kbps: Int = SOUND_KBPS): String {
+        val eol = if ("\r\n" in sdp) "\r\n" else "\n"
+        val lines = sdp.split(eol).toMutableList()
+        val opus = lines.mapNotNull { OPUS_RTPMAP.matchEntire(it)?.groupValues?.get(1) }.toSet()
+        if (opus.isEmpty()) return sdp
+        val wanted = linkedMapOf("stereo" to "1", "sprop-stereo" to "1", "maxaveragebitrate" to (kbps * 1000).toString())
+        for (pt in opus) {
+            val fmtp = lines.indexOfFirst { it.startsWith("a=fmtp:$pt ") }
+            if (fmtp >= 0) {
+                val params = lines[fmtp].substringAfter(' ').split(';').map { it.trim() }.filter { it.isNotEmpty() }
+                    .associate { it.substringBefore('=') to it.substringAfter('=', "") }.toMutableMap()
+                params.putAll(wanted)
+                lines[fmtp] = "a=fmtp:$pt " + params.entries.joinToString(";") { (k, v) -> "$k=$v" }
+            } else {
+                val rtpmap = lines.indexOfFirst { it.startsWith("a=rtpmap:$pt ") }
+                lines.add(rtpmap + 1, "a=fmtp:$pt " + wanted.entries.joinToString(";") { (k, v) -> "$k=$v" })
+            }
+        }
+        return lines.joinToString(eol)
+    }
+
+    private val OPUS_RTPMAP = Regex("a=rtpmap:(\\d+) opus/48000/2", RegexOption.IGNORE_CASE)
+
     /** A still screen for this long gets sharpened. */
     const val SETTLE_MS = 300L
     /** How long to sharpen for, and how often to send the frame while doing it. */

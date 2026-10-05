@@ -1431,24 +1431,34 @@ class CallSession(
         val cellular = _state.value.callPath == CallPath.CELLULAR
         val av1 = Capabilities.SCREEN_AV1 in peer.client.capabilities && engine.encodesAv1() &&
             ScreenTuning.encodesAv1(Build.VERSION.SDK_INT, Runtime.getRuntime().availableProcessors())
-        val share = ScreenShare(
-            context = appContext,
-            engine = engine,
-            eglContext = eglBase.eglBaseContext,
-            projection = projection,
-            iceServers = { iceServers },
-            mobileDataNextToWifi = mobileDataUse() != null,
-            av1 = av1,
-            maxKbps = if (cellular) ScreenTuning.MAX_KBPS_CELLULAR else ScreenTuning.MAX_KBPS_WIFI,
-            maxShortSide = if (cellular) ScreenTuning.MAX_SHORT_SIDE_CELLULAR else ScreenTuning.MAX_SHORT_SIDE_WIFI,
-            send = { signaling.send(it) },
-            post = { block -> post(Event.Run(block)) },
-            scope = scope,
-            onLive = { live -> _state.update { it.copy(screenLive = live) } },
-            onEnded = { why -> screenShareEnded(why) },
-        )
+        var media: ScreenMedia? = null
+        val share = try {
+            ScreenShare(
+                context = appContext,
+                engine = engine,
+                eglContext = eglBase.eglBaseContext,
+                projection = projection,
+                media = ScreenMedia(appContext, eglBase.eglBaseContext, projection).also { media = it },
+                iceServers = { iceServers },
+                mobileDataNextToWifi = mobileDataUse() != null,
+                av1 = av1,
+                maxKbps = if (cellular) ScreenTuning.MAX_KBPS_CELLULAR else ScreenTuning.MAX_KBPS_WIFI,
+                maxShortSide = if (cellular) ScreenTuning.MAX_SHORT_SIDE_CELLULAR else ScreenTuning.MAX_SHORT_SIDE_WIFI,
+                send = { signaling.send(it) },
+                post = { block -> post(Event.Run(block)) },
+                scope = scope,
+                onLive = { live -> _state.update { it.copy(screenLive = live) } },
+                onEnded = { why -> screenShareEnded(why) },
+            )
+        } catch (e: RuntimeException) {
+            Log.e(TAG, "Could not set up sharing", e)
+            media?.release()
+            projection.stop()
+            showScreenNote("Couldn't start sharing")
+            return
+        }
         screenShare = share
-        Log.i(TAG, "Sharing our screen (${if (av1) "AV1" else "VP9/VP8"}, ${if (cellular) "mobile data" else "Wi-Fi"})")
+        Log.i(TAG, "Sharing our screen (${if (av1) "AV1" else "VP9/VP8"}, ${if (cellular) "mobile data" else "Wi-Fi"}, ${if (media?.hasSound == true) "with" else "without"} sound)")
         _state.update { it.copy(sharingScreen = true, screenLive = false, screenNote = null) }
         applyCamera()
         sendMediaState()

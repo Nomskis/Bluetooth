@@ -296,7 +296,7 @@ share when the server has the feature and the other person can watch.
 
 | Client → server | Fields | Meaning |
 | --- | --- | --- |
-| `screen-publish` | `sdp` (offer), `mid`, `id?` | Share our screen; the screen is the sendonly video on transceiver `mid`. Sent again with a new offer to replace a connection that failed, or after a rejoin that didn't list our share. `id` names this attempt and comes back with its answer or error. |
+| `screen-publish` | `sdp` (offer), `mid`, `audioMid?`, `id?` | Share our screen; the screen is the sendonly video on transceiver `mid`, and the shared app's sound, when there is some, the sendonly audio on `audioMid`. Sent again with a new offer to replace a connection that failed, or after a rejoin that didn't list our share. `id` names this attempt and comes back with its answer or error. |
 | `screen-live` | | Our connection to Cloudflare is up: the room is told about the share now. |
 | `screen-stop` | | We stopped sharing. |
 | `screen-watch` | | We'd like to watch the screen being shared in our room. |
@@ -307,7 +307,7 @@ share when the server has the feature and the other person can watch.
 | `screen-published` | `sdp`, `id?` | Cloudflare's answer to our offer (`id` as we sent it); send `screen-live` once ICE connects. |
 | `screen-started` | `from` | Someone's share is up (new, or published again); send `screen-watch` to see it. |
 | `screen-stopped` | `from` | The share is over (also when the sharer leaves the room). |
-| `screen-offer` | `watch`, `sdp` | An offer from Cloudflare for the screen; answer it with `screen-answer`. |
+| `screen-offer` | `watch`, `sdp` | An offer from Cloudflare for the screen (and its sound); answer it with `screen-answer`. |
 | `screen-error` | `code`, `message`, `id?` | `unavailable` (no Cloudflare app here), `in-use` (the other person is sharing), `relay` (Cloudflare unreachable; try again), `busy` (asking too often), `stale` (an answer for an old offer). |
 
 One person shares at a time. The sharer marks its source as a screen, keeps
@@ -315,7 +315,8 @@ the resolution when bandwidth runs short, and sends the last frame again while
 the screen is still (Cloudflare drops a track that sends nothing for 30
 seconds). The viewer measures what arrives and asks the sharer for at most
 `screenKbps` in its `media-state` when its link can't keep up; absent means no
-limit. Examples live in [`protocol/fixtures`](../protocol/fixtures)
+limit. The shared app's sound (Android 10 and later, from apps that allow it,
+never the call's own) is stereo Opus; both ends ask for stereo in their SDP. Examples live in [`protocol/fixtures`](../protocol/fixtures)
 (`screen-*.json`, `joined-screen.json`).
 
 ## Versioning

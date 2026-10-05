@@ -49,7 +49,7 @@ export class ScreenShares {
    * sharer's [id] for this attempt so a late answer to an earlier one can be told apart.
    * The room hears about it at `screen-live`.
    */
-  async publish(conn, { sdp, mid, id }) {
+  async publish(conn, { sdp, mid, audioMid, id }) {
     const member = this.#member(conn);
     if (!member || !this.#ready(conn, member, id)) return;
     const code = member.room.code;
@@ -60,7 +60,7 @@ export class ScreenShares {
     }
     let published;
     try {
-      published = await this.relay.publish(sdp, mid);
+      published = await this.relay.publish(sdp, mid, audioMid);
     } catch (err) {
       this.log.warn('screen publish failed:', err.message);
       fail(conn, 'relay', "Couldn't reach the screen relay. Try again.", id);
@@ -74,7 +74,13 @@ export class ScreenShares {
       return;
     }
     // A share published again (its connection dropped) stays out of sight until it's up.
-    this.shares.set(code, { from: member.peerId, sessionId: published.sessionId, trackName: published.trackName, live: false });
+    this.shares.set(code, {
+      from: member.peerId,
+      sessionId: published.sessionId,
+      trackName: published.trackName,
+      ...(published.audioTrackName ? { audioTrackName: published.audioTrackName } : {}),
+      live: false,
+    });
     conn.send({ type: 'screen-published', sdp: published.sdp, ...(id !== undefined ? { id } : {}) });
   }
 
