@@ -355,6 +355,7 @@ function renderBadges(media) {
 // --- Their shared screen ---------------------------------------------------------
 
 const screenZoom = zoomable(ui.screenView, ui.screenVideo);
+pointable(ui.screenView, ui.screenVideo, (x, y) => engine?.point(x, y));
 
 function showScreen(stream) {
   if (!stream) {
@@ -373,6 +374,64 @@ function showScreen(stream) {
     ui.screenVideo.muted = true;
     ui.screenVideo.play().catch(() => {});
   });
+}
+
+/**
+ * Hold the mouse button or a finger still on the shared screen to point there: a ring shows
+ * here and on the sharer's phone. [onPoint] gets the spot, 0 to 1 across and down the picture.
+ */
+function pointable(container, video, onPoint) {
+  const HOLD_MS = 500;
+  const SLOP_PX = 10;
+  let hold = null;
+  const cancel = () => {
+    clearTimeout(hold?.timer);
+    hold = null;
+  };
+  container.addEventListener('pointerdown', (e) => {
+    // A second finger is a pinch, not a point.
+    if (hold) return cancel();
+    const start = { x: e.clientX, y: e.clientY };
+    hold = {
+      start,
+      timer: setTimeout(() => {
+        hold = null;
+        const spot = pictureAt(video, start.x, start.y);
+        if (!spot) return;
+        ring(container, start.x, start.y);
+        onPoint(spot[0], spot[1]);
+      }, HOLD_MS),
+    };
+  });
+  container.addEventListener('pointermove', (e) => {
+    if (hold && Math.hypot(e.clientX - hold.start.x, e.clientY - hold.start.y) > SLOP_PX) cancel();
+  });
+  container.addEventListener('pointerup', cancel);
+  container.addEventListener('pointercancel', cancel);
+  // A held finger would otherwise open the browser's menu.
+  container.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
+/** Where ([clientX], [clientY]) lands on the video's picture (fitted, and zoomed by its transform), 0 to 1; null off it. */
+function pictureAt(video, clientX, clientY) {
+  const box = video.getBoundingClientRect();
+  if (!video.videoWidth || !video.videoHeight || !box.width || !box.height) return null;
+  const fit = Math.min(box.width / video.videoWidth, box.height / video.videoHeight);
+  const w = video.videoWidth * fit;
+  const h = video.videoHeight * fit;
+  const x = (clientX - box.left - (box.width - w) / 2) / w;
+  const y = (clientY - box.top - (box.height - h) / 2) / h;
+  return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? [x, y] : null;
+}
+
+function ring(container, clientX, clientY) {
+  const box = container.getBoundingClientRect();
+  const el = document.createElement('span');
+  el.className = 'point-ring';
+  el.style.left = `${clientX - box.left}px`;
+  el.style.top = `${clientY - box.top}px`;
+  el.addEventListener('animationend', () => el.remove());
+  container.append(el);
 }
 
 /**

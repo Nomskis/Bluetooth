@@ -129,8 +129,17 @@ viewer to its own answer. On the viewer's phone it plays with the call, so the c
 canceller knows about it. On the sharer's loudspeaker the video's sound also reaches their
 microphone; earbuds avoid that.
 
-Later, if wanted: a pointer the viewer can tap to show something on the sharer's screen,
-and a direct fallback when no Cloudflare app is set up.
+## Pointing
+
+The viewer holds a finger (or the mouse button) on the shared screen; a ring shows there
+and on the sharer's phone, over whatever app is in front, so both look at the same spot.
+The point travels as a `point` signal (0 to 1 across and down the picture, so zoom and
+screen sizes don't matter). Showing it over other apps needs Android's "Display over other
+apps"; the sharing banner offers it until it's allowed. The ring's window takes no touches
+and is at most 80% opaque, the most Android 12 and later let touches pass under, and it's
+only there while a ring is.
+
+Later, if wanted: a direct fallback when no Cloudflare app is set up.
 
 [engine]: https://webrtc.googlesource.com/src/+/refs/heads/main/media/engine/webrtc_video_engine.cc
 [meta-av1]: https://engineering.fb.com/2026/06/22/video-engineering/adopting-av1-for-real-time-communication-rtc-meta/

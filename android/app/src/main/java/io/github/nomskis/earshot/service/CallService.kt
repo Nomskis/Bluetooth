@@ -46,6 +46,7 @@ class CallService : LifecycleService() {
     /** Capturing the screen for a share: the service says so to Android while it lasts. */
     private var projecting = false
     private var projection: MediaProjection? = null
+    private val pointer by lazy { ScreenPointer(this) }
     private var lastInfo: NotificationInfo? = null
 
     override fun onCreate() {
@@ -70,6 +71,14 @@ class CallService : LifecycleService() {
                 }
                 coroutineScope {
                     launch { appGraph.settings.settings.collect { chatNotifier.quickReplies = it.quickReplies } }
+                    // Where they point on our shared screen, over whatever app is in front.
+                    launch {
+                        try {
+                            session.points.collect { pointer.show(it.x, it.y) }
+                        } finally {
+                            pointer.release()
+                        }
+                    }
                     launch { chatNotifier.follow(session, appGraph.callScreenVisible) }
                     // Only what the notification shows: the call state also changes several
                     // times a second (talking cue, delay readout), and re-posting on each

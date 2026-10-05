@@ -1,6 +1,7 @@
 package io.github.nomskis.earshot.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /** Zooming into a shared screen: the point under your fingers stays put, and it never slides off. */
@@ -45,5 +46,20 @@ class ScreenZoomTest {
     fun zoomStaysBetweenTheWholeScreenAndSixTimes() {
         assertEquals(ScreenZoom.MAX_SCALE, ScreenZoom().zoom(100f, 0f, 0f).scale)
         assertEquals(1f, ScreenZoom().zoom(0.2f, 0f, 0f).scale)
+    }
+
+    @Test
+    fun aHeldFingerLandsOnTheRightSpotOfTheSharedPicture() {
+        // A 1080 x 2400 phone screen fitted into a 1080 x 2000 view: 900 x 2000, 90 px in from each side.
+        fun at(zoom: ScreenZoom, x: Float, y: Float) = zoom.frameAt(x, y, 1080f, 2000f, 1080f, 2400f)
+        assertEquals(0.5f to 0.5f, at(ScreenZoom(), 540f, 1000f))
+        assertEquals(0f to 0f, at(ScreenZoom(), 90f, 0f))
+        // Beside the picture, or before the first frame: nowhere.
+        assertNull(at(ScreenZoom(), 50f, 500f))
+        assertNull(ScreenZoom().frameAt(540f, 1000f, 1080f, 2000f, 0f, 0f))
+        // Zoomed in twice about the centre: 450 px right of it is a quarter of the picture over.
+        assertEquals(0.75f to 0.5f, at(ScreenZoom(scale = 2f), 990f, 1000f))
+        // And moved 100 px right: the centre of the picture moved with it.
+        assertEquals(0.5f to 0.5f, at(ScreenZoom(scale = 2f, x = 100f), 640f, 1000f))
     }
 }

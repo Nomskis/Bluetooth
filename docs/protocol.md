@@ -198,6 +198,7 @@ a `4000` close.
 | `candidate` | `session`, `candidate: { candidate, sdpMid, sdpMLineIndex, usernameFragment? }` | both |
 | `request-offer` | `session` (may be null), `iceRestart?` | the answerer, when it needs a fresh offer |
 | `media-state` | `micMuted`, `cameraOff`, `audioMode?` (`hifi`, `headset`, `standard`), `inPocket?`, `weakConnection?`, `network?`, `uplink?`, `radioShared?`, `ringing?`, `screenKbps?` | both, after connecting and on every change |
+| `point` | `x`, `y` (0 to 1, across and down the shared picture) | the viewer, holding a finger on the sharer's screen; the sharer shows a ring there |
 
 `inPocket: true` (with `cameraOff: true`) means the camera paused itself
 because the phone's proximity sensor is covered, a pocket usually; show that
