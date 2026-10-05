@@ -41,6 +41,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -103,8 +104,8 @@ fun HomeScreen(
     recentCalls: List<CallRecord> = emptyList(),
     onRenameContact: ((Contact, String) -> Unit)? = null,
     onBlockContact: ((Contact) -> Unit)? = null,
-    /** "Call ended · 12:34", shown once. */
-    callEnded: String? = null,
+    /** "Call ended · 12:34", or why they didn't answer with Call again; shown once. */
+    callEnded: CallEndNote? = null,
     onCallEndedShown: () -> Unit = {},
     /** A call is going on (in the bar at the top): no new one starts from here. */
     inCall: Boolean = false,
@@ -135,17 +136,11 @@ fun HomeScreen(
         }
     }
     // Taken over here at once, so it's shown once even if the screen changes while it's up.
-    var endedNote by remember { mutableStateOf<String?>(null) }
+    var endedNote by remember { mutableStateOf<CallEndNote?>(null) }
     LaunchedEffect(callEnded) {
         callEnded?.let {
             endedNote = it
             onCallEndedShown()
-        }
-    }
-    LaunchedEffect(endedNote) {
-        endedNote?.let {
-            snackbar.showSnackbar(it)
-            endedNote = null
         }
     }
     LaunchedEffect(error, permissionError) {
@@ -202,6 +197,17 @@ fun HomeScreen(
         withPermissions(withVideo) { video ->
             onJoin(code, video)
             context.shareInvite(ServerUrls.inviteLink(base, code))
+        }
+    }
+
+    LaunchedEffect(endedNote) {
+        val note = endedNote ?: return@LaunchedEffect
+        val again = note.callAgain
+        val result = snackbar.showSnackbar(note.text, actionLabel = if (again != null) "Call again" else null, withDismissAction = again != null)
+        endedNote = null
+        if (result == SnackbarResult.ActionPerformed && again != null) {
+            // Their name as saved now, if they're a contact.
+            callContact(contacts.firstOrNull { it.address == again.address } ?: again, note.video)
         }
     }
 

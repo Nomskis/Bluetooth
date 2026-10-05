@@ -109,11 +109,15 @@ class CallingAppPartsTest {
     fun aCallYouTalkedInEndsWithItsLength() {
         val now = 10_000_000L
         val talked = CallRecord("Sam", sam, CallRecord.Direction.OUTGOING, CallRecord.Outcome.ANSWERED, video = false, atMillis = now - 80_000, durationSeconds = 75)
-        assertEquals("Call ended · 1:15", callEndedNote(talked, now))
-        // Didn't connect: the history says what happened.
-        assertEquals(null, callEndedNote(talked.copy(outcome = CallRecord.Outcome.MISSED, durationSeconds = 0), now))
+        assertEquals(CallEndNote("Call ended · 1:15"), callEndNote(talked, now))
+        // They didn't pick up: why, and Call again the same way.
+        val unanswered = talked.copy(outcome = CallRecord.Outcome.NO_ANSWER, durationSeconds = 0, video = true, atMillis = now - 60_000)
+        assertEquals(CallEndNote("No answer from Sam", io.github.nomskis.earshot.calls.Contact("Sam", sam), video = true), callEndNote(unanswered, now))
+        assertEquals("Sam declined", callEndNote(unanswered.copy(outcome = CallRecord.Outcome.DECLINED), now)?.text)
+        // A missed call of theirs: the history says it.
+        assertEquals(null, callEndNote(talked.copy(direction = CallRecord.Direction.INCOMING, outcome = CallRecord.Outcome.MISSED, durationSeconds = 0), now))
         // Not from just now.
-        assertEquals(null, callEndedNote(talked, now + 60 * 60_000))
+        assertEquals(null, callEndNote(talked, now + 60 * 60_000))
     }
 
     @Test

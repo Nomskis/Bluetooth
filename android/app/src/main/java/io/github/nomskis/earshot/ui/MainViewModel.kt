@@ -94,9 +94,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _callMinimized.value = false
     }
 
-    private val _callEnded = MutableStateFlow<String?>(null)
-    /** "Call ended · 12:34", for a moment after a call you talked in. */
-    val callEnded: StateFlow<String?> = _callEnded.asStateFlow()
+    private val _callEnded = MutableStateFlow<CallEndNote?>(null)
+    /** "Call ended · 12:34", or "No answer from Sam" with Call again, for a moment after a call. */
+    val callEnded: StateFlow<CallEndNote?> = _callEnded.asStateFlow()
 
     fun consumeCallEnded() {
         _callEnded.value = null
@@ -111,7 +111,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (current == null && hadCall) {
                     // The call is in the history by the time the session goes.
                     val last = graph.settings.callLog.first().firstOrNull()
-                    val note = last?.let { callEndedNote(it) }
+                    val note = last?.let { callEndNote(it) }
                     _callEnded.value = note
                     // Only for a moment: not later, on coming back to the home screen.
                     if (note != null) {

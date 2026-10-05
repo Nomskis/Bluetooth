@@ -27,7 +27,7 @@ class CallQualityTest {
         ),
         "L" to CallStats.Entry(
             "local-candidate",
-            mapOf("networkType" to "wifi", "candidateType" to if (relay) "relay" else "srflx", "relayProtocol" to "tls"),
+            mapOf("networkType" to "wifi", "candidateType" to if (relay) "relay" else "srflx", "relayProtocol" to "tls", "protocol" to "udp"),
         ),
         "R" to CallStats.Entry("remote-candidate", mapOf("candidateType" to "srflx")),
         "A" to CallStats.Entry(
@@ -125,6 +125,8 @@ class CallQualityTest {
         )
         tracker.update(report(rtt = 0.26, received = 100, lost = 0, samples = 96_000, concealed = 0, jbDelay = 4_800.0, jbEmitted = 96_000) + standby)
         val q = tracker.summary()
+        // A direct path says which transport it took.
+        assertEquals("direct (udp)", q.path)
         assertEquals(70, q.relayRttMsAvg)
         assertTrue(q.report().contains("Relay round trip, checked on the side: 70 ms"))
         // Already on the relay: nothing to compare.

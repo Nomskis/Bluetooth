@@ -19,10 +19,11 @@ are out of scope on purpose.
 | Missed call notification with Call back and Message | ✅ | |
 | Recent calls (incoming, outgoing, missed in red) | ✅ | Home screen; a tap calls back the same way |
 | "Call ended" with how long you talked | ✅ | For a moment on the home screen |
+| No answer, declined or busy: Call again | ✅ | The home screen says why, with one tap to ring again the same way |
 | Busy when already in a call | ✅ | Call waiting (end this call and take the new one) is 🤔 |
 | Both calling each other at once | ✅ | The phones agree on one call |
 | Block someone | ✅ | Their calls don't ring and their messages are dropped; they aren't told. Unblock in Settings |
-| Bluetooth headset and car buttons answer and hang up (Android Telecom) | 🤔 | Needs Android's ConnectionService; Earshot's Hi-Fi audio works around the call system on purpose |
+| Bluetooth headset and car buttons answer and hang up (Android Telecom) | 🤔 | Needs Android's Telecom (Jetpack core-telecom): the call's audio on the voice-call stream and Telecom choosing the route ([Android docs](https://developer.android.com/develop/connectivity/telecom/selfManaged)), which undoes Hi-Fi. Maybe for calls without earbuds, once it can be tried on a real phone |
 
 ## In a call
 

@@ -55,6 +55,8 @@ with a call report to show it helps.
 | Jitter buffer target (quantile 0.97) and size (100 packets) | ✅ | |
 | Jitter buffer decision logic | ✔️ | 6367 already uses stable delay mode and combined concealment decisions |
 | Concealing what nothing repaired | ✅ | Opus's own concealment: research/concealment.md |
+| Signal's voice settings (60 ms packets, constant 32 kbps, DTX, in-band FEC) | 📞 | RingRTC's defaults for mobile calls: a third of the packets and their overhead, every packet carrying a backup of the one before. Costs 40 ms more delay, and 6367's own Opus already switches FEC on when loss shows up. Worth trying only if reports show glitches from loss rather than delay |
+| Capping the jitter buffer's target (Signal: 500 ms) | ❌ | RingRTC's own addition to WebRTC (`max_target_delay_ms`); the stock 6367 library has no such option |
 
 ## 4. Video encoding
 
@@ -99,6 +101,7 @@ with a call report to show it helps.
 | Wi-Fi power save off during calls (low-latency and high-perf locks) | ✅ | |
 | Priority marks on 5 GHz (DSCP) | ✅ | |
 | Fewer packets next to Bluetooth on 2.4 GHz | ✅ | PacketTime floor |
+| No direct TCP candidates | ✅ | Signal's RingRTC sets `tcpCandidatePolicy = DISABLED`: a voice packet behind a lost one would wait for TCP's resend. The relay's TCP and TLS stay (WebRTC's `PORTALLOCATOR_DISABLE_TCP` only stops local TCP ports); `CallTuning.NO_TCP_CANDIDATES`. The call report now says a direct path's transport |
 | Relay over TLS on port 443 (blocked or throttled networks) | ✔️ | Cloudflare's relay offers it and the server passes it on; needs the Cloudflare key set up |
 | Opt-in route through the relay ("Calls abroad") | ✅ | |
 | Trying the relay automatically when a call is weak | 📞 | Worth it only if real calls show the relay route is better; the call report now shows the relay's round trip, checked on the side, next to the direct one |

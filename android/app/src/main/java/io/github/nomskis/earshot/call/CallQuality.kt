@@ -75,7 +75,7 @@ data class CallQuality(
         mobileData?.let { appendLine("Mobile data: $it") }
         appendLine("Round trip: ${rttMsAvg ?: "?"} ms average, ${rttMsMax ?: "?"} ms worst")
         mouthToEarMsAvg?.let { appendLine("Their voice reached you after: $it ms average") }
-        relayRttMsAvg?.takeIf { path == "direct" }?.let { appendLine("Relay round trip, checked on the side: $it ms") }
+        relayRttMsAvg?.takeIf { path?.startsWith("direct") == true }?.let { appendLine("Relay round trip, checked on the side: $it ms") }
         appendLine(
             "Their audio: ${audioLossPercent.pct()} lost on the way, ${concealedPercent.pct()} made up" +
                 (audioNacks?.let { ", $it resend requests" } ?: ""),

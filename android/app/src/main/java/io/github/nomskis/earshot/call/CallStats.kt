@@ -104,7 +104,7 @@ object CallStats {
         return when {
             local["candidateType"] == "relay" -> "relay (${local["relayProtocol"] as? String ?: "udp"})"
             remote?.get("candidateType") == "relay" -> "relay (theirs)"
-            else -> "direct"
+            else -> (local["protocol"] as? String)?.let { "direct ($it)" } ?: "direct"
         }
     }
 
