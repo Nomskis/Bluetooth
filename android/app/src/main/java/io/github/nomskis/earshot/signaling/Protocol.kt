@@ -123,6 +123,8 @@ sealed interface ClientMessage {
         val unsend: String? = null,
         /** A picture; [text] is then its words, which may be empty. */
         val photo: WirePhoto? = null,
+        /** Our profile picture for their phone, not a chat message; nothing else goes with it. */
+        val profile: WireProfile? = null,
     ) : ClientMessage
 
     /** We have [id] from [to]: the server stops holding it and tells them it was delivered. */
@@ -177,6 +179,10 @@ data class WireReply(
     /** It's a picture (then [text] is its words, if any). */
     val photo: Boolean? = null,
 )
+
+/** A profile picture: [photo], a base64 JPEG, or [removed] when there's none any more. */
+@Serializable
+data class WireProfile(val photo: String? = null, val removed: Boolean? = null)
 
 /** A picture in a chat message: [data] is the file, base64; [type] image/jpeg or image/webp. */
 @Serializable
@@ -245,6 +251,8 @@ sealed interface ServerMessage {
         /** They deleted their message with this id for everyone. */
         val unsend: String? = null,
         val photo: WirePhoto? = null,
+        /** Their profile picture, or that they took it away. */
+        val profile: WireProfile? = null,
     ) : ServerMessage
 
     /** How a message we sent to [to] is doing: "sent", "queued" (their phone is offline) or "delivered". */

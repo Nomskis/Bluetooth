@@ -5,6 +5,7 @@ import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.signaling.ClientMessage
 import io.github.nomskis.earshot.signaling.ServerMessage
 import io.github.nomskis.earshot.signaling.WirePhoto
+import io.github.nomskis.earshot.signaling.WireProfile
 import io.github.nomskis.earshot.signaling.WireReply
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -45,6 +46,10 @@ class Messenger(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     /** Where pictures are kept ([Photos]). */
     private val photos: PhotoFiles = NoPhotos,
+    /** Profile pictures, ours and theirs ([Profiles]). */
+    private val profiles: ProfileFiles = NoProfiles,
+    /** Everyone ours goes to: our contacts' addresses. */
+    private val contacts: suspend () -> List<String> = { emptyList() },
 ) {
     /** Where conversations are kept. */
     interface Store {
@@ -59,6 +64,28 @@ class Messenger(
         /** Keeps [bytes] (a JPEG); its new file's name, or null if it couldn't. */
         fun save(bytes: ByteArray): String?
         fun delete(names: Collection<String>)
+    }
+
+    /** Profile pictures: ours, which version of it each contact has, and theirs. */
+    interface ProfileFiles {
+        /** When ours was last set or taken away; 0 if it never was. */
+        val myVersion: Long
+        val hasMyPhoto: Boolean
+        fun myPhoto(): ByteArray?
+        fun sentVersion(address: String): Long
+        fun markSent(address: String, version: Long)
+
+        /** Theirs; null: they took it away. */
+        fun saveTheirs(address: String, jpeg: ByteArray?)
+    }
+
+    private object NoProfiles : ProfileFiles {
+        override val myVersion = 0L
+        override val hasMyPhoto = false
+        override fun myPhoto(): ByteArray? = null
+        override fun sentVersion(address: String) = 0L
+        override fun markSent(address: String, version: Long) = Unit
+        override fun saveTheirs(address: String, jpeg: ByteArray?) = Unit
     }
 
     private object NoPhotos : PhotoFiles {
@@ -100,8 +127,30 @@ class Messenger(
         scope.launch { transmit(address, message) }
     }
 
+    /**
+     * Our profile picture (or that we took it away) to each contact whose phone doesn't have
+     * this version yet: after it changes, for a new contact, and after every reconnect.
+     */
+    fun shareProfile() {
+        scope.launch {
+            val version = profiles.myVersion
+            if (version == 0L) return@launch
+            val profile = if (profiles.hasMyPhoto) {
+                val data = withContext(io) { profiles.myPhoto()?.let { Base64.getEncoder().encodeToString(it) } } ?: return@launch
+                WireProfile(photo = data)
+            } else {
+                WireProfile(removed = true)
+            }
+            for (address in contacts()) {
+                if (profiles.sentVersion(address) == version || isBlocked(address)) continue
+                send(ClientMessage.Message(to = address, id = profileId(version), name = myName(), profile = profile))
+            }
+        }
+    }
+
     /** The inbox is listening again: everything they haven't confirmed goes out. */
     fun flushOutbox() {
+        shareProfile()
         scope.launch {
             for (conversation in _conversations.value.values) {
                 for (message in conversation.outbox) transmit(conversation.address, message)
@@ -117,7 +166,9 @@ class Messenger(
             is ServerMessage.MessageStatus -> {
                 val status = Conversation.statusOf(message.status) ?: return
                 val withdrawn = Conversation.unsendTarget(message.id)
+                val profileVersion = profileVersion(message.id)
                 when {
+                    profileVersion != null -> if (status >= TextMessage.Status.DELIVERED) profiles.markSent(message.to, profileVersion)
                     withdrawn != null -> if (status >= TextMessage.Status.DELIVERED) change(message.to) { it.unsendDelivered(withdrawn) }
                     status == TextMessage.Status.READ -> change(message.to) { it.seen(message.id) }
                     else -> change(message.to) { it.status(message.id, status) }
@@ -159,6 +210,12 @@ class Messenger(
         // A blocked sender's too, or the server would keep handing it over.
         send(ClientMessage.MessageAck(to = address, id = message.id))
         if (isBlocked(address)) return
+        // Their profile picture, or that they took it away.
+        message.profile?.let { profile ->
+            val jpeg = profile.photo?.let { runCatching { Base64.getDecoder().decode(it) }.getOrNull() ?: return }
+            withContext(io) { profiles.saveTheirs(address, jpeg) }
+            return
+        }
         // They deleted one of theirs for everyone.
         message.unsend?.let { id ->
             change(address) { it.withdrawn(id) }
@@ -198,6 +255,11 @@ class Messenger(
             notify(contact(address)?.name ?: "Someone", address, conversation)
         }
     }
+
+    private fun profileId(version: Long) = "p-$version"
+
+    /** The profile version a status is about, or null for a chat message. */
+    private fun profileVersion(id: String): Long? = if (id.startsWith("p-")) id.removePrefix("p-").toLongOrNull() else null
 
     /** Their picture, kept here; null if it isn't one. */
     private suspend fun keep(wire: WirePhoto): Photo? = withContext(io) {

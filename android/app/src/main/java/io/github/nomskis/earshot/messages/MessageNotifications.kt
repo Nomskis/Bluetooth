@@ -5,12 +5,15 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
+import androidx.core.graphics.drawable.IconCompat
 import io.github.nomskis.earshot.MainActivity
 import io.github.nomskis.earshot.R
+import java.io.File
 
 /** A notification per conversation, with their latest messages, Reply and Mark as read right there. */
 object MessageNotifications {
@@ -26,8 +29,9 @@ object MessageNotifications {
         )
     }
 
-    fun show(context: Context, name: String, address: String, conversation: Conversation) {
-        val them = Person.Builder().setName(name).setKey(address).build()
+    /** [avatar]: their profile picture, if they sent one. */
+    fun show(context: Context, name: String, address: String, conversation: Conversation, avatar: File? = null) {
+        val them = Person.Builder().setName(name).setKey(address).apply { avatar?.let(::icon)?.let(::setIcon) }.build()
         val me = Person.Builder().setName(context.getString(R.string.chat_you)).build()
         val style = NotificationCompat.MessagingStyle(me)
         // Their unread messages, and what was said just before for context.
@@ -88,6 +92,16 @@ object MessageNotifications {
         }
     }
 
+    /** Their picture, small, for the notification; null if there's none or it can't be read. */
+    private fun icon(file: File): IconCompat? = runCatching {
+        if (!file.exists()) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.path, bounds)
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= ICON_PX) sample *= 2
+        BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })?.let(IconCompat::createWithBitmap)
+    }.getOrNull()
+
     fun cancel(context: Context, address: String) {
         NotificationManagerCompat.from(context).cancel(TAG, requestCode(address))
     }
@@ -96,4 +110,5 @@ object MessageNotifications {
 
     private const val TAG = "conversation"
     private const val MAX_SHOWN = 6
+    private const val ICON_PX = 128
 }

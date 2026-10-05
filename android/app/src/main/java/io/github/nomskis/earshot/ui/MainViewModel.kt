@@ -1,6 +1,7 @@
 package io.github.nomskis.earshot.ui
 
 import android.app.Application
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
@@ -33,6 +34,7 @@ import io.github.nomskis.earshot.earbuds.describe
 import io.github.nomskis.earshot.messages.Conversation
 import io.github.nomskis.earshot.messages.MessageNotifications
 import io.github.nomskis.earshot.messages.PhotoSizing
+import io.github.nomskis.earshot.messages.Profiles
 import io.github.nomskis.earshot.messages.Quote
 import io.github.nomskis.earshot.messages.TextMessage
 import io.github.nomskis.earshot.settings.AppSettings
@@ -53,6 +55,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -185,6 +188,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Where a picture in a chat is kept. */
     fun photoFile(name: String): java.io.File = graph.photos.file(name)
+
+    private val _cropping = MutableStateFlow<Bitmap?>(null)
+    /** A photo picked for your profile picture, waiting to be cropped. */
+    val cropping: StateFlow<Bitmap?> = _cropping.asStateFlow()
+
+    /** Whether you have a profile picture. */
+    val hasProfilePhoto: StateFlow<Boolean> =
+        graph.profiles.versions.map { Profiles.ME in it }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** A photo for your profile picture: opened for cropping. */
+    fun pickProfilePhoto(uri: Uri) {
+        viewModelScope.launch {
+            val bitmap = withContext(Dispatchers.IO) { graph.photos.decodeUpright(uri, PROFILE_SOURCE_EDGE) }
+            if (bitmap == null) _photoTrouble.value = "Couldn't open that picture" else _cropping.value = bitmap
+        }
+    }
+
+    /** The cropped square: your picture now, on its way to your contacts. */
+    fun useProfilePhoto(square: Bitmap) {
+        _cropping.value = null
+        viewModelScope.launch {
+            val saved = withContext(Dispatchers.IO) { graph.profiles.setMine(square) }
+            if (saved) graph.messenger.shareProfile() else _photoTrouble.value = "Couldn't save your picture"
+        }
+    }
+
+    fun cancelCrop() {
+        _cropping.value = null
+    }
+
+    /** Back to your initial, here and on your contacts' phones. */
+    fun removeProfilePhoto() {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { graph.profiles.removeMine() }
+            graph.messenger.shareProfile()
+        }
+    }
 
     fun clearConversation(address: String) = graph.messenger.clear(address)
 
@@ -661,3 +701,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 }
+
+/** A photo for a profile picture is opened at most this big for cropping: plenty for 256 px. */
+private const val PROFILE_SOURCE_EDGE = 1600

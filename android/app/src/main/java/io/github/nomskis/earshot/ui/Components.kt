@@ -7,6 +7,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -41,12 +42,14 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
@@ -56,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import io.github.nomskis.earshot.ui.theme.HangUpRed
 import io.github.nomskis.earshot.ui.theme.Tones
+import java.io.File
 
 /** A person: the first letter of their name on their own colour, the same everywhere. */
 @Composable
@@ -63,10 +67,26 @@ internal fun Avatar(name: String, modifier: Modifier = Modifier, seed: String = 
     val (background, letter) = Tones.person(seed)
     // In dp, not sp: a large font setting mustn't push the letter out of its circle.
     val fontSize = with(LocalDensity.current) { (size * 0.42f).toSp() }
-    Box(modifier.size(size).background(background, CircleShape), contentAlignment = Alignment.Center) {
-        Text(initial(name), color = letter, fontSize = fontSize, fontWeight = FontWeight.Medium)
+    // Their profile picture, once it's here and decoded; their initial until then.
+    val picture = LocalAvatars.current(seed)
+    val image = picture?.let { rememberPhoto(it.file, with(LocalDensity.current) { size.roundToPx() }, it.version) }
+    Box(modifier.size(size).clip(CircleShape).background(background, CircleShape), contentAlignment = Alignment.Center) {
+        if (image != null) {
+            Image(image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(size))
+        } else {
+            Text(initial(name), color = letter, fontSize = fontSize, fontWeight = FontWeight.Medium)
+        }
     }
 }
+
+/** A profile picture's file, and a version that changes with it. */
+data class AvatarPicture(val file: File, val version: Long)
+
+/**
+ * Profile pictures by the seed avatars use (an address, or [io.github.nomskis.earshot.messages.Profiles.ME]);
+ * none unless the app provides them.
+ */
+val LocalAvatars = staticCompositionLocalOf<(String) -> AvatarPicture?> { { null } }
 
 /** The first letter, whole even when it's an emoji or an accented letter made of two chars. */
 internal fun initial(name: String): String {

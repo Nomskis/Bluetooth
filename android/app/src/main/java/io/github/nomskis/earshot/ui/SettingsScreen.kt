@@ -1,5 +1,7 @@
 package io.github.nomskis.earshot.ui
 
+import android.graphics.Bitmap
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -99,8 +101,17 @@ fun SettingsScreen(
     update: AppUpdater.State? = null,
     onCheckForUpdate: () -> Unit = {},
     onInstallUpdate: () -> Unit = {},
+    /** Your profile picture: whether there is one, a photo picked for it, and taking it away. */
+    hasProfilePhoto: Boolean = false,
+    onProfilePicked: (Uri) -> Unit = {},
+    onRemoveProfile: () -> Unit = {},
+    /** A picked photo, opened for cropping into your picture. */
+    cropping: Bitmap? = null,
+    onUseCrop: (Bitmap) -> Unit = {},
+    onCancelCrop: () -> Unit = {},
 ) {
     BackHandler(onBack = onBack)
+    cropping?.let { ProfileCrop(it, onUse = onUseCrop, onDismiss = onCancelCrop) }
     val context = LocalContext.current
     var serverUrl by rememberSaveable { mutableStateOf(settings.serverUrl) }
     var displayName by rememberSaveable { mutableStateOf(settings.displayName) }
@@ -134,6 +145,7 @@ fun SettingsScreen(
             Group(
                 null,
                 listOf<@Composable () -> Unit>(
+                    { ProfilePictureRow(displayName, hasProfilePhoto, onPicked = onProfilePicked, onRemove = onRemoveProfile) },
                     {
                         TextFieldRow {
                             OutlinedTextField(

@@ -12,6 +12,7 @@ import io.github.nomskis.earshot.earbuds.EarbudControl
 import io.github.nomskis.earshot.messages.MessageNotifications
 import io.github.nomskis.earshot.messages.MessageStore
 import io.github.nomskis.earshot.messages.Photos
+import io.github.nomskis.earshot.messages.Profiles
 import io.github.nomskis.earshot.messages.Messenger
 import io.github.nomskis.earshot.settings.SettingsRepository
 import io.github.nomskis.earshot.turbo.TurboBoost
@@ -21,7 +22,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -67,6 +71,8 @@ class AppGraph(context: Context) {
     val updater = AppUpdater(context, http)
     /** Pictures in chats. */
     val photos = Photos(context)
+    /** Profile pictures: ours and our contacts'. */
+    val profiles = Profiles(context)
     /** Chat with contacts, in a call or not, over the inbox connection. */
     val messenger = Messenger(
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
@@ -76,9 +82,11 @@ class AppGraph(context: Context) {
         contact = { address -> settings.contacts.first().firstOrNull { it.address == address } },
         saveContact = settings::saveContact,
         isBlocked = settings::isBlocked,
-        notify = { name, address, conversation -> MessageNotifications.show(context, name, address, conversation) },
+        notify = { name, address, conversation -> MessageNotifications.show(context, name, address, conversation, profiles.file(address)) },
         cancelNotification = { address -> MessageNotifications.cancel(context, address) },
         photos = photos,
+        profiles = profiles,
+        contacts = { settings.contacts.first().map { it.address } },
     ).also { messenger ->
         callInbox.onChat = messenger::onServerMessage
         callManager.onCallChat = { address, message ->
@@ -87,6 +95,10 @@ class AppGraph(context: Context) {
         }
         MessageNotifications.createChannel(context)
         messenger.load()
+        // Someone new on the list gets our profile picture.
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).launch {
+            settings.contacts.map { list -> list.map { it.address }.toSet() }.distinctUntilChanged().collect { messenger.shareProfile() }
+        }
     }
 }
 

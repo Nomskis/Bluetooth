@@ -325,6 +325,23 @@ describe('chat messages', () => {
     assert.equal(inbox.waitingBytes, 0);
   });
 
+  it('carry a profile picture, or that it was taken away, and nothing else', () => {
+    const inbox = new Inbox({ timers: fakeTimers() });
+    const salma = conn('salma');
+    const sam = conn('sam');
+    inbox.listen(salma, SALMA_KEY);
+    inbox.listen(sam, SAM_KEY);
+    const photo = Buffer.from('a small jpeg').toString('base64');
+    const parsed = parseClientMessage(JSON.stringify({ type: 'message', to: SAM, id: 'p-1791200000000', name: 'Salma', profile: { photo } }));
+    assert.deepEqual(parsed, { type: 'message', to: SAM, id: 'p-1791200000000', name: 'Salma', profile: { photo } });
+    inbox.message(salma, parsed);
+    assert.deepEqual(sam.last('message').profile, { photo });
+    assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'message', to: SAM, id: 'p-1791200000001', profile: { removed: true } })).profile, { removed: true });
+    assert.throws(() => parseClientMessage(JSON.stringify({ type: 'message', to: SAM, id: 'p-1791200000002', profile: {} })));
+    assert.throws(() => parseClientMessage(JSON.stringify({ type: 'message', to: SAM, id: 'p-1791200000003', profile: { photo }, text: 'hi' })));
+    assert.throws(() => parseClientMessage(JSON.stringify({ type: 'message', to: SAM, id: 'p-1791200000004', profile: { photo: 'A'.repeat(120_004) } })));
+  });
+
   it('tell the sender when they have been read', () => {
     const inbox = new Inbox({ timers: fakeTimers() });
     const salma = conn('salma');

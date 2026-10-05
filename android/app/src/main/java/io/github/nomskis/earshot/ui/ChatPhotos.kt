@@ -97,10 +97,13 @@ private object PhotoBitmaps {
     }
 }
 
-/** A picture file, decoded off the main thread at about [maxPx]; null until it's ready (or if it can't be). */
+/**
+ * A picture file, decoded off the main thread at about [maxPx]; null until it's ready (or if
+ * it can't be). [version] changes when the same file gets a new picture (a profile picture).
+ */
 @Composable
-internal fun rememberPhoto(file: File?, maxPx: Int): ImageBitmap? {
-    val key = file?.let { "${it.path}@$maxPx" }
+internal fun rememberPhoto(file: File?, maxPx: Int, version: Long = 0): ImageBitmap? {
+    val key = file?.let { "${it.path}#$version@$maxPx" }
     val image by produceState(key?.let(PhotoBitmaps::cached), key) {
         if (file == null || key == null) return@produceState
         value = withContext(Dispatchers.IO) { runCatching { PhotoBitmaps.decode(key, maxPx) { file.inputStream() } }.getOrNull() }
