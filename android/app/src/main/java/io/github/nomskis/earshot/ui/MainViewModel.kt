@@ -1,6 +1,7 @@
 package io.github.nomskis.earshot.ui
 
 import android.app.Application
+import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
@@ -11,24 +12,29 @@ import io.github.nomskis.earshot.audio.AudioProfile
 import io.github.nomskis.earshot.audio.AudioRoute
 import io.github.nomskis.earshot.audio.CodecInfo
 import io.github.nomskis.earshot.audio.Codecs
-import io.github.nomskis.earshot.audio.LatencyProbe
 import io.github.nomskis.earshot.audio.DeviceKind
 import io.github.nomskis.earshot.audio.FastestSetup
+import io.github.nomskis.earshot.audio.LatencyProbe
 import io.github.nomskis.earshot.audio.LinkConditions
 import io.github.nomskis.earshot.audio.RadioTest
 import io.github.nomskis.earshot.audio.SetupLabels
 import io.github.nomskis.earshot.audio.SonarMeter
 import io.github.nomskis.earshot.audio.WifiBand
 import io.github.nomskis.earshot.call.CallSession
+import io.github.nomskis.earshot.calls.CallBackRequest
+import io.github.nomskis.earshot.calls.CallRecord
+import io.github.nomskis.earshot.calls.Contact
+import io.github.nomskis.earshot.calls.InboxClient
 import io.github.nomskis.earshot.earbuds.DriverLog
 import io.github.nomskis.earshot.earbuds.DriverResult
 import io.github.nomskis.earshot.earbuds.EarbudBoost
 import io.github.nomskis.earshot.earbuds.EarbudControl
 import io.github.nomskis.earshot.earbuds.describe
-import io.github.nomskis.earshot.calls.CallBackRequest
-import io.github.nomskis.earshot.calls.CallRecord
-import io.github.nomskis.earshot.calls.Contact
-import io.github.nomskis.earshot.calls.InboxClient
+import io.github.nomskis.earshot.messages.Conversation
+import io.github.nomskis.earshot.messages.MessageNotifications
+import io.github.nomskis.earshot.messages.PhotoSizing
+import io.github.nomskis.earshot.messages.Quote
+import io.github.nomskis.earshot.messages.TextMessage
 import io.github.nomskis.earshot.settings.AppSettings
 import io.github.nomskis.earshot.settings.DelayRun
 import io.github.nomskis.earshot.settings.InterruptedCall
@@ -39,10 +45,7 @@ import io.github.nomskis.earshot.turbo.CodecStatus
 import io.github.nomskis.earshot.turbo.TurboBoost
 import io.github.nomskis.earshot.turbo.TurboClient
 import io.github.nomskis.earshot.update.AppUpdater
-import io.github.nomskis.earshot.messages.Conversation
-import io.github.nomskis.earshot.messages.MessageNotifications
-import io.github.nomskis.earshot.messages.Quote
-import io.github.nomskis.earshot.messages.TextMessage
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,7 +57,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Request
-import java.util.concurrent.TimeUnit
 
 sealed interface ServerCheck {
     data object Idle : ServerCheck
@@ -159,6 +161,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** One of ours, off their phone too. */
     fun deleteForEveryone(address: String, message: TextMessage) = graph.messenger.deleteForEveryone(address, message.id)
+
+    /** A picture from the photo picker or the camera, made light enough to send, then sent. */
+    fun sendPhoto(address: String, uri: Uri, caption: String, reply: Quote?) {
+        viewModelScope.launch {
+            val edge = if (graph.settings.current().lessData) PhotoSizing.LESS_DATA_EDGE else PhotoSizing.MAX_EDGE
+            val photo = withContext(Dispatchers.IO) { graph.photos.prepare(uri, edge) }
+            if (photo == null) {
+                _photoTrouble.value = "Couldn't open that picture"
+                return@launch
+            }
+            graph.messenger.sendPhoto(address, photo, caption, reply)
+        }
+    }
+
+    private val _photoTrouble = MutableStateFlow<String?>(null)
+    /** Something went wrong with a picture, for the conversation to say once. */
+    val photoTrouble: StateFlow<String?> = _photoTrouble.asStateFlow()
+
+    fun photoTroubleShown() {
+        _photoTrouble.value = null
+    }
+
+    /** Where a picture in a chat is kept. */
+    fun photoFile(name: String): java.io.File = graph.photos.file(name)
 
     fun clearConversation(address: String) = graph.messenger.clear(address)
 

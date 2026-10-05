@@ -32,6 +32,18 @@ const MAX_QUEUED_PER_INBOX = 500;
 /** A conversation is fine; a flood isn't. */
 const MAX_MESSAGES_PER_WINDOW = 30;
 const MESSAGE_WINDOW_MS = 10_000;
+/**
+ * Pictures make messages big: how much may wait for one phone, and for all of them, in
+ * memory. Past either, a new one is refused (inbox-full); the sending phone keeps it and
+ * tries again after its next reconnect, by when some will have been delivered.
+ */
+const MAX_WAITING_BYTES_PER_INBOX = 24 * 1024 * 1024;
+const MAX_WAITING_BYTES = 160 * 1024 * 1024;
+
+/** Roughly what a waiting message costs in memory: its picture, if any, and its words. */
+function weight(out) {
+  return (out.photo?.data.length ?? 0) + (out.text?.length ?? 0) * 2 + 256;
+}
 
 export class Inbox {
   /** address -> Set of listening connections (one per device). */
@@ -44,6 +56,8 @@ export class Inbox {
    * sends it again after a reconnect, so a server restart loses nothing.
    */
   #messages = new Map();
+  /** What all waiting messages weigh, for MAX_WAITING_BYTES. */
+  #waitingBytes = 0;
   #ringTimeoutMs;
   #timers;
   #now;
@@ -85,17 +99,26 @@ export class Inbox {
     if (msg.text !== undefined) out.text = msg.text;
     if (msg.reply) out.reply = msg.reply;
     if (msg.unsend) out.unsend = msg.unsend;
+    if (msg.photo) out.photo = msg.photo;
     const waiting = this.#waitingFor(msg.to);
     // Withdrawn before their phone took it: it never arrives. The unsend still goes, for a
     // device of theirs that took it already.
     if (msg.unsend) {
       const kept = waiting.filter((m) => !(m.from === from && m.id === msg.unsend));
+      for (const gone of waiting) if (!kept.includes(gone)) this.#waitingBytes -= gone.bytes;
       waiting.splice(0, waiting.length, ...kept);
     }
     // Sent again after a reconnect: still the one message.
     if (!waiting.some((m) => m.from === from && m.id === msg.id)) {
-      waiting.push({ out, from, id: msg.id, at: out.sentAt });
-      while (waiting.length > MAX_QUEUED_PER_INBOX) waiting.shift();
+      const bytes = weight(out);
+      const inbox = waiting.reduce((sum, m) => sum + m.bytes, 0);
+      if (inbox + bytes > MAX_WAITING_BYTES_PER_INBOX || this.#waitingBytes + bytes > MAX_WAITING_BYTES) {
+        conn.send({ type: 'error', code: 'inbox-full', message: 'Too much is waiting for their phone; try again later.' });
+        return;
+      }
+      waiting.push({ out, from, id: msg.id, at: out.sentAt, bytes });
+      this.#waitingBytes += bytes;
+      while (waiting.length > MAX_QUEUED_PER_INBOX) this.#waitingBytes -= waiting.shift().bytes;
       this.#messages.set(msg.to, waiting);
     }
     const devices = [...(this.#listeners.get(msg.to) ?? [])];
@@ -110,6 +133,7 @@ export class Inbox {
     const waiting = this.#messages.get(me);
     if (waiting) {
       const left = waiting.filter((m) => !(m.from === msg.to && m.id === msg.id));
+      for (const gone of waiting) if (!left.includes(gone)) this.#waitingBytes -= gone.bytes;
       if (left.length > 0) this.#messages.set(me, left);
       else this.#messages.delete(me);
     }
@@ -134,6 +158,11 @@ export class Inbox {
   /** How many chat messages wait for an address; for tests and logs. */
   waitingMessages(address) {
     return this.#waitingFor(address).length;
+  }
+
+  /** What every waiting message weighs together; for tests and logs. */
+  get waitingBytes() {
+    return this.#waitingBytes;
   }
 
   /** Rings everyone listening on `msg.to`. */
@@ -200,12 +229,15 @@ export class Inbox {
     this.#rings.clear();
     this.#listeners.clear();
     this.#messages.clear();
+    this.#waitingBytes = 0;
   }
 
   /** The messages still waiting for an address, dropping any too old to keep. */
   #waitingFor(address) {
     const now = this.#now();
-    const waiting = (this.#messages.get(address) ?? []).filter((m) => now - m.at < MESSAGE_TTL_MS);
+    const all = this.#messages.get(address) ?? [];
+    const waiting = all.filter((m) => now - m.at < MESSAGE_TTL_MS);
+    for (const old of all) if (!waiting.includes(old)) this.#waitingBytes -= old.bytes;
     if (waiting.length > 0) this.#messages.set(address, waiting);
     else this.#messages.delete(address);
     return waiting;

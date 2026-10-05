@@ -152,9 +152,9 @@ inbox, so the server knows (rather than trusts) who a message is from.
 
 | Direction | `type` | Fields | Meaning |
 | --- | --- | --- | --- |
-| client → server | `message` | `to`, `id`, `text`, `name?`, `reply?` | A message to the inbox address `to`. `id`: 8 to 64 URL-safe characters, made by the sender; `text`: 1 to 4000 characters. `reply: { id, sender, text }`: the message it answers, `sender` `me` (the sender's own) or `you` (the recipient's), with up to 300 characters of it on one line, so the quote shows even where that message is gone. |
+| client → server | `message` | `to`, `id`, `text`, `name?`, `reply?`, `photo?` | A message to the inbox address `to`. `id`: 8 to 64 URL-safe characters, made by the sender; `text`: 1 to 4000 characters (with a `photo`, its words, which may be empty). `photo: { data, type, width, height }`: a picture, base64 `data` of at most 900,000 characters, `type` `image/jpeg` or `image/webp`, its size in pixels; the app sends at most 1600 px on the long side and about 450 KB. `reply: { id, sender, text, photo? }`: the message it answers (`photo: true` when that was a picture), `sender` `me` (the sender's own) or `you` (the recipient's), with up to 300 characters of it on one line, so the quote shows even where that message is gone. |
 | client → server | `message` | `to`, `id`, `name?`, `unsend` | Delete for everyone: withdraws our earlier message `unsend`, and says nothing else. Its own `id` is `x-` and the withdrawn id, so sending it again is the same one. If the withdrawn message is still waiting on the server, it's dropped there and never arrives. Apps offer it for 48 hours after sending. |
-| server → client | `message` | `id`, `from: { address, name }`, `text`, `sentAt`, `reply?`, `unsend?` | A message for us (or, with `unsend`, the withdrawal of one: `text` is absent). `from.address` is the sender's proven address. |
+| server → client | `message` | `id`, `from: { address, name }`, `text`, `sentAt`, `reply?`, `photo?`, `unsend?` | A message for us (or, with `unsend`, the withdrawal of one: `text` is absent). `from.address` is the sender's proven address. |
 | client → server | `message-ack` | `to`, `id` | We have message `id` from `to`. Sent for every copy, repeats included. |
 | client → server | `message-read` | `to`, `id` | We've seen `to`'s messages up to `id` (their latest we have). Sent when the conversation is on screen. |
 | server → client | `message-status` | `id`, `to`, `status` | How our message to `to` is doing: `sent` (a device of theirs is online), `queued` (none is; it waits), `delivered` (one of their devices has it), `read` (they've seen it, and the ones before it that were delivered). |
@@ -167,7 +167,10 @@ for and sends it again each time its inbox is listening again, so a server
 restart loses nothing. A message sent twice is held once (same sender and
 `id`), and the receiving app keeps it once. More than 30 messages in 10
 seconds from one connection gets `rate-limited`; sending without listening
-gets `not-listening`.
+gets `not-listening`. Pictures make messages big, so what may wait in memory
+is capped too, at 24 MB for one inbox and 160 MB in all: past that a new
+message gets `inbox-full`, and the sending app tries again after its next
+reconnect. A WebSocket message may be up to 1 MB.
 
 A `message-read` is passed to the sender's devices that are online and not
 held: one that misses them leaves "delivered" showing until the reader opens

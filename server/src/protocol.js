@@ -95,6 +95,32 @@ function messageIdOf(msg) {
   return msg.id;
 }
 
+/**
+ * A picture in a chat message, as base64: the app sends it at most 1600 px on its long side
+ * and about 450 KB, so this leaves room.
+ */
+export const MAX_PHOTO_BASE64 = 900_000;
+const PHOTO_TYPES = new Set(['image/jpeg', 'image/webp']);
+const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
+const MAX_PHOTO_SIDE = 8192;
+
+function photoOf(photo) {
+  if (!isPlainObject(photo) || typeof photo.data !== 'string' || photo.data.length === 0 || photo.data.length > MAX_PHOTO_BASE64) {
+    throw new ProtocolError(ErrorCode.BAD_REQUEST, `photo needs its "data", base64, at most ${MAX_PHOTO_BASE64} characters`);
+  }
+  if (!BASE64_PATTERN.test(photo.data)) {
+    throw new ProtocolError(ErrorCode.BAD_REQUEST, 'photo "data" must be base64');
+  }
+  if (!PHOTO_TYPES.has(photo.type)) {
+    throw new ProtocolError(ErrorCode.BAD_REQUEST, 'photo "type" must be image/jpeg or image/webp');
+  }
+  const side = (v) => Number.isInteger(v) && v > 0 && v <= MAX_PHOTO_SIDE;
+  if (!side(photo.width) || !side(photo.height)) {
+    throw new ProtocolError(ErrorCode.BAD_REQUEST, 'photo needs its "width" and "height" in pixels');
+  }
+  return { data: photo.data, type: photo.type, width: photo.width, height: photo.height };
+}
+
 /** How much of the message a reply quotes travels with it, for a phone that no longer has it. */
 export const MAX_REPLY_QUOTE = 300;
 
@@ -209,21 +235,25 @@ export function parseClientMessage(raw) {
         if (typeof msg.unsend !== 'string' || !MESSAGE_ID_PATTERN.test(msg.unsend)) {
           throw new ProtocolError(ErrorCode.BAD_REQUEST, 'unsend must name one of your messages');
         }
-        if (msg.text !== undefined || msg.reply !== undefined) {
+        if (msg.text !== undefined || msg.reply !== undefined || msg.photo !== undefined) {
           throw new ProtocolError(ErrorCode.BAD_REQUEST, 'an unsend carries nothing else');
         }
         return { type: 'message', to: msg.to, id, name, unsend: msg.unsend };
       }
-      if (typeof msg.text !== 'string' || msg.text.trim().length === 0 || msg.text.length > MAX_MESSAGE_TEXT) {
+      // A picture's words are optional; a message without one needs some.
+      const photo = msg.photo !== undefined ? photoOf(msg.photo) : null;
+      const text = msg.text ?? '';
+      if (typeof text !== 'string' || text.length > MAX_MESSAGE_TEXT || (!photo && text.trim().length === 0)) {
         throw new ProtocolError(ErrorCode.BAD_REQUEST, `message text must be 1-${MAX_MESSAGE_TEXT} characters`);
       }
       return {
         type: 'message',
         to: msg.to,
         id,
-        text: msg.text,
+        text,
         name,
         ...(msg.reply !== undefined ? { reply: replyOf(msg.reply) } : {}),
+        ...(photo ? { photo } : {}),
       };
     }
     case 'message-ack':

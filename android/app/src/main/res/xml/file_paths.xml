@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the file provider may hand out: a new camera picture, and chat pictures to share. -->
+<paths>
+    <cache-path name="camera" path="camera/" />
+    <files-path name="photos" path="photos/" />
+</paths>

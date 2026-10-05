@@ -153,6 +153,24 @@ class MidCallAndSettingsTest {
     }
 
     @Test
+    fun aPictureShowsWithItsWordsAndOneCanBePicked() {
+        val sam = io.github.nomskis.earshot.calls.Contact("Sam", "c2FtLWFkZHJlc3MtMDAwMD")
+        val chat = io.github.nomskis.earshot.messages.Conversation(sam.address)
+            .received("m1", "The view", 1_000, photo = io.github.nomskis.earshot.messages.Photo("p1.jpg", 1600, 1200))
+            .received("m2", "", 2_000, photo = io.github.nomskis.earshot.messages.Photo("p2.jpg", 1200, 1600))
+        compose.setContent { EarshotTheme { ConversationScreen(sam, chat, onSend = { _, _ -> }, onCall = {}, onBack = {}) } }
+        compose.onNodeWithText("The view").assertIsDisplayed()
+        // A picture without words has nothing to copy.
+        compose.onNodeWithText("The view").performTouchInput { longClick() }
+        compose.onNodeWithText("Copy").assertIsDisplayed()
+        compose.onNodeWithText("Reply").performClick()
+        compose.onNodeWithText("Photo: The view").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Send a picture").performClick()
+        compose.onNodeWithText("Gallery").assertIsDisplayed()
+        compose.onNodeWithText("Camera").assertIsDisplayed()
+    }
+
+    @Test
     fun callsShowInTheConversationAndCallBack() {
         val sam = io.github.nomskis.earshot.calls.Contact("Sam", "c2FtLWFkZHJlc3MtMDAwMD")
         val chat = io.github.nomskis.earshot.messages.Conversation(sam.address).received("m1", "Call me?", 1_000).sending("m2", "Now?", 3_000)

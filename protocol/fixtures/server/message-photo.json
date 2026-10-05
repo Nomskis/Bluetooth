@@ -1,0 +1,16 @@
+{
+  "type": "message",
+  "id": "m-Pq7rT2uVwX9yZaB1",
+  "from": {
+    "address": "c2FtLWFkZHJlc3MtMDAwMD",
+    "name": "Sam"
+  },
+  "text": "The view from the room",
+  "sentAt": 1791200000000,
+  "photo": {
+    "data": "/9j/4AAQSkZJRgAB",
+    "type": "image/jpeg",
+    "width": 1600,
+    "height": 1200
+  }
+}

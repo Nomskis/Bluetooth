@@ -203,7 +203,7 @@ private fun chatSubtitle(contact: Contact, conversation: Conversation?, now: Lon
     return when {
         last != null && last.atMillis >= contact.lastCallAtMillis -> when {
             last.deleted -> if (last.mine) "You deleted this message" else "This message was deleted"
-            else -> (if (last.mine) "You: " else "") + last.text
+            else -> (if (last.mine) "You: " else "") + last.summary
         }
         contact.lastCallAtMillis > 0 -> "Last call ${lastCallText(contact.lastCallAtMillis, now)}"
         else -> null
