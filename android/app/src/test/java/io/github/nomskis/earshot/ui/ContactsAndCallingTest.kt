@@ -8,12 +8,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import io.github.nomskis.earshot.audio.AudioRoute
@@ -111,7 +112,8 @@ class ContactsAndCallingTest {
     fun aContactCanBeRemoved() {
         var removed: Contact? = null
         home(listOf(salma), onRemove = { removed = it })
-        compose.onNodeWithContentDescription("More for Salma").performClick()
+        // A long press, as in a messaging app; their conversation's menu has it too.
+        compose.onNodeWithText("Salma").performTouchInput { longClick() }
         compose.onNodeWithText("Remove").performClick()
         assertEquals(salma, removed)
     }
@@ -119,16 +121,14 @@ class ContactsAndCallingTest {
     @Test
     fun duringACallNoNewInviteStarts() {
         home(listOf(salma), inCall = true)
-        compose.onNodeWithText("Video call").assertIsNotEnabled()
-        compose.onNodeWithText("Voice call").assertIsNotEnabled()
-        compose.onNodeWithText("Join with a room code").assertIsNotEnabled()
+        assertTrue(compose.onAllNodesWithText("Invite").fetchSemanticsNodes().isEmpty())
     }
 
     @Test
     fun beforeTheFirstCallItSaysHowPeopleGetHere() {
         home(emptyList())
-        compose.onNodeWithText("Invite someone below", substring = true).assertIsDisplayed()
-        compose.onNodeWithText("Invite someone").assertIsDisplayed()
+        compose.onNodeWithText("After your first call, they're saved here", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("Invite").assertIsDisplayed()
     }
 
     @Test
@@ -176,14 +176,15 @@ class ContactsAndCallingTest {
 
     @Test
     fun theCallScreenSaysHowTheCallIsGoing() {
-        assertEquals("Calling Salma…", text(Status.CALLING, state = calling.copy(phase = CallPhase.CONNECTING)))
-        assertEquals("Ringing Salma…", text(Status.RINGING))
-        assertEquals("Salma answered. Connecting…", text(Status.ANSWERED))
-        assertEquals("Salma declined", text(Status.DECLINED))
-        assertEquals("Salma is on another call", text(Status.BUSY))
-        assertEquals("No answer from Salma", text(Status.NO_ANSWER))
-        assertEquals("Can't reach Salma. Still trying…", text(Status.UNREACHABLE, keepsTrying = true))
-        assertEquals("Can't reach Salma", text(Status.UNREACHABLE))
+        // Short: their name is always right next to it.
+        assertEquals("Calling…", text(Status.CALLING, state = calling.copy(phase = CallPhase.CONNECTING)))
+        assertEquals("Ringing…", text(Status.RINGING))
+        assertEquals("Answered. Connecting…", text(Status.ANSWERED))
+        assertEquals("Declined", text(Status.DECLINED))
+        assertEquals("On another call", text(Status.BUSY))
+        assertEquals("No answer", text(Status.NO_ANSWER))
+        assertEquals("Can't reach their phone. Still trying…", text(Status.UNREACHABLE, keepsTrying = true))
+        assertEquals("Can't reach their phone", text(Status.UNREACHABLE))
         // Not a call to a contact, or they're here: the usual texts.
         assertNull(callingText(calling))
         assertNull(text(Status.RINGING, state = calling.copy(remotePeer = PeerInfo(peerId = "p1", name = "Salma", seq = 1))))
@@ -192,7 +193,8 @@ class ContactsAndCallingTest {
     @Test
     fun ringingShowsWhoAndOffersTheLinkOnlyWhenTheirPhoneCantBeReached() {
         compose.setContent { EarshotTheme { RemotePlaceholder(calling.copy(outgoing = OutgoingCall("Salma", Status.RINGING)), compact = false) } }
-        compose.onNodeWithText("Ringing Salma…").assertIsDisplayed()
+        compose.onNodeWithText("Salma").assertIsDisplayed()
+        compose.onNodeWithText("Ringing…").assertIsDisplayed()
         compose.onNodeWithText("S").assertIsDisplayed()
         assertTrue(compose.onAllNodesWithText("Send invite link").fetchSemanticsNodes().isEmpty())
     }

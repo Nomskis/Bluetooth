@@ -120,7 +120,7 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:taskAffinity=".incoming"
-            android:theme="@style/Theme.Earshot"
+            android:theme="@style/Theme.Earshot.Call"
             tools:targetApi="27" />
 
         <!-- A missed call's "Call back" button: hands the call to the home screen. -->

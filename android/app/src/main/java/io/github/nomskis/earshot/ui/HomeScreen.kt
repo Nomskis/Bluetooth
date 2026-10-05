@@ -7,8 +7,10 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,29 +23,40 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Dialpad
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.outlined.Call
+import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,8 +65,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -66,11 +79,18 @@ import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.calls.InboxClient
 import io.github.nomskis.earshot.messages.Conversation
 import io.github.nomskis.earshot.settings.AppSettings
-import io.github.nomskis.earshot.settings.AudioMode
 import io.github.nomskis.earshot.settings.InterruptedCall
 import io.github.nomskis.earshot.signaling.ServerUrls
+import io.github.nomskis.earshot.ui.theme.Tones
 import io.github.nomskis.earshot.update.AppUpdater
 
+/** Home's two tabs, as in WhatsApp and Signal: the people you talk to, and the call history. */
+private enum class HomeTab { CHATS, CALLS }
+
+/**
+ * Home: Chats (notices that need you, then the people you talk to) and Calls (the history),
+ * with Settings at the top and one button for something new: Invite.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -112,9 +132,9 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
+    var tab by rememberSaveable { mutableStateOf(HomeTab.CHATS) }
     var room by rememberSaveable { mutableStateOf(settings.lastRoom) }
-    // Joining by typing a code is the exception; it stays folded away until asked for.
-    var showCode by rememberSaveable { mutableStateOf(false) }
+    var inviting by rememberSaveable { mutableStateOf(false) }
     // The room an invite link opened the app with, waiting for one tap.
     var invited by rememberSaveable { mutableStateOf<String?>(null) }
     // Until a name is set, ask for it here (it stays while you type); Settings has it too.
@@ -132,6 +152,7 @@ fun HomeScreen(
         if (pendingRoom != null) {
             room = pendingRoom
             invited = pendingRoom
+            tab = HomeTab.CHATS
             onConsumePendingRoom()
         }
     }
@@ -151,7 +172,7 @@ fun HomeScreen(
     }
 
     val serverBase = ServerUrls.normalizeBase(settings.serverUrl)
-    val normalizedRoom = RoomCodes.normalize(room)
+    val canStart = serverBase != null && !inCall
 
     // The call the permission prompt is for (a room, a rejoin or a contact), and whether with video.
     var requested by remember { mutableStateOf<Pair<Boolean, (Boolean) -> Unit>?>(null) }
@@ -218,42 +239,64 @@ fun HomeScreen(
         if (request.isFresh(System.currentTimeMillis()) && serverBase != null) callContact(request.contact, request.video)
     }
 
+    val unread = contacts.sumOf { conversations[it.address]?.unread ?: 0 }
+
     Scaffold(
+        containerColor = Tones.page,
         topBar = {
             TopAppBar(
-                title = { Text("Earshot", fontWeight = FontWeight.SemiBold) },
+                title = { Text(if (tab == HomeTab.CALLS) "Calls" else "Earshot") },
                 actions = {
-                    IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, contentDescription = "Settings") }
+                    IconButton(onClick = onOpenSettings) { Icon(Icons.Outlined.Settings, contentDescription = "Settings") }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Tones.page, scrolledContainerColor = Tones.page),
             )
+        },
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    selected = tab == HomeTab.CHATS,
+                    onClick = { tab = HomeTab.CHATS },
+                    icon = {
+                        BadgedBox(badge = { if (unread > 0) Badge { Text(if (unread > 99) "99+" else "$unread") } }) {
+                            Icon(if (tab == HomeTab.CHATS) Icons.AutoMirrored.Filled.Chat else Icons.AutoMirrored.Outlined.Chat, contentDescription = null)
+                        }
+                    },
+                    label = { Text("Chats") },
+                )
+                NavigationBarItem(
+                    selected = tab == HomeTab.CALLS,
+                    onClick = { tab = HomeTab.CALLS },
+                    icon = { Icon(if (tab == HomeTab.CALLS) Icons.Filled.Call else Icons.Outlined.Call, contentDescription = null) },
+                    label = { Text("Calls") },
+                )
+            }
+        },
+        floatingActionButton = {
+            if (canStart) {
+                // Not the icon-and-text overload: that one hides its label from TalkBack.
+                ExtendedFloatingActionButton(onClick = { inviting = true }) {
+                    Icon(Icons.Outlined.PersonAdd, contentDescription = null)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Invite")
+                }
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            if (serverBase == null) {
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Connect a server first", style = MaterialTheme.typography.titleMedium)
-                        Button(onClick = onOpenSettings) { Text("Settings") }
-                    }
-                }
-            }
-
-            UpdateCard(update, onUpdate)
-
-            val invitedRoom = invited?.let(RoomCodes::normalize)
-            if (invitedRoom != null && serverBase != null && !inCall) {
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("You're invited to a call", style = MaterialTheme.typography.titleMedium)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        when (tab) {
+            HomeTab.CHATS -> Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = FAB_CLEARANCE),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                val invitedRoom = invited?.let(RoomCodes::normalize)
+                if (invitedRoom != null && canStart) {
+                    Notice("You're invited to a call") {
+                        NoticeActions {
                             Button(onClick = {
                                 invited = null
                                 joinRoom(invitedRoom, withVideo = true)
@@ -266,90 +309,148 @@ fun HomeScreen(
                         }
                     }
                 }
-            }
 
-            if (interrupted != null && serverBase != null && !inCall && interrupted.isRecent(System.currentTimeMillis())) {
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Your call was cut off", style = MaterialTheme.typography.titleMedium)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (interrupted != null && canStart && interrupted.isRecent(System.currentTimeMillis())) {
+                    Notice("Your call was cut off") {
+                        NoticeActions {
                             Button(onClick = { joinRoom(interrupted.room, interrupted.withVideo) }) { Text("Rejoin") }
                             TextButton(onClick = onDismissInterrupted) { Text("Dismiss") }
                         }
                     }
                 }
-            }
 
-            if (askName) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { typed ->
-                        val next = typed.take(MAX_NAME_LENGTH)
-                        name = next
-                        onUpdateSettings { it.copy(displayName = next) }
-                    },
-                    label = { Text("Your name") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-
-            if (serverBase != null) {
-                ContactsCard(
-                    contacts,
-                    onCall = ::callContact,
-                    onRemove = onRemoveContact,
-                    conversations = conversations,
-                    onOpen = onOpenConversation,
-                    onRename = onRenameContact,
-                    onBlock = onBlockContact,
-                )
-            }
-
-            if (serverBase != null) {
-                RecentCallsCard(recentCalls, onCallBack = { call ->
-                    val address = call.address ?: return@RecentCallsCard
-                    callContact(contacts.firstOrNull { it.address == address } ?: Contact(call.name, address), call.video)
-                })
-            }
-
-            // Like a contact's two buttons: a video call or a voice call, either can switch later.
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Invite someone", style = MaterialTheme.typography.titleMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(
-                        onClick = { invite(withVideo = true) },
-                        enabled = serverBase != null && !inCall,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(52.dp),
-                    ) {
-                        Icon(Icons.Filled.Videocam, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Video call")
-                    }
-                    OutlinedButton(
-                        onClick = { invite(withVideo = false) },
-                        enabled = serverBase != null && !inCall,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(52.dp),
-                    ) {
-                        Icon(Icons.Filled.Call, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Voice call")
+                if (serverBase == null) {
+                    Notice("Connect a server first") {
+                        NoticeActions { Button(onClick = onOpenSettings) { Text("Settings") } }
                     }
                 }
-            }
 
-            TextButton(onClick = { showCode = !showCode }, enabled = serverBase != null && !inCall) {
-                Text(if (showCode) "Hide room code" else "Join with a room code")
+                if (askName) {
+                    Notice("What's your name?", detail = "Shown to the people you call") {
+                        Spacer(Modifier.height(4.dp))
+                        OutlinedTextField(
+                            value = name,
+                            onValueChange = { typed ->
+                                val next = typed.take(MAX_NAME_LENGTH)
+                                name = next
+                                onUpdateSettings { it.copy(displayName = next) }
+                            },
+                            label = { Text("Your name") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
+                            colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Tones.row, unfocusedContainerColor = Tones.row),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+
+                UpdateCard(update, onUpdate)
+
+                if (serverBase != null && settings.receiveCalls && inboxStatus != null) {
+                    CallsReadyCard(inboxStatus, settings.callSetupDone, onSetupDone = { onUpdateSettings { it.copy(callSetupDone = true) } })
+                }
+
+                BackgroundCard(done = settings.backgroundGuideDone) { onUpdateSettings { it.copy(backgroundGuideDone = true) } }
+
+                if (earbuds.family != null && !settings.autoGameMode && !settings.gameModeHintDone) {
+                    Notice("Your earbuds have a game mode", detail = "About half the delay in calls") {
+                        NoticeActions {
+                            Button(onClick = { onUpdateSettings { it.copy(autoGameMode = true, gameModeHintDone = true) } }) {
+                                Text("Use it for calls")
+                            }
+                            TextButton(onClick = { onUpdateSettings { it.copy(gameModeHintDone = true) } }) { Text("Not now") }
+                        }
+                    }
+                }
+
+                if (serverBase != null) {
+                    ChatList(
+                        contacts,
+                        onCall = ::callContact,
+                        onRemove = onRemoveContact,
+                        conversations = conversations,
+                        onOpen = onOpenConversation,
+                        onRename = onRenameContact,
+                        onBlock = onBlockContact,
+                    )
+                }
             }
-            if (showCode && serverBase != null && !inCall) {
+            HomeTab.CALLS -> CallHistory(
+                calls = recentCalls,
+                onCallBack = { call ->
+                    val address = call.address ?: return@CallHistory
+                    callContact(contacts.firstOrNull { it.address == address } ?: Contact(call.name, address), call.video)
+                },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = FAB_CLEARANCE),
+            )
+        }
+    }
+
+    if (inviting && canStart) {
+        ModalBottomSheet(onDismissRequest = { inviting = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            InviteOptions(
+                room = room,
+                onRoomChange = { room = it },
+                onInvite = { video ->
+                    inviting = false
+                    invite(video)
+                },
+                onJoin = { code, video ->
+                    inviting = false
+                    joinRoom(code, video)
+                },
+            )
+        }
+    }
+}
+
+/** Room under the floating Invite button, so it never covers a row's call buttons. */
+private val FAB_CLEARANCE = 96.dp
+
+/**
+ * Something new: a video or voice call whose link goes straight to them, or joining
+ * someone else's with its room code (folded away until asked for).
+ */
+@Composable
+internal fun InviteOptions(
+    room: String,
+    onRoomChange: (String) -> Unit,
+    onInvite: (withVideo: Boolean) -> Unit,
+    onJoin: (room: String, withVideo: Boolean) -> Unit,
+) {
+    var showCode by rememberSaveable { mutableStateOf(false) }
+    val normalizedRoom = RoomCodes.normalize(room)
+    val clear = ListItemDefaults.colors(containerColor = Color.Transparent)
+    Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+        Text("Invite someone", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 8.dp))
+        ListItem(
+            headlineContent = { Text("Video call") },
+            supportingContent = { Text("Starts it and sends them the link") },
+            leadingContent = { Icon(Icons.Filled.Videocam, contentDescription = null) },
+            colors = clear,
+            modifier = Modifier.clickable { onInvite(true) }.padding(horizontal = 8.dp),
+        )
+        ListItem(
+            headlineContent = { Text("Voice call") },
+            supportingContent = { Text("Either of you can add video later") },
+            leadingContent = { Icon(Icons.Filled.Call, contentDescription = null) },
+            colors = clear,
+            modifier = Modifier.clickable { onInvite(false) }.padding(horizontal = 8.dp),
+        )
+        ListItem(
+            headlineContent = { Text("Join with a room code") },
+            leadingContent = { Icon(Icons.Filled.Dialpad, contentDescription = null) },
+            colors = clear,
+            modifier = Modifier.clickable { showCode = !showCode }.padding(horizontal = 8.dp),
+        )
+        if (showCode) {
+            Column(Modifier.padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = room,
-                    onValueChange = { room = it },
+                    onValueChange = onRoomChange,
                     label = { Text("Room") },
                     placeholder = { Text("calm-otter-4821") },
                     singleLine = true,
@@ -358,37 +459,12 @@ fun HomeScreen(
                         if (room.isNotBlank() && normalizedRoom == null) Text("3–64 letters, numbers or dashes")
                     },
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, imeAction = ImeAction.Go),
-                    keyboardActions = KeyboardActions(onGo = { normalizedRoom?.let { joinRoom(it, withVideo = true) } }),
+                    keyboardActions = KeyboardActions(onGo = { normalizedRoom?.let { onJoin(it, true) } }),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { normalizedRoom?.let { joinRoom(it, withVideo = true) } }, enabled = normalizedRoom != null) {
-                        Text("Join call")
-                    }
-                    OutlinedButton(onClick = { normalizedRoom?.let { joinRoom(it, withVideo = false) } }, enabled = normalizedRoom != null) {
-                        Text("Voice only")
-                    }
-                }
-            }
-
-            if (serverBase != null && settings.receiveCalls && inboxStatus != null) {
-                CallsReadyCard(inboxStatus, settings.callSetupDone, onSetupDone = { onUpdateSettings { it.copy(callSetupDone = true) } })
-            }
-
-            BackgroundCard(done = settings.backgroundGuideDone) { onUpdateSettings { it.copy(backgroundGuideDone = true) } }
-
-            if (earbuds.family != null && !settings.autoGameMode && !settings.gameModeHintDone) {
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Your earbuds have a game mode", style = MaterialTheme.typography.titleMedium)
-                        Text("About half the delay in calls", style = MaterialTheme.typography.bodyMedium)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { onUpdateSettings { it.copy(autoGameMode = true, gameModeHintDone = true) } }) {
-                                Text("Use it for calls")
-                            }
-                            TextButton(onClick = { onUpdateSettings { it.copy(gameModeHintDone = true) } }) { Text("Not now") }
-                        }
-                    }
+                    Button(onClick = { normalizedRoom?.let { onJoin(it, true) } }, enabled = normalizedRoom != null) { Text("Join call") }
+                    OutlinedButton(onClick = { normalizedRoom?.let { onJoin(it, false) } }, enabled = normalizedRoom != null) { Text("Voice only") }
                 }
             }
         }
@@ -406,42 +482,12 @@ internal fun UpdateCard(update: AppUpdater.State, onUpdate: () -> Unit) {
         is AppUpdater.State.Failed -> Triple("Update didn't finish", update.reason, null)
         AppUpdater.State.Idle, AppUpdater.State.Checking, is AppUpdater.State.UpToDate, AppUpdater.State.CheckFailed -> return
     }
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-        Column(Modifier.padding(16.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(detail, style = MaterialTheme.typography.bodyMedium)
-            if (update is AppUpdater.State.Downloading) {
-                LinearProgressIndicator(progress = { update.percent / 100f }, modifier = Modifier.fillMaxWidth())
-            }
-            button?.let { Button(onClick = onUpdate) { Text(it) } }
+    Notice(title, detail = detail) {
+        if (update is AppUpdater.State.Downloading) {
+            Spacer(Modifier.height(4.dp))
+            LinearProgressIndicator(progress = { update.percent / 100f }, modifier = Modifier.fillMaxWidth())
         }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AudioModePicker(mode: AudioMode, onChange: (AudioMode) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            SegmentedButton(
-                selected = mode == AudioMode.HIFI,
-                onClick = { onChange(AudioMode.HIFI) },
-                shape = SegmentedButtonDefaults.itemShape(0, 2),
-            ) { Text("Hi-Fi") }
-            SegmentedButton(
-                selected = mode == AudioMode.HEADSET,
-                onClick = { onChange(AudioMode.HEADSET) },
-                shape = SegmentedButtonDefaults.itemShape(1, 2),
-            ) { Text("Headset mic") }
-        }
-        Text(
-            when (mode) {
-                AudioMode.HIFI -> "Earbuds stay in music quality; the phone's mic hears you"
-                AudioMode.HEADSET -> "Earbuds' mic, in call quality"
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        button?.let { NoticeActions { Button(onClick = onUpdate) { Text(it) } } }
     }
 }
 

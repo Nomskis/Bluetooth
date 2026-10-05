@@ -99,6 +99,8 @@ data class CallState(
     val outgoing: OutgoingCall? = null,
     /** Who a direct call is with, for the title while they're not in the room. */
     val contactName: String? = null,
+    /** Their inbox address when known (a direct call, or once their contact card arrives): their colour on screen. */
+    val contactAddress: String? = null,
     /** When the call first connected (SystemClock.elapsedRealtime), for the call timer; null until then. */
     val connectedAt: Long? = null,
     /** How the call went, filled in when it ends. */

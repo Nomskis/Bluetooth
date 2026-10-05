@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -17,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.nomskis.earshot.ui.theme.Tones
 
 private enum class Screen { HOME, SETTINGS, TUNER }
 
@@ -61,7 +61,7 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean) {
     val openConversation by viewModel.openConversation.collectAsStateWithLifecycle()
     val callMinimized by viewModel.callMinimized.collectAsStateWithLifecycle()
 
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(Modifier.fillMaxSize(), color = Tones.page) {
         val current = settings ?: return@Surface Box(Modifier.fillMaxSize())
         val activeSession = session
         // During a call the rest of the app stays usable, with a bar at the top back to the call.
@@ -105,6 +105,9 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean) {
                             onDelete = { message -> viewModel.deleteMessage(contact.address, message) },
                             onClear = { viewModel.clearConversation(contact.address) },
                             calls = callLog.filter { it.address == contact.address },
+                            onRename = { name -> viewModel.renameContact(contact.address, name) },
+                            onBlock = { viewModel.block(contact) },
+                            onRemove = { viewModel.removeContact(contact) },
                         )
                     }
                     screen == Screen.SETTINGS -> SettingsScreen(

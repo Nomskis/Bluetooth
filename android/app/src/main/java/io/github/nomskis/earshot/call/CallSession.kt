@@ -127,6 +127,7 @@ class CallSession(
             // A voice call is a call with the camera off: one tap turns it into a video call.
             cameraOff = !withVideo,
             contactName = contactName,
+            contactAddress = remoteAddress,
         ),
     )
     val state: StateFlow<CallState> = _state.asStateFlow()
@@ -592,6 +593,7 @@ class CallSession(
     private fun takeCard(card: Chat.Frame.Contact) {
         val name = card.name.ifBlank { remote?.name.orEmpty() }
         remoteAddress = card.address
+        _state.update { it.copy(contactAddress = card.address) }
         onContact(Contact(name, card.address, System.currentTimeMillis()))
     }
 

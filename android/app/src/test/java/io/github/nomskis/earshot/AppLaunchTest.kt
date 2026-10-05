@@ -37,7 +37,9 @@ class AppLaunchTest {
     @Test
     fun launchesAndOpensSettingsAndTheTuner() {
         compose.onNodeWithText("Earshot").assertIsDisplayed()
-        compose.onNodeWithText("Invite someone").performScrollTo().assertIsDisplayed()
+        // The two tabs, as in a messaging app.
+        compose.onNodeWithText("Chats").assertIsDisplayed()
+        compose.onNodeWithText("Calls").assertIsDisplayed()
 
         compose.onNodeWithContentDescription("Settings").performClick()
         // Under Advanced, which starts open while no server is set.
