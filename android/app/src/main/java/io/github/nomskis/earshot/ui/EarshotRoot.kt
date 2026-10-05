@@ -31,6 +31,8 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean) {
     val route by viewModel.route.collectAsStateWithLifecycle()
     val error by viewModel.lastError.collectAsStateWithLifecycle()
     val pendingRoom by viewModel.pendingRoom.collectAsStateWithLifecycle()
+    val hasProfilePhoto by viewModel.hasProfilePhoto.collectAsStateWithLifecycle()
+    val cropping by viewModel.cropping.collectAsStateWithLifecycle()
     val serverCheck by viewModel.serverCheck.collectAsStateWithLifecycle()
     val delayRuns by viewModel.delayRuns.collectAsStateWithLifecycle()
     val sonar by viewModel.sonar.collectAsStateWithLifecycle()
@@ -125,6 +127,12 @@ fun EarshotRoot(viewModel: MainViewModel, inPictureInPicture: Boolean) {
                         )
                     }
                     screen == Screen.SETTINGS -> SettingsScreen(
+                        hasProfilePhoto = hasProfilePhoto,
+                        onProfilePicked = viewModel::pickProfilePhoto,
+                        onRemoveProfile = viewModel::removeProfilePhoto,
+                        cropping = cropping,
+                        onUseCrop = viewModel::useProfilePhoto,
+                        onCancelCrop = viewModel::cancelCrop,
                         settings = current,
                         serverCheck = serverCheck,
                         onUpdate = viewModel::updateSettings,

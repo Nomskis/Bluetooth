@@ -121,6 +121,22 @@ function photoOf(photo) {
   return { data: photo.data, type: photo.type, width: photo.width, height: photo.height };
 }
 
+/** A profile picture: the app sends 256 px square, a few tens of KB. */
+export const MAX_PROFILE_PHOTO_BASE64 = 120_000;
+
+/** Our profile, for a contact's phone: our picture (base64 JPEG), or that we took it away. */
+function profileOf(profile) {
+  if (!isPlainObject(profile)) throw new ProtocolError(ErrorCode.BAD_REQUEST, 'profile must be an object');
+  if (profile.photo !== undefined) {
+    if (typeof profile.photo !== 'string' || profile.photo.length === 0 || profile.photo.length > MAX_PROFILE_PHOTO_BASE64 || !BASE64_PATTERN.test(profile.photo)) {
+      throw new ProtocolError(ErrorCode.BAD_REQUEST, `profile photo must be base64, at most ${MAX_PROFILE_PHOTO_BASE64} characters`);
+    }
+    return { photo: profile.photo };
+  }
+  if (profile.removed === true) return { removed: true };
+  throw new ProtocolError(ErrorCode.BAD_REQUEST, 'profile needs a "photo", or "removed": true');
+}
+
 /** How much of the message a reply quotes travels with it, for a phone that no longer has it. */
 export const MAX_REPLY_QUOTE = 300;
 
@@ -230,6 +246,13 @@ export function parseClientMessage(raw) {
       }
       const id = messageIdOf(msg);
       const name = cleanText(msg.name, MAX_NAME_LENGTH);
+      // Our profile picture for their phone, not a chat message; nothing else.
+      if (msg.profile !== undefined) {
+        if (msg.text !== undefined || msg.reply !== undefined || msg.photo !== undefined || msg.unsend !== undefined) {
+          throw new ProtocolError(ErrorCode.BAD_REQUEST, 'a profile carries nothing else');
+        }
+        return { type: 'message', to: msg.to, id, name, profile: profileOf(msg.profile) };
+      }
       // Delete for everyone: withdraws one of the sender's earlier messages, `unsend`; nothing else.
       if (msg.unsend !== undefined) {
         if (typeof msg.unsend !== 'string' || !MESSAGE_ID_PATTERN.test(msg.unsend)) {

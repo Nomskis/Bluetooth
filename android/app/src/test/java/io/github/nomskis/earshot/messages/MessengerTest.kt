@@ -23,6 +23,22 @@ class MessengerTest {
     private val blocked = mutableSetOf<String>()
     private var clock = 1_000L
     private val files = mutableMapOf<String, ByteArray>()
+    private var myVersion = 0L
+    private var myPhoto: ByteArray? = null
+    private val sentTo = mutableMapOf<String, Long>()
+    private val theirs = mutableMapOf<String, ByteArray?>()
+    private val profileFiles = object : Messenger.ProfileFiles {
+        override val myVersion get() = this@MessengerTest.myVersion
+        override val hasMyPhoto get() = myPhoto != null
+        override fun myPhoto() = this@MessengerTest.myPhoto
+        override fun sentVersion(address: String) = sentTo[address] ?: 0L
+        override fun markSent(address: String, version: Long) {
+            sentTo[address] = version
+        }
+        override fun saveTheirs(address: String, jpeg: ByteArray?) {
+            theirs[address] = jpeg
+        }
+    }
     private val photoFiles = object : Messenger.PhotoFiles {
         override fun read(name: String) = files[name]
         override fun save(bytes: ByteArray): String = "p${files.size + 1}.jpg".also { files[it] = bytes }
@@ -52,6 +68,8 @@ class MessengerTest {
             now = { clock },
             io = dispatcher,
             photos = photoFiles,
+            profiles = profileFiles,
+            contacts = { listOf(sam, stranger) },
         )
     }
 
@@ -277,5 +295,46 @@ class MessengerTest {
         m.sendPhoto(sam, Photo("mine.jpg", 10, 10))
         m.clear(sam)
         assertTrue(files.isEmpty())
+    }
+
+    @Test
+    fun ourPictureGoesToEachContactUntilTheirPhoneHasIt() {
+        val m = messenger()
+        m.shareProfile()
+        // Never set: nothing to send.
+        assertTrue(sent.isEmpty())
+        myVersion = 1_791_200_000_000
+        myPhoto = byteArrayOf(1, 2, 3)
+        m.shareProfile()
+        val out = sent.map { it as ClientMessage.Message }
+        assertEquals(listOf(sam, stranger), out.map { it.to })
+        assertEquals("p-1791200000000", out.first().id)
+        assertEquals(io.github.nomskis.earshot.signaling.WireProfile(photo = "AQID"), out.first().profile)
+        // Sam's phone has it; the other one is still owed it after a reconnect.
+        m.onServerMessage(ServerMessage.MessageStatus("p-1791200000000", sam, "delivered"))
+        sent.clear()
+        m.onServerMessage(ServerMessage.Listening("our-address"))
+        assertEquals(listOf(stranger), sent.mapNotNull { (it as ClientMessage.Message).takeIf { m -> m.profile != null }?.to })
+        // Taken away: everyone's told.
+        myVersion += 1
+        myPhoto = null
+        sent.clear()
+        m.shareProfile()
+        assertEquals(listOf(true, true), sent.map { (it as ClientMessage.Message).profile?.removed })
+    }
+
+    @Test
+    fun theirPictureIsKeptAndNotAChatMessage() {
+        val m = messenger()
+        m.onServerMessage(
+            ServerMessage.Message(id = "p-1", from = Caller("Sam", sam), profile = io.github.nomskis.earshot.signaling.WireProfile(photo = "AQID")),
+        )
+        assertEquals(listOf<Byte>(1, 2, 3), theirs.getValue(sam)?.toList())
+        assertEquals(ClientMessage.MessageAck(to = sam, id = "p-1"), sent.single())
+        assertEquals(null, m.conversations.value[sam]?.messages?.firstOrNull())
+        m.onServerMessage(
+            ServerMessage.Message(id = "p-2", from = Caller("Sam", sam), profile = io.github.nomskis.earshot.signaling.WireProfile(removed = true)),
+        )
+        assertEquals(null, theirs.getValue(sam))
     }
 }

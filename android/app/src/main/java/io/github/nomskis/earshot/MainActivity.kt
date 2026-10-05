@@ -24,6 +24,7 @@ import io.github.nomskis.earshot.messages.MessageNotifications
 import io.github.nomskis.earshot.signaling.ServerUrls
 import io.github.nomskis.earshot.ui.EarshotRoot
 import io.github.nomskis.earshot.ui.MainViewModel
+import io.github.nomskis.earshot.ui.ProvideAvatars
 import io.github.nomskis.earshot.ui.theme.EarshotTheme
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.combine
@@ -87,7 +88,9 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             EarshotTheme {
-                EarshotRoot(viewModel = viewModel, inPictureInPicture = inPictureInPicture.value)
+                ProvideAvatars(appGraph.profiles) {
+                    EarshotRoot(viewModel = viewModel, inPictureInPicture = inPictureInPicture.value)
+                }
             }
         }
     }

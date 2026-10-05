@@ -18,6 +18,7 @@ import io.github.nomskis.earshot.MainActivity
 import io.github.nomskis.earshot.appGraph
 import io.github.nomskis.earshot.settings.QuickReplies
 import io.github.nomskis.earshot.ui.IncomingCallScreen
+import io.github.nomskis.earshot.ui.ProvideAvatars
 import io.github.nomskis.earshot.ui.theme.CallTheme
 
 /**
@@ -40,30 +41,32 @@ class IncomingCallActivity : ComponentActivity() {
         showOverLockScreen()
         setContent {
             CallTheme {
-                val ring by inbox.ringing.collectAsStateWithLifecycle()
-                val settings by appGraph.settings.settings.collectAsStateWithLifecycle(null)
-                val current = ring
-                // Cancelled, answered elsewhere, or timed out: nothing left to show.
-                LaunchedEffect(current == null) { if (current == null) finish() }
-                if (current != null) {
-                    IncomingCallScreen(
-                        ring = current,
-                        onAccept = { startAnswer(withVideo = current.video) },
-                        onAcceptVoiceOnly = { startAnswer(withVideo = false) },
-                        onDecline = {
-                            inbox.decline()
-                            finish()
-                        },
-                        // Decline with a message, like the phone app's "Reply with message".
-                        onReply = current.callerAddress?.let { address ->
-                            { text: String ->
-                                appGraph.messenger.send(address, text)
+                ProvideAvatars(appGraph.profiles) {
+                    val ring by inbox.ringing.collectAsStateWithLifecycle()
+                    val settings by appGraph.settings.settings.collectAsStateWithLifecycle(null)
+                    val current = ring
+                    // Cancelled, answered elsewhere, or timed out: nothing left to show.
+                    LaunchedEffect(current == null) { if (current == null) finish() }
+                    if (current != null) {
+                        IncomingCallScreen(
+                            ring = current,
+                            onAccept = { startAnswer(withVideo = current.video) },
+                            onAcceptVoiceOnly = { startAnswer(withVideo = false) },
+                            onDecline = {
                                 inbox.decline()
                                 finish()
-                            }
-                        },
-                        quickReplies = settings?.quickReplies ?: QuickReplies.DEFAULT,
-                    )
+                            },
+                            // Decline with a message, like the phone app's "Reply with message".
+                            onReply = current.callerAddress?.let { address ->
+                                { text: String ->
+                                    appGraph.messenger.send(address, text)
+                                    inbox.decline()
+                                    finish()
+                                }
+                            },
+                            quickReplies = settings?.quickReplies ?: QuickReplies.DEFAULT,
+                        )
+                    }
                 }
             }
         }

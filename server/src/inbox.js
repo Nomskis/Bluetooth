@@ -42,7 +42,7 @@ const MAX_WAITING_BYTES = 160 * 1024 * 1024;
 
 /** Roughly what a waiting message costs in memory: its picture, if any, and its words. */
 function weight(out) {
-  return (out.photo?.data.length ?? 0) + (out.text?.length ?? 0) * 2 + 256;
+  return (out.photo?.data.length ?? 0) + (out.profile?.photo?.length ?? 0) + (out.text?.length ?? 0) * 2 + 256;
 }
 
 export class Inbox {
@@ -100,6 +100,7 @@ export class Inbox {
     if (msg.reply) out.reply = msg.reply;
     if (msg.unsend) out.unsend = msg.unsend;
     if (msg.photo) out.photo = msg.photo;
+    if (msg.profile) out.profile = msg.profile;
     const waiting = this.#waitingFor(msg.to);
     // Withdrawn before their phone took it: it never arrives. The unsend still goes, for a
     // device of theirs that took it already.

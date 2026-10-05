@@ -212,6 +212,32 @@ class MidCallAndSettingsTest {
     }
 
     @Test
+    fun yourPictureCanBeAddedAndTakenAwayAfterAsking() {
+        var removed = 0
+        compose.setContent {
+            EarshotTheme {
+                SettingsScreen(
+                    settings = AppSettings(serverUrl = "https://calls.example.com"),
+                    serverCheck = ServerCheck.Idle,
+                    onUpdate = {},
+                    onCheckServer = {},
+                    onOpenTuner = {},
+                    onBack = {},
+                    hasProfilePhoto = true,
+                    onRemoveProfile = { removed++ },
+                )
+            }
+        }
+        compose.onNodeWithText("Your picture").performClick()
+        compose.onNodeWithText("Choose a photo").assertIsDisplayed()
+        compose.onNodeWithText("Take a photo").assertIsDisplayed()
+        compose.onNodeWithText("Remove picture").performClick()
+        compose.onNodeWithText("Remove your picture?").assertIsDisplayed()
+        compose.onNodeWithText("Remove").performClick()
+        assertEquals(1, removed)
+    }
+
+    @Test
     fun settingsCheckForUpdatesAndSayWhenUpToDate() {
         var checks = 0
         settings(update = AppUpdater.State.UpToDate(120), onCheck = { checks++ })

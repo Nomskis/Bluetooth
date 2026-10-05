@@ -152,8 +152,14 @@ this list works with every pair of classic Bluetooth earbuds.
   **Chats**. A message to a phone that's offline waits on your server and
   arrives when it's back; yours stays "waiting" until their phone confirms
   it, then shows "Delivered" and "Seen". Reply or mark as read right from the
-  notification;
-  long-press a message to copy or delete it.
+  notification. Hold a message (or swipe it right) to answer it, WhatsApp
+  style: the answer quotes it, and a tap on the quote goes back to it. Send
+  pictures from the gallery or the camera, with a caption; they're made light
+  first (about 450 KB) and open full screen with zoom, Save and Share. Delete
+  a message for yourself, or one of yours for everyone within 48 hours
+  ("This message was deleted" stays in its place). Set a profile picture in
+  Settings, cropped in a circle; your contacts see it in chats, calls and
+  notifications. Anything destructive asks first.
   A call's chat lands in the same conversation, and the calls themselves show
   between the messages ("Missed voice call", "Video call · 12:34"). Someone you block can't ring
   you or write to you, and isn't told.

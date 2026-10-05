@@ -54,6 +54,29 @@ class Photos(context: Context) : Messenger.PhotoFiles {
      * [PhotoSizing.TARGET_BYTES]. Null if it can't be read. Slow: not on the main thread.
      */
     fun prepare(uri: Uri, maxEdge: Int = PhotoSizing.MAX_EDGE): Photo? = runCatching {
+        val base = decodeUpright(uri, maxEdge) ?: return null
+        var edge = maxEdge
+        var bytes: ByteArray
+        var shaped: Bitmap
+        // Smaller until it's light enough: a little less quality first, then fewer pixels.
+        while (true) {
+            shaped = scaled(base, edge)
+            bytes = PhotoSizing.QUALITIES.firstNotNullOfOrNull { quality ->
+                jpeg(shaped, quality).takeIf { it.size <= PhotoSizing.TARGET_BYTES }
+            } ?: jpeg(shaped, PhotoSizing.QUALITIES.last())
+            if (bytes.size <= PhotoSizing.TARGET_BYTES || edge <= PhotoSizing.MIN_EDGE) break
+            if (shaped !== base) shaped.recycle()
+            edge = (edge * 0.8f).roundToInt()
+        }
+        val name = save(bytes) ?: return null
+        Photo(name, shaped.width, shaped.height).also {
+            if (shaped !== base) shaped.recycle()
+            base.recycle()
+        }
+    }.onFailure { Log.w(TAG, "Couldn't prepare a picture", it) }.getOrNull()
+
+    /** The picture at [uri] decoded upright (from its EXIF orientation), at most [maxEdge] px on its long side. */
+    fun decodeUpright(uri: Uri, maxEdge: Int): Bitmap? = runCatching {
         val resolver = appContext.contentResolver
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
@@ -65,34 +88,18 @@ class Photos(context: Context) : Messenger.PhotoFiles {
                 PhotoSizing.rotation(ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL))
             }
         }.getOrNull() ?: 0
-        var edge = maxEdge
-        var bytes: ByteArray
-        var shaped: Bitmap
-        // Smaller until it's light enough: a little less quality first, then fewer pixels.
-        while (true) {
-            shaped = upright(decoded, edge, rotation)
-            bytes = PhotoSizing.QUALITIES.firstNotNullOfOrNull { quality ->
-                jpeg(shaped, quality).takeIf { it.size <= PhotoSizing.TARGET_BYTES }
-            } ?: jpeg(shaped, PhotoSizing.QUALITIES.last())
-            if (bytes.size <= PhotoSizing.TARGET_BYTES || edge <= PhotoSizing.MIN_EDGE) break
-            if (shaped !== decoded) shaped.recycle()
-            edge = (edge * 0.8f).roundToInt()
-        }
-        val name = save(bytes) ?: return null
-        Photo(name, shaped.width, shaped.height).also {
-            if (shaped !== decoded) shaped.recycle()
-            decoded.recycle()
-        }
-    }.onFailure { Log.w(TAG, "Couldn't prepare a picture", it) }.getOrNull()
-
-    private fun upright(bitmap: Bitmap, maxEdge: Int, rotation: Int): Bitmap {
-        val (w, h) = PhotoSizing.fit(bitmap.width, bitmap.height, maxEdge)
-        if (rotation == 0 && w == bitmap.width && h == bitmap.height) return bitmap
+        val (w, h) = PhotoSizing.fit(decoded.width, decoded.height, maxEdge)
+        if (rotation == 0 && w == decoded.width && h == decoded.height) return decoded
         val matrix = Matrix().apply {
-            postScale(w.toFloat() / bitmap.width, h.toFloat() / bitmap.height)
+            postScale(w.toFloat() / decoded.width, h.toFloat() / decoded.height)
             postRotate(rotation.toFloat())
         }
-        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true).also { if (it !== decoded) decoded.recycle() }
+    }.onFailure { Log.w(TAG, "Couldn't read a picture", it) }.getOrNull()
+
+    private fun scaled(bitmap: Bitmap, maxEdge: Int): Bitmap {
+        val (w, h) = PhotoSizing.fit(bitmap.width, bitmap.height, maxEdge)
+        return if (w == bitmap.width && h == bitmap.height) bitmap else Bitmap.createScaledBitmap(bitmap, w, h, true)
     }
 
     private fun jpeg(bitmap: Bitmap, quality: Int): ByteArray =
