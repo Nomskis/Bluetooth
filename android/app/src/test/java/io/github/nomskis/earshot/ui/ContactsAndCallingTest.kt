@@ -115,6 +115,13 @@ class ContactsAndCallingTest {
         // A long press, as in a messaging app; their conversation's menu has it too.
         compose.onNodeWithText("Salma").performTouchInput { longClick() }
         compose.onNodeWithText("Remove").performClick()
+        // It asks first: Cancel leaves her.
+        compose.onNodeWithText("Remove Salma?").assertIsDisplayed()
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals(null, removed)
+        compose.onNodeWithText("Salma").performTouchInput { longClick() }
+        compose.onNodeWithText("Remove").performClick()
+        compose.onNodeWithText("Remove").performClick()
         assertEquals(salma, removed)
     }
 

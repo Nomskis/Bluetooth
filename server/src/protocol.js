@@ -95,6 +95,29 @@ function messageIdOf(msg) {
   return msg.id;
 }
 
+/** How much of the message a reply quotes travels with it, for a phone that no longer has it. */
+export const MAX_REPLY_QUOTE = 300;
+
+/**
+ * The message a chat message answers: its `id`, whose it is from the sender's side (`me`, the
+ * sender's own; `you`, the recipient's), and a short quote of it.
+ */
+function replyOf(reply) {
+  if (!isPlainObject(reply) || typeof reply.id !== 'string' || !MESSAGE_ID_PATTERN.test(reply.id)) {
+    throw new ProtocolError(ErrorCode.BAD_REQUEST, 'reply needs the "id" of the message it answers');
+  }
+  if (reply.sender !== 'me' && reply.sender !== 'you') {
+    throw new ProtocolError(ErrorCode.BAD_REQUEST, 'reply "sender" must be "me" or "you"');
+  }
+  return {
+    id: reply.id,
+    sender: reply.sender,
+    // One line: line breaks become spaces.
+    text: typeof reply.text === 'string' ? cleanText(reply.text.replace(/[\r\n\t]/g, ' '), MAX_REPLY_QUOTE) : '',
+    ...(reply.photo === true ? { photo: true } : {}),
+  };
+}
+
 function ringIdOf(msg) {
   if (typeof msg.ringId !== 'string' || !PEER_ID_PATTERN.test(msg.ringId)) {
     throw new ProtocolError(ErrorCode.BAD_REQUEST, 'ringId must be 8-64 URL-safe characters');
@@ -179,10 +202,29 @@ export function parseClientMessage(raw) {
       if (typeof msg.to !== 'string' || !INBOX_ADDRESS_PATTERN.test(msg.to)) {
         throw new ProtocolError(ErrorCode.BAD_REQUEST, 'message needs a valid "to" inbox address');
       }
+      const id = messageIdOf(msg);
+      const name = cleanText(msg.name, MAX_NAME_LENGTH);
+      // Delete for everyone: withdraws one of the sender's earlier messages, `unsend`; nothing else.
+      if (msg.unsend !== undefined) {
+        if (typeof msg.unsend !== 'string' || !MESSAGE_ID_PATTERN.test(msg.unsend)) {
+          throw new ProtocolError(ErrorCode.BAD_REQUEST, 'unsend must name one of your messages');
+        }
+        if (msg.text !== undefined || msg.reply !== undefined) {
+          throw new ProtocolError(ErrorCode.BAD_REQUEST, 'an unsend carries nothing else');
+        }
+        return { type: 'message', to: msg.to, id, name, unsend: msg.unsend };
+      }
       if (typeof msg.text !== 'string' || msg.text.trim().length === 0 || msg.text.length > MAX_MESSAGE_TEXT) {
         throw new ProtocolError(ErrorCode.BAD_REQUEST, `message text must be 1-${MAX_MESSAGE_TEXT} characters`);
       }
-      return { type: 'message', to: msg.to, id: messageIdOf(msg), text: msg.text, name: cleanText(msg.name, MAX_NAME_LENGTH) };
+      return {
+        type: 'message',
+        to: msg.to,
+        id,
+        text: msg.text,
+        name,
+        ...(msg.reply !== undefined ? { reply: replyOf(msg.reply) } : {}),
+      };
     }
     case 'message-ack':
     case 'message-read': {

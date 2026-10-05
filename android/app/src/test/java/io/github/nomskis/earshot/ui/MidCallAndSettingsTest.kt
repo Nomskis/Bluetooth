@@ -2,16 +2,18 @@ package io.github.nomskis.earshot.ui
 
 import android.app.Application
 import android.os.SystemClock
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import io.github.nomskis.earshot.call.CallPhase
@@ -85,17 +87,69 @@ class MidCallAndSettingsTest {
         var cleared = 0
         compose.setContent {
             EarshotTheme {
-                ConversationScreen(sam, chat, onSend = {}, onCall = {}, onBack = {}, onDelete = { deleted += it.text }, onClear = { cleared++ })
+                ConversationScreen(sam, chat, onSend = { _, _ -> }, onCall = {}, onBack = {}, onDelete = { deleted += it.text }, onClear = { cleared++ })
             }
         }
         compose.onNodeWithText("Landed!").performTouchInput { longClick() }
         compose.onNodeWithText("Copy").assertIsDisplayed()
         compose.onNodeWithText("Delete").performClick()
+        // Theirs: only from this phone, and only once confirmed.
+        compose.onNodeWithText("Delete for everyone").assertDoesNotExist()
+        compose.onNodeWithText("Delete for me").performClick()
         assertEquals(listOf("Landed!"), deleted)
         compose.onNodeWithContentDescription("More").performClick()
         compose.onNodeWithText("Clear chat").performClick()
         compose.onNodeWithText("Clear").performClick()
         assertEquals(1, cleared)
+    }
+
+    @Test
+    fun aMessageCanBeAnsweredAndTheAnswerQuotesIt() {
+        val sam = io.github.nomskis.earshot.calls.Contact("Sam", "c2FtLWFkZHJlc3MtMDAwMD")
+        val chat = io.github.nomskis.earshot.messages.Conversation(sam.address).received("m1", "Landed!", 1_000)
+        val sent = mutableListOf<Pair<String, io.github.nomskis.earshot.messages.Quote?>>()
+        compose.setContent {
+            EarshotTheme { ConversationScreen(sam, chat, onSend = { text, reply -> sent += text to reply }, onCall = {}, onBack = {}) }
+        }
+        compose.onNodeWithText("Landed!").performTouchInput { longClick() }
+        compose.onNodeWithText("Reply").performClick()
+        compose.onNodeWithText("Replying to Sam").assertIsDisplayed()
+        compose.onNodeWithText("Message").performTextInput("Welcome home")
+        compose.onNodeWithContentDescription("Send").performClick()
+        assertEquals(listOf("Welcome home" to io.github.nomskis.earshot.messages.Quote("m1", mine = false, text = "Landed!")), sent)
+        compose.onNodeWithText("Replying to Sam").assertDoesNotExist()
+    }
+
+    @Test
+    fun anAnswerShowsWhatItAnswersAndADeletedMessageSaysSo() {
+        val sam = io.github.nomskis.earshot.calls.Contact("Sam", "c2FtLWFkZHJlc3MtMDAwMD")
+        val chat = io.github.nomskis.earshot.messages.Conversation(sam.address)
+            .received("m1", "Landed!", 1_000)
+            .sending("m2", "Welcome home", 2_000, reply = io.github.nomskis.earshot.messages.Quote("m1", mine = false, text = "Landed!"))
+            .received("m3", "Oops", 3_000)
+            .withdrawn("m3")
+        compose.setContent { EarshotTheme { ConversationScreen(sam, chat, onSend = { _, _ -> }, onCall = {}, onBack = {}) } }
+        compose.onNodeWithText("Welcome home").assertIsDisplayed()
+        // The quote: whose, and what.
+        compose.onAllNodesWithText("Landed!").assertCountEquals(2)
+        compose.onNodeWithText("This message was deleted").assertIsDisplayed()
+        compose.onNodeWithText("Oops").assertDoesNotExist()
+    }
+
+    @Test
+    fun oursCanBeDeletedForEveryoneWhileItsRecent() {
+        val sam = io.github.nomskis.earshot.calls.Contact("Sam", "c2FtLWFkZHJlc3MtMDAwMD")
+        val chat = io.github.nomskis.earshot.messages.Conversation(sam.address).sending("m2", "Wrong chat", 10_000)
+        val gone = mutableListOf<String>()
+        compose.setContent {
+            EarshotTheme {
+                ConversationScreen(sam, chat, onSend = { _, _ -> }, onCall = {}, onBack = {}, onDeleteForEveryone = { gone += it.id }, now = { 20_000 })
+            }
+        }
+        compose.onNodeWithText("Wrong chat").performTouchInput { longClick() }
+        compose.onNodeWithText("Delete").performClick()
+        compose.onNodeWithText("Delete for everyone").performClick()
+        assertEquals(listOf("m2"), gone)
     }
 
     @Test
@@ -110,7 +164,7 @@ class MidCallAndSettingsTest {
         assertEquals("Video call · ${talked.summary}", callEventText(talked))
         val calledBack = mutableListOf<Boolean>()
         compose.setContent {
-            EarshotTheme { ConversationScreen(sam, chat, onSend = {}, onCall = { calledBack += it }, onBack = {}, calls = listOf(talked, missed)) }
+            EarshotTheme { ConversationScreen(sam, chat, onSend = { _, _ -> }, onCall = { calledBack += it }, onBack = {}, calls = listOf(talked, missed)) }
         }
         compose.onNodeWithText("Missed voice call", substring = true).performClick()
         assertEquals(listOf(false), calledBack)

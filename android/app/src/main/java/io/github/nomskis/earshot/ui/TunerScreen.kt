@@ -322,13 +322,23 @@ private fun ResultCard(sonar: SonarState) {
 @Composable
 private fun History(runs: List<DelayRun>, onClear: () -> Unit) {
     if (runs.isEmpty()) return
+    var clearing by remember { mutableStateOf(false) }
+    if (clearing) {
+        ConfirmDialog(
+            title = "Clear your measurements?",
+            text = null,
+            confirm = "Clear",
+            onConfirm = onClear,
+            onDismiss = { clearing = false },
+        )
+    }
     val fastest = DelayRuns.fastestFor(runs, runs.first().device)
     val format = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
     Card(colors = CardDefaults.cardColors(containerColor = Tones.row)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Your measurements", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                TextButton(onClick = onClear) { Text("Clear") }
+                TextButton(onClick = { clearing = true }) { Text("Clear") }
             }
             runs.reversed().take(10).forEach { run ->
                 Row(verticalAlignment = Alignment.CenterVertically) {

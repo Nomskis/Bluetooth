@@ -41,6 +41,7 @@ import io.github.nomskis.earshot.turbo.TurboClient
 import io.github.nomskis.earshot.update.AppUpdater
 import io.github.nomskis.earshot.messages.Conversation
 import io.github.nomskis.earshot.messages.MessageNotifications
+import io.github.nomskis.earshot.messages.Quote
 import io.github.nomskis.earshot.messages.TextMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -150,9 +151,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         address?.let { MessageNotifications.cancel(getApplication(), it) }
     }
 
-    fun sendMessage(address: String, text: String) = graph.messenger.send(address, text)
+    /** [reply]: the message this one answers. */
+    fun sendMessage(address: String, text: String, reply: Quote? = null) = graph.messenger.send(address, text, reply)
 
+    /** Off this phone only. */
     fun deleteMessage(address: String, message: TextMessage) = graph.messenger.deleteMessage(address, message.id, message.mine)
+
+    /** One of ours, off their phone too. */
+    fun deleteForEveryone(address: String, message: TextMessage) = graph.messenger.deleteForEveryone(address, message.id)
 
     fun clearConversation(address: String) = graph.messenger.clear(address)
 

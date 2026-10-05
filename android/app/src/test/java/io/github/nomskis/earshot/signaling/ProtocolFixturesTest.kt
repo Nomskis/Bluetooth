@@ -76,6 +76,15 @@ class ProtocolFixturesTest {
     }
 
     @Test
+    fun answersAndWithdrawalsDecode() {
+        val reply = decodeServerMessage(File(fixtures, "server/message-reply.json").readText()) as ServerMessage.Message
+        assertEquals(WireReply("m-Ql9sA2vXeW7dHy3k", sender = "you", text = "Landed!"), reply.reply)
+        val unsend = decodeServerMessage(File(fixtures, "server/message-unsend.json").readText()) as ServerMessage.Message
+        assertEquals("m-Rk2xN8qPzT0aLm4v", unsend.unsend)
+        assertEquals("", unsend.text)
+    }
+
+    @Test
     fun screenSharingMessagesDecode() {
         val joined = decodeServerMessage(File(fixtures, "server/joined-screen.json").readText()) as ServerMessage.Joined
         assertEquals(listOf(Features.SCREEN), joined.features)

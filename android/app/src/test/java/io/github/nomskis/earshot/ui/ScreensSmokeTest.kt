@@ -203,7 +203,7 @@ class ScreensSmokeTest {
         var called: Boolean? = null
         compose.setContent {
             EarshotTheme {
-                ConversationScreen(sam, conversation, onSend = { sent += it }, onCall = { called = it }, onBack = {})
+                ConversationScreen(sam, conversation, onSend = { text, _ -> sent += text }, onCall = { called = it }, onBack = {})
             }
         }
         compose.onNodeWithText("Landed!").assertIsDisplayed()

@@ -4,6 +4,7 @@ import io.github.nomskis.earshot.call.Ids
 import io.github.nomskis.earshot.calls.Contact
 import io.github.nomskis.earshot.signaling.ClientMessage
 import io.github.nomskis.earshot.signaling.ServerMessage
+import io.github.nomskis.earshot.signaling.WireReply
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +35,8 @@ class Messenger(
     private val isBlocked: suspend (address: String) -> Boolean,
     /** Their message arrived while their conversation isn't on screen. */
     private val notify: (name: String, address: String, conversation: Conversation) -> Unit,
+    /** Nothing of theirs is left to show in a notification (they deleted it for everyone). */
+    private val cancelNotification: (address: String) -> Unit = {},
     private val now: () -> Long = System::currentTimeMillis,
     /** Where the files are read and written. */
     private val io: CoroutineDispatcher = Dispatchers.IO,
@@ -59,19 +62,22 @@ class Messenger(
         scope.launch(io) { _conversations.value = store.loadAll() }
     }
 
-    fun send(address: String, text: String) {
+    /** [reply]: the message this one answers. */
+    fun send(address: String, text: String, reply: Quote? = null) {
         val body = text.trim().take(Conversation.MAX_TEXT)
         if (body.isEmpty()) return
         val id = Ids.random(12, "m")
-        change(address) { it.sending(id, body, now()) }
-        scope.launch { transmit(address, id, body) }
+        change(address) { it.sending(id, body, now(), reply) }
+        val message = _conversations.value[address]?.messages?.lastOrNull { it.mine && it.id == id } ?: return
+        scope.launch { transmit(address, message) }
     }
 
     /** The inbox is listening again: everything they haven't confirmed goes out. */
     fun flushOutbox() {
         scope.launch {
             for (conversation in _conversations.value.values) {
-                for (message in conversation.outbox) transmit(conversation.address, message.id, message.text)
+                for (message in conversation.outbox) transmit(conversation.address, message)
+                for (id in conversation.unsending) transmitUnsend(conversation.address, id)
             }
         }
     }
@@ -82,7 +88,12 @@ class Messenger(
             is ServerMessage.Message -> scope.launch { receive(message) }
             is ServerMessage.MessageStatus -> {
                 val status = Conversation.statusOf(message.status) ?: return
-                change(message.to) { if (status == TextMessage.Status.READ) it.seen(message.id) else it.status(message.id, status) }
+                val withdrawn = Conversation.unsendTarget(message.id)
+                when {
+                    withdrawn != null -> if (status >= TextMessage.Status.DELIVERED) change(message.to) { it.unsendDelivered(withdrawn) }
+                    status == TextMessage.Status.READ -> change(message.to) { it.seen(message.id) }
+                    else -> change(message.to) { it.status(message.id, status) }
+                }
             }
             else -> Unit
         }
@@ -95,7 +106,17 @@ class Messenger(
         send(ClientMessage.MessageRead(to = address, id = latest.id))
     }
 
+    /** Off this phone only. */
     fun deleteMessage(address: String, id: String, mine: Boolean) = change(address) { it.delete(id, mine) }
+
+    /** One of ours, off their phone too ([Conversation.canUnsend]); "deleted" shows on both. */
+    fun deleteForEveryone(address: String, id: String) {
+        val conversation = _conversations.value[address] ?: return
+        val message = conversation.messages.firstOrNull { it.mine && it.id == id } ?: return
+        if (!conversation.canUnsend(message, now())) return
+        change(address) { it.unsent(id) }
+        scope.launch { transmitUnsend(address, id) }
+    }
 
     fun clear(address: String) = change(address) { it.cleared() }
 
@@ -110,11 +131,21 @@ class Messenger(
         // A blocked sender's too, or the server would keep handing it over.
         send(ClientMessage.MessageAck(to = address, id = message.id))
         if (isBlocked(address)) return
+        // They deleted one of theirs for everyone.
+        message.unsend?.let { id ->
+            change(address) { it.withdrawn(id) }
+            refreshNotification(address)
+            return
+        }
+        val text = message.text.trim().take(Conversation.MAX_TEXT)
+        if (text.isEmpty()) return
         val known = contact(address)
         if (known == null) saveContact(Contact(message.from.name.ifBlank { "Someone" }, address, 0))
         val at = now()
         val before = _conversations.value[address]
-        change(address) { it.received(message.id, message.text, at) }
+        // "you" in their reply is us.
+        val reply = message.reply?.let { Quote(it.id, mine = it.sender == "you", text = it.text.take(Conversation.MAX_QUOTE)) }
+        change(address) { it.received(message.id, text, at, reply) }
         val after = _conversations.value[address] ?: return
         val isNew = (before?.messages?.size ?: 0) != after.messages.size
         if (!isNew) return
@@ -125,8 +156,24 @@ class Messenger(
         }
     }
 
-    private suspend fun transmit(address: String, id: String, text: String) {
-        send(ClientMessage.Message(to = address, id = id, text = text, name = myName()))
+    /** A withdrawn message mustn't linger in their notification. */
+    private suspend fun refreshNotification(address: String) {
+        if (open == address) return
+        val conversation = _conversations.value[address] ?: return
+        if (conversation.unread == 0) {
+            cancelNotification(address)
+        } else {
+            notify(contact(address)?.name ?: "Someone", address, conversation)
+        }
+    }
+
+    private suspend fun transmit(address: String, message: TextMessage) {
+        val reply = message.reply?.let { WireReply(it.id, sender = if (it.mine) "me" else "you", text = it.text) }
+        send(ClientMessage.Message(to = address, id = message.id, text = message.text, name = myName(), reply = reply))
+    }
+
+    private suspend fun transmitUnsend(address: String, id: String) {
+        send(ClientMessage.Message(to = address, id = Conversation.unsendId(id), name = myName(), unsend = id))
     }
 
     private fun change(address: String, transform: (Conversation) -> Conversation) {

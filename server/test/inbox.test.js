@@ -250,6 +250,38 @@ describe('chat messages', () => {
     assert.equal(tablet.last('message'), undefined);
   });
 
+  it('carry what they answer, quoted, and check it', () => {
+    const inbox = new Inbox({ timers: fakeTimers(), now: () => 1000 });
+    const salma = conn('salma');
+    const sam = conn('sam');
+    inbox.listen(salma, SALMA_KEY);
+    inbox.listen(sam, SAM_KEY);
+    const reply = { id: 'msg-sam-0001', sender: 'you', text: 'Are you   home?\nyet' };
+    inbox.message(salma, parseClientMessage(JSON.stringify(chat(SAM, { reply }))));
+    assert.deepEqual(sam.last('message').reply, { id: 'msg-sam-0001', sender: 'you', text: 'Are you home? yet' });
+    assert.throws(() => parseClientMessage(JSON.stringify(chat(SAM, { reply: { id: 'msg-sam-0001', sender: 'them' } }))));
+    assert.throws(() => parseClientMessage(JSON.stringify(chat(SAM, { reply: { id: '../x', sender: 'me' } }))));
+  });
+
+  it('can be withdrawn: one still waiting never arrives, and their phones hear of it', () => {
+    const inbox = new Inbox({ timers: fakeTimers() });
+    const salma = conn('salma');
+    inbox.listen(salma, SALMA_KEY);
+    inbox.message(salma, chat(SAM));
+    const unsend = parseClientMessage(JSON.stringify({ type: 'message', to: SAM, id: 'x-msg-00000001', unsend: 'msg-00000001', name: 'Salma' }));
+    assert.deepEqual(unsend, { type: 'message', to: SAM, id: 'x-msg-00000001', name: 'Salma', unsend: 'msg-00000001' });
+    inbox.message(salma, unsend);
+    // Only the unsend is left waiting, for a device of Sam's that took the message already.
+    assert.equal(inbox.waitingMessages(SAM), 1);
+    const sam = conn('sam');
+    inbox.listen(sam, SAM_KEY);
+    assert.deepEqual(sam.sent.filter((m) => m.type === 'message').map((m) => m.unsend ?? m.text), ['msg-00000001']);
+    assert.equal(sam.last('message').text, undefined);
+    // An unsend says nothing else.
+    assert.throws(() => parseClientMessage(JSON.stringify({ type: 'message', to: SAM, id: 'x-msg-00000002', unsend: 'msg-00000002', text: 'hi' })));
+    assert.throws(() => parseClientMessage(JSON.stringify({ type: 'message', to: SAM, id: 'x-msg-00000002' })));
+  });
+
   it('tell the sender when they have been read', () => {
     const inbox = new Inbox({ timers: fakeTimers() });
     const salma = conn('salma');
