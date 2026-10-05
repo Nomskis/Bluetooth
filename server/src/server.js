@@ -146,6 +146,9 @@ export function createEarshotServer(config, { log = console, fetchImpl = globalT
         case 'screen-publish':
           screens.publish(conn, msg).catch((err) => log.error('screen publish', err));
           break;
+        case 'screen-live':
+          screens.live(conn);
+          break;
         case 'screen-stop':
           screens.stop(conn);
           break;

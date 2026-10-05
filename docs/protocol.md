@@ -296,18 +296,19 @@ share when the server has the feature and the other person can watch.
 
 | Client → server | Fields | Meaning |
 | --- | --- | --- |
-| `screen-publish` | `sdp` (offer), `mid` | Share our screen; the screen is the sendonly video on transceiver `mid`. Sent again with a new offer to replace a connection that failed. |
+| `screen-publish` | `sdp` (offer), `mid`, `id?` | Share our screen; the screen is the sendonly video on transceiver `mid`. Sent again with a new offer to replace a connection that failed, or after a rejoin that didn't list our share. `id` names this attempt and comes back with its answer or error. |
+| `screen-live` | | Our connection to Cloudflare is up: the room is told about the share now. |
 | `screen-stop` | | We stopped sharing. |
 | `screen-watch` | | We'd like to watch the screen being shared in our room. |
 | `screen-answer` | `watch`, `sdp` (answer) | Our answer to the offer `screen-offer` gave us. |
 
 | Server → client | Fields | Meaning |
 | --- | --- | --- |
-| `screen-published` | `sdp` | Cloudflare's answer to our offer: the share is live once ICE connects. |
-| `screen-started` | `from` | Someone started sharing (or published again); send `screen-watch` to see it. |
+| `screen-published` | `sdp`, `id?` | Cloudflare's answer to our offer (`id` as we sent it); send `screen-live` once ICE connects. |
+| `screen-started` | `from` | Someone's share is up (new, or published again); send `screen-watch` to see it. |
 | `screen-stopped` | `from` | The share is over (also when the sharer leaves the room). |
 | `screen-offer` | `watch`, `sdp` | An offer from Cloudflare for the screen; answer it with `screen-answer`. |
-| `screen-error` | `code`, `message` | `unavailable` (no Cloudflare app here), `in-use` (the other person is sharing), `relay` (Cloudflare unreachable; try again), `busy` (asking too often), `stale` (an answer for an old offer). |
+| `screen-error` | `code`, `message`, `id?` | `unavailable` (no Cloudflare app here), `in-use` (the other person is sharing), `relay` (Cloudflare unreachable; try again), `busy` (asking too often), `stale` (an answer for an old offer). |
 
 One person shares at a time. The sharer marks its source as a screen, keeps
 the resolution when bandwidth runs short, and sends the last frame again while

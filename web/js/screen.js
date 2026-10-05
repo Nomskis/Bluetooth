@@ -21,6 +21,8 @@ const STATS_INTERVAL_MS = 2000;
 const RETRY_MS = 2000;
 const MAX_FAILURES = 6;
 const CONNECT_TIMEOUT_MS = 15_000;
+/** The sharer sends a frame at least every second and a half, even of a still screen. */
+const NO_FRAMES_MS = 8000;
 
 /** Whether this browser can decode AV1, so a sharer may send it. */
 export function decodesAv1() {
@@ -111,6 +113,9 @@ export class ScreenWatcher extends EventTarget {
   #statsTimer = null;
   #pace = new ScreenPace();
   #ops = Promise.resolve();
+  #connectedAt = 0;
+  #frames = 0;
+  #frameAt = 0;
 
   /**
    * @param {import('./signaling.js').SignalingClient} signaling
@@ -190,7 +195,7 @@ export class ScreenWatcher extends EventTarget {
       const state = pc.iceConnectionState;
       if (state === 'connected' || state === 'completed') {
         clearTimeout(this.#timer);
-        this.#failures = 0;
+        this.#connectedAt = Date.now();
         this.#watchStats(pc);
       } else if (state === 'failed') {
         this.#retryLater();
@@ -210,13 +215,28 @@ export class ScreenWatcher extends EventTarget {
     this.#statsTimer = setInterval(async () => {
       if (pc !== this.#pc) return;
       const report = await pc.getStats();
+      if (pc !== this.#pc) return;
       let counters = null;
+      let frames = 0;
       report.forEach((s) => {
         if (s.type === 'inbound-rtp' && s.kind === 'video') {
           counters = { bytesReceived: s.bytesReceived ?? 0, packetsReceived: s.packetsReceived ?? 0, packetsLost: s.packetsLost ?? 0, freezeCount: s.freezeCount ?? 0 };
+          frames = s.framesDecoded ?? 0;
         }
       });
-      if (counters && this.#pace.update(counters, Date.now())) this.#engine.setScreenKbps(this.#pace.capKbps);
+      const now = Date.now();
+      if (frames > this.#frames) {
+        // Only a picture counts as working: a connection without one is tried again.
+        this.#frames = frames;
+        this.#frameAt = now;
+        this.#failures = 0;
+      } else if (now - Math.max(this.#frameAt, this.#connectedAt) > NO_FRAMES_MS) {
+        // The share went away under us (published again, or dropped): ask for it again.
+        clearInterval(this.#statsTimer);
+        this.#retryLater();
+        return;
+      }
+      if (counters && this.#pace.update(counters, now)) this.#engine.setScreenKbps(this.#pace.capKbps);
     }, STATS_INTERVAL_MS);
   }
 
@@ -232,7 +252,13 @@ export class ScreenWatcher extends EventTarget {
     const who = this.#from;
     if (!who) return;
     this.#failures += 1;
-    if (this.#failures > MAX_FAILURES) return;
+    if (this.#failures > MAX_FAILURES) {
+      // Back to the call until they share again.
+      clearTimeout(this.#timer);
+      this.#close();
+      this.dispatchEvent(new CustomEvent('screen', { detail: { stream: null, from: null } }));
+      return;
+    }
     clearTimeout(this.#timer);
     this.#timer = setTimeout(() => {
       if (this.#from === who) this.#begin(who);
@@ -253,5 +279,7 @@ export class ScreenWatcher extends EventTarget {
     clearInterval(this.#statsTimer);
     this.#pc?.close();
     this.#pc = null;
+    this.#frames = 0;
+    this.#frameAt = 0;
   }
 }

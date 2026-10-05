@@ -405,6 +405,7 @@ class CallSession(
             onShared = { on -> _state.update { it.copy(theirScreen = on) } },
             onShowing = { on -> _state.update { it.copy(theirScreenShowing = on) } },
             onCap = { sendMediaState() },
+            onGaveUp = { showScreenNote("Couldn't load their screen") },
         )
 
         join = ClientMessage.Join(
@@ -1052,13 +1053,13 @@ class CallSession(
             // be answering on a fresh connection (voice only, another device). That connection's own
             // media-state, or its voice arriving, lifts the hold (theyAnswered).
             is ServerMessage.RingStatus, is ServerMessage.RingAnswered -> if (outgoing?.onMessage(message) == true) onOutgoingChanged()
-            is ServerMessage.ScreenPublished -> screenShare?.onPublished(message.sdp)
+            is ServerMessage.ScreenPublished -> screenShare?.onPublished(message.sdp, message.id)
             is ServerMessage.ScreenStarted -> if (message.from == remote?.peerId) screenWatch?.begin(message.from)
             is ServerMessage.ScreenStopped -> if (message.from == null || message.from == screenWatch?.from) screenWatch?.end()
             is ServerMessage.ScreenOffer -> screenWatch?.onOffer(message.watch, message.sdp)
             is ServerMessage.ScreenError -> {
                 val share = screenShare
-                if (share != null) share.onError(message.code, message.message) else screenWatch?.onError()
+                if (share != null) share.onError(message.code, message.message, message.id) else screenWatch?.onError()
             }
         }
     }
@@ -1089,8 +1090,10 @@ class CallSession(
         iceServers = message.iceServers
         mySeq = message.seq
         serverFeatures = message.features
-        // A share of ours we've stopped, whose stop was lost with the old connection to the server.
+        // A share of ours we've stopped, whose stop was lost with the old connection to the server;
+        // or one we're still sharing that the server has lost (it restarted).
         if (message.screen?.from == peerId && screenShare == null) signaling.send(ClientMessage.ScreenStop)
+        screenShare?.rejoined(known = message.screen?.from == peerId)
         val peer = message.peers.firstOrNull()
         if (peer == null) {
             screenWatch?.end()
@@ -1460,15 +1463,19 @@ class CallSession(
 
     private fun screenShareEnded(why: String?) {
         screenShare = null
-        _state.update { it.copy(sharingScreen = false, screenLive = false, screenNote = why) }
+        _state.update { it.copy(sharingScreen = false, screenLive = false, screenNote = null) }
         applyCamera()
         sendMediaState()
-        if (why != null) {
-            screenNoteJob?.cancel()
-            screenNoteJob = scope.launch {
-                delay(SCREEN_NOTE_MS)
-                post(Event.ClearScreenNote)
-            }
+        if (why != null) showScreenNote(why)
+    }
+
+    /** A word about sharing that didn't work, for a few seconds. */
+    private fun showScreenNote(text: String) {
+        _state.update { it.copy(screenNote = text) }
+        screenNoteJob?.cancel()
+        screenNoteJob = scope.launch {
+            delay(SCREEN_NOTE_MS)
+            post(Event.ClearScreenNote)
         }
     }
 

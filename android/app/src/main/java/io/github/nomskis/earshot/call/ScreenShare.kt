@@ -20,6 +20,7 @@ import org.webrtc.RtpReceiver
 import org.webrtc.RtpSender
 import org.webrtc.RtpTransceiver
 import org.webrtc.SessionDescription
+import org.webrtc.VideoTrack
 
 /**
  * Our screen, shared through Cloudflare on a connection of its own next to the call
@@ -57,7 +58,12 @@ internal class ScreenShare(
         post { end(null) }
     }
     private var pc: PeerConnection? = null
+    private var track: VideoTrack? = null
     private var sender: RtpSender? = null
+    /** This publish attempt's name; answers and errors for an earlier one are ignored. */
+    private var attempt: String? = null
+    /** The room has been told this connection is up. */
+    private var announced = false
     private var viewerKbps: Int? = null
     private var failures = 0
     private var ended = false
@@ -70,7 +76,8 @@ internal class ScreenShare(
     }
 
     /** Cloudflare's answer: the connection comes up next. */
-    suspend fun onPublished(sdp: String) {
+    suspend fun onPublished(sdp: String, id: String?) {
+        if (id != null && id != attempt) return
         val pc = pc ?: return
         if (pc.signalingState() != PeerConnection.SignalingState.HAVE_LOCAL_OFFER) return
         try {
@@ -82,7 +89,9 @@ internal class ScreenShare(
     }
 
     /** The server couldn't publish it; [message] is its words for the person. */
-    fun onError(code: String, message: String) {
+    fun onError(code: String, message: String, id: String?) {
+        // About an attempt we've already replaced.
+        if (id != null && id != attempt) return
         when (code) {
             // Nothing a retry fixes: say why and stop.
             "unavailable", "in-use" -> end(message)
@@ -98,6 +107,19 @@ internal class ScreenShare(
         viewerKbps = kbps
         Log.i(TAG, kbps?.let { "Viewer asks for at most $it kbps" } ?: "Viewer lifted its limit")
         tune()
+    }
+
+    /**
+     * Back in the room after the connection to the server dropped; [known]: the server still
+     * has our share. When it doesn't (it restarted, or our last publish or `screen-live` was
+     * lost on the way), the share is published again so she can see it.
+     */
+    suspend fun rejoined(known: Boolean) {
+        if (ended || known) return
+        Log.i(TAG, "The server lost our share; publishing it again")
+        retryJob?.cancel()
+        failures = 0
+        publish()
     }
 
     /** We stop sharing. */
@@ -125,8 +147,10 @@ internal class ScreenShare(
         }
         observer.pc = pc
         this.pc = pc
+        announced = false
+        val track = engine.createScreenTrack(source).also { track = it }
         val transceiver = pc.addTransceiver(
-            engine.createScreenTrack(source),
+            track,
             RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY, listOf(STREAM_ID)),
         )
         engine.preferScreenCodecs(transceiver, ScreenTuning.codecOrder(av1))
@@ -138,7 +162,8 @@ internal class ScreenShare(
             pc.awaitSetLocal(offer)
             val mid = transceiver.mid
             if (this.pc !== pc || mid == null) return
-            send(ClientMessage.ScreenPublish(offer.description, mid))
+            val id = Ids.random(6).also { attempt = it }
+            send(ClientMessage.ScreenPublish(offer.description, mid, id))
         } catch (e: SdpException) {
             Log.w(TAG, "Could not make the screen's offer", e)
             retryLater()
@@ -155,6 +180,11 @@ internal class ScreenShare(
                 watchdogJob?.cancel()
                 failures = 0
                 onLive(true)
+                // Now there's something to watch: the server tells the room.
+                if (!announced) {
+                    announced = true
+                    send(ClientMessage.ScreenLive)
+                }
             }
             // A blip on mobile data often comes back by itself.
             IceConnectionState.DISCONNECTED -> {
@@ -202,8 +232,11 @@ internal class ScreenShare(
         val old = pc ?: return
         pc = null
         sender = null
-        // Disposes the screen track its sender owns, not the source.
+        attempt = null
         old.dispose()
+        // The connection let go of the track; this is our own hold on it. The source stays.
+        track?.dispose()
+        track = null
     }
 
     private fun tearDown() {

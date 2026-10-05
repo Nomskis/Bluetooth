@@ -3,6 +3,10 @@
  * share at a time; the other watches. The media goes through Cloudflare ([relay]), and
  * this server only ever talks to Cloudflare for people who are in a call together, so
  * the free allowance can't be used by strangers.
+ *
+ * A share is announced once the sharer says its connection to Cloudflare is up
+ * (`screen-live`): Cloudflare holds a pull of a screen that isn't flowing yet for up to
+ * five seconds and then fails it, so watching starts only when there's something to watch.
  */
 
 /** Asking Cloudflare for anything more often than this per person is refused. */
@@ -36,18 +40,22 @@ export class ScreenShares {
     const share = this.shares.get(room.code);
     return {
       features: this.available ? ['screen'] : [],
-      ...(share ? { screen: { from: share.from } } : {}),
+      ...(share?.live ? { screen: { from: share.from } } : {}),
     };
   }
 
-  /** The sharer's offer: published to Cloudflare, the answer back, and the room told. */
-  async publish(conn, { sdp, mid }) {
+  /**
+   * The sharer's offer: published to Cloudflare and the answer sent back, with the
+   * sharer's [id] for this attempt so a late answer to an earlier one can be told apart.
+   * The room hears about it at `screen-live`.
+   */
+  async publish(conn, { sdp, mid, id }) {
     const member = this.#member(conn);
-    if (!member || !this.#ready(conn, member)) return;
+    if (!member || !this.#ready(conn, member, id)) return;
     const code = member.room.code;
     const current = this.shares.get(code);
     if (current && current.from !== member.peerId) {
-      fail(conn, 'in-use', 'The other person is already sharing their screen.');
+      fail(conn, 'in-use', 'The other person is already sharing their screen.', id);
       return;
     }
     let published;
@@ -55,18 +63,28 @@ export class ScreenShares {
       published = await this.relay.publish(sdp, mid);
     } catch (err) {
       this.log.warn('screen publish failed:', err.message);
-      fail(conn, 'relay', "Couldn't reach the screen relay. Try again.");
+      fail(conn, 'relay', "Couldn't reach the screen relay. Try again.", id);
       return;
     }
     // Left, or someone else started sharing, while Cloudflare answered.
     if (conn.member !== member || !member.room.members.has(member.peerId)) return;
     const now = this.shares.get(code);
     if (now && now.from !== member.peerId) {
-      fail(conn, 'in-use', 'The other person is already sharing their screen.');
+      fail(conn, 'in-use', 'The other person is already sharing their screen.', id);
       return;
     }
-    this.shares.set(code, { from: member.peerId, sessionId: published.sessionId, trackName: published.trackName });
-    conn.send({ type: 'screen-published', sdp: published.sdp });
+    // A share published again (its connection dropped) stays out of sight until it's up.
+    this.shares.set(code, { from: member.peerId, sessionId: published.sessionId, trackName: published.trackName, live: false });
+    conn.send({ type: 'screen-published', sdp: published.sdp, ...(id !== undefined ? { id } : {}) });
+  }
+
+  /** The sharer's connection to Cloudflare is up: the room is told, and can watch. */
+  live(conn) {
+    const member = this.#member(conn);
+    if (!member) return;
+    const share = this.shares.get(member.room.code);
+    if (!share || share.from !== member.peerId || share.live) return;
+    share.live = true;
     broadcast(member, { type: 'screen-started', from: member.peerId });
   }
 
@@ -81,7 +99,8 @@ export class ScreenShares {
     const member = this.#member(conn);
     if (!member) return;
     const share = this.shares.get(member.room.code);
-    if (!share || share.from === member.peerId) {
+    // Nothing to watch yet: a share being published (again) is announced when it's up.
+    if (!share || !share.live || share.from === member.peerId) {
       conn.send({ type: 'screen-stopped', from: share?.from ?? null });
       return;
     }
@@ -137,14 +156,14 @@ export class ScreenShares {
   }
 
   /** Sharing is set up here, and this person isn't asking too often. */
-  #ready(conn, member) {
+  #ready(conn, member, id) {
     if (!this.relay) {
-      fail(conn, 'unavailable', "Screen sharing isn't set up on this server.");
+      fail(conn, 'unavailable', "Screen sharing isn't set up on this server.", id);
       return false;
     }
     const now = this.now();
     if (now - (this.lastAsk.get(member) ?? -Infinity) < MIN_ASK_INTERVAL_MS) {
-      fail(conn, 'busy', 'Slow down.');
+      fail(conn, 'busy', 'Slow down.', id);
       return false;
     }
     this.lastAsk.set(member, now);
@@ -152,8 +171,9 @@ export class ScreenShares {
   }
 }
 
-function fail(conn, code, message) {
-  conn.send({ type: 'screen-error', code, message });
+/** [id]: the publish attempt it's about, when it's about one. */
+function fail(conn, code, message, id) {
+  conn.send({ type: 'screen-error', code, message, ...(id !== undefined ? { id } : {}) });
 }
 
 /** To everyone else in the room who's connected; someone reconnecting hears it in `joined`. */
