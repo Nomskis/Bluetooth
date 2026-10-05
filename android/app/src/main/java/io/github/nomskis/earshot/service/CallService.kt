@@ -9,9 +9,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
@@ -42,6 +45,7 @@ class CallService : LifecycleService() {
     private lateinit var chatNotifier: ChatNotifier
     /** Capturing the screen for a share: the service says so to Android while it lasts. */
     private var projecting = false
+    private var projection: MediaProjection? = null
     private var lastInfo: NotificationInfo? = null
 
     override fun onCreate() {
@@ -57,6 +61,9 @@ class CallService : LifecycleService() {
             callManager.session.collectLatest { session ->
                 if (session == null) {
                     chatNotifier.callEnded()
+                    // The capture ending with the call mustn't bring the notification back.
+                    projection = null
+                    projecting = false
                     ServiceCompat.stopForeground(this@CallService, ServiceCompat.STOP_FOREGROUND_REMOVE)
                     stopSelf()
                     return@collectLatest
@@ -85,11 +92,6 @@ class CallService : LifecycleService() {
                         .distinctUntilChanged()
                         .collect { info ->
                             lastInfo = info
-                            // The share is over: the service stops saying it captures the screen.
-                            if (projecting && !info.sharingScreen) {
-                                projecting = false
-                                ServiceCompat.startForeground(this@CallService, NOTIFICATION_ID, buildNotification(info), foregroundTypes())
-                            }
                             getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(info))
                         }
                 }
@@ -120,7 +122,8 @@ class CallService : LifecycleService() {
     /**
      * The consent Android gave for a share: the service first says it captures the screen (Android
      * 14 refuses the capture otherwise, and only allows saying so after consent), then makes the
-     * capture and hands it to the call.
+     * capture and hands it to the call. It stops saying so when the capture ends, however it ends
+     * (Stop, the status bar chip, the phone locking, the call turning it down).
      */
     private fun shareScreen(intent: Intent) {
         val session = appGraph.callManager.session.value ?: return
@@ -129,8 +132,21 @@ class CallService : LifecycleService() {
         projecting = true
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(lastInfo), foregroundTypes())
-            val projection = getSystemService(MediaProjectionManager::class.java).getMediaProjection(resultCode, consent)
-            if (projection != null) session.startScreenShare(projection) else stopProjecting()
+            val made = getSystemService(MediaProjectionManager::class.java).getMediaProjection(resultCode, consent)
+            if (made == null) {
+                stopProjecting()
+                return
+            }
+            projection = made
+            made.registerCallback(
+                object : MediaProjection.Callback() {
+                    override fun onStop() {
+                        if (projection === made) stopProjecting()
+                    }
+                },
+                Handler(Looper.getMainLooper()),
+            )
+            session.startScreenShare(made)
         } catch (e: RuntimeException) {
             // SecurityException, or the consent was used already.
             android.util.Log.w("EarshotScreen", "Could not start capturing the screen", e)
@@ -139,8 +155,12 @@ class CallService : LifecycleService() {
     }
 
     private fun stopProjecting() {
+        projection = null
+        if (!projecting) return
         projecting = false
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(lastInfo), foregroundTypes())
+        // Saying less never needs more permission, but a refusal here mustn't take the call down.
+        runCatching { ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(lastInfo), foregroundTypes()) }
+            .onFailure { android.util.Log.w("EarshotScreen", "Could not update the call's service", it) }
     }
 
     private fun foregroundTypes(): Int {

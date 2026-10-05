@@ -123,10 +123,18 @@ sealed interface ClientMessage {
     @SerialName("message-read")
     data class MessageRead(val to: String, val id: String) : ClientMessage
 
-    /** Our screen's offer, for the server to publish through Cloudflare; the screen is on transceiver [mid]. */
+    /**
+     * Our screen's offer, for the server to publish through Cloudflare; the screen is on
+     * transceiver [mid]. [id] names this attempt; its answer or error comes back with it.
+     */
     @Serializable
     @SerialName("screen-publish")
-    data class ScreenPublish(val sdp: String, val mid: String) : ClientMessage
+    data class ScreenPublish(val sdp: String, val mid: String, val id: String? = null) : ClientMessage
+
+    /** Our screen's connection to Cloudflare is up: the room is told about the share now. */
+    @Serializable
+    @SerialName("screen-live")
+    data object ScreenLive : ClientMessage
 
     /** We stopped sharing. */
     @Serializable
@@ -234,9 +242,9 @@ sealed interface ServerMessage {
     /** Cloudflare's answer to our screen's offer: the share is live. */
     @Serializable
     @SerialName("screen-published")
-    data class ScreenPublished(val sdp: String) : ServerMessage
+    data class ScreenPublished(val sdp: String, val id: String? = null) : ServerMessage
 
-    /** [from] started sharing their screen (or started again on a new connection). */
+    /** [from]'s share is up (new, or on a new connection): it can be watched. */
     @Serializable
     @SerialName("screen-started")
     data class ScreenStarted(val from: String) : ServerMessage
@@ -251,10 +259,13 @@ sealed interface ServerMessage {
     @SerialName("screen-offer")
     data class ScreenOffer(val watch: String, val sdp: String) : ServerMessage
 
-    /** Something about sharing didn't work: "unavailable", "in-use", "relay", "busy", "stale". */
+    /**
+     * Something about sharing didn't work: "unavailable", "in-use", "relay", "busy", "stale";
+     * [id] names the publish attempt it's about, when it's about one.
+     */
     @Serializable
     @SerialName("screen-error")
-    data class ScreenError(val code: String, val message: String = "") : ServerMessage
+    data class ScreenError(val code: String, val message: String = "", val id: String? = null) : ServerMessage
 }
 
 /** Peer-to-peer payloads. The server relays these untouched. */

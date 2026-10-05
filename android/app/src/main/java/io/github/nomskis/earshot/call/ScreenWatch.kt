@@ -43,6 +43,8 @@ internal class ScreenWatch(
     private val onShowing: (Boolean) -> Unit,
     /** The ceiling to ask the sharer for changed; null = no limit. */
     private val onCap: (Int?) -> Unit,
+    /** Tried a few times and couldn't get their screen; back to the call until they share again. */
+    private val onGaveUp: () -> Unit,
 ) {
     private var pc: PeerConnection? = null
     private var track: VideoTrack? = null
@@ -51,20 +53,30 @@ internal class ScreenWatch(
     private var statsJob: Job? = null
     private var retryJob: Job? = null
     private var failures = 0
+    /** When the current connection came up. */
+    private var connectedAt = 0L
 
     /** Who's sharing, while there's a share to watch. */
     var from: String? = null
         private set
 
-    /** The share's frames, passed on, noticing the first. */
+    /** The share's frames, passed on, noticing the first and when the last came. */
     private val frames = object : VideoSink {
         @Volatile
         var seen = false
 
+        @Volatile
+        var lastAt = 0L
+
         override fun onFrame(frame: VideoFrame) {
+            lastAt = SystemClock.elapsedRealtime()
             if (!seen) {
                 seen = true
-                post { setShowing(true) }
+                post {
+                    setShowing(true)
+                    // Only a picture counts as working: a connection without one is tried again.
+                    failures = 0
+                }
             }
             sink.onFrame(frame)
         }
@@ -135,7 +147,7 @@ internal class ScreenWatch(
         when (state) {
             IceConnectionState.CONNECTED, IceConnectionState.COMPLETED -> {
                 retryJob?.cancel()
-                failures = 0
+                connectedAt = SystemClock.elapsedRealtime()
                 watchStats(pc)
             }
             IceConnectionState.DISCONNECTED -> watchdog(RECOVER_MS)
@@ -149,6 +161,16 @@ internal class ScreenWatch(
         statsJob = scope.launch {
             while (true) {
                 delay(STATS_INTERVAL_MS)
+                post {
+                    // The sharer sends a frame at least every second and a half, even of a still
+                    // screen: nothing for this long means the share went away under us (it was
+                    // published again, or Cloudflare dropped it). Ask for it again.
+                    val quietFor = SystemClock.elapsedRealtime() - maxOf(frames.lastAt, connectedAt)
+                    if (pc === this@ScreenWatch.pc && quietFor > NO_FRAMES_MS) {
+                        Log.w(TAG, "No screen for ${quietFor / 1000} s; asking for it again")
+                        retryLater()
+                    }
+                }
                 pc.getStats { report ->
                     val entries = report.statsMap.mapValues { (_, s) -> CallStats.Entry(s.type, s.members) }
                     val counters = CallStats.inboundVideoCounters(entries) ?: return@getStats
@@ -179,10 +201,15 @@ internal class ScreenWatch(
         failures++
         if (failures > MAX_FAILURES) {
             Log.w(TAG, "Couldn't get their screen; waiting for them to share again")
-            setShowing(false)
+            retryJob?.cancel()
+            statsJob?.cancel()
+            close()
+            onShared(false)
+            onGaveUp()
             return
         }
         retryJob?.cancel()
+        statsJob?.cancel()
         retryJob = scope.launch {
             delay(RETRY_MS * failures)
             post { if (from == who) begin(who) }
@@ -239,5 +266,7 @@ internal class ScreenWatch(
         const val RETRY_MS = 2_000L
         const val MAX_FAILURES = 6
         const val STATS_INTERVAL_MS = 2_000L
+        /** Several of the sharer's slowest repeats missed in a row. */
+        const val NO_FRAMES_MS = 8_000L
     }
 }

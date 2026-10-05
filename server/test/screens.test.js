@@ -22,6 +22,12 @@ class FakeConn {
 const join = (room, peerId) => ({ type: 'join', room, peerId, name: peerId, client: { platform: 'test', version: '0', capabilities: [] } });
 const quiet = { warn() {} };
 
+/** Published, and its connection to Cloudflare up. */
+async function share(screens, conn) {
+  await screens.publish(conn, { sdp: 'offer', mid: '0' });
+  screens.live(conn);
+}
+
 /** Stands in for Cloudflare: publishing answers, pulling offers, and records what it was asked. */
 function fakeRelay() {
   const calls = [];
@@ -76,25 +82,50 @@ describe('screen sharing', () => {
     assert.deepEqual(off.describe({ code: 'x' }), { features: [] });
   });
 
-  it('publishes the sharer, answers it and tells the other person', async () => {
-    await screens.publish(sam, { sdp: 'offer', mid: '0' });
+  it('publishes the sharer, answers it and tells the other person once it is up', async () => {
+    await screens.publish(sam, { sdp: 'offer', mid: '0', id: 'try-1' });
     assert.deepEqual(relay.calls[0], { op: 'publish', sdp: 'offer', mid: '0' });
-    assert.deepEqual(sam.last('screen-published'), { type: 'screen-published', sdp: 'answer-sdp' });
+    assert.deepEqual(sam.last('screen-published'), { type: 'screen-published', sdp: 'answer-sdp', id: 'try-1' });
+    // Cloudflare would hold a pull of a screen that isn't flowing yet, then fail it.
+    assert.equal(salma.last('screen-started'), undefined);
+    await screens.watch(salma);
+    assert.equal(salma.last('screen-stopped').type, 'screen-stopped');
+    assert.equal(relay.calls.length, 1);
+    screens.live(sam);
     assert.deepEqual(salma.last('screen-started'), { type: 'screen-started', from: 'sam-peer-0001' });
+    // Said once, however often the sharer's connection comes back.
+    screens.live(sam);
+    screens.live(salma);
+    assert.equal(salma.sent.filter((m) => m.type === 'screen-started').length, 1);
+  });
+
+  it('keeps a share published again out of sight until it is up', async () => {
+    await share(screens, sam);
+    clock += 5000;
+    await screens.publish(sam, { sdp: 'offer', mid: '0' });
+    salma.sent = [];
+    await screens.watch(salma);
+    assert.equal(salma.last('screen-offer'), undefined);
+    const back = new FakeConn();
+    rooms.leave(salma);
+    rooms.join(back, join('calm-otter-4821', 'salma-peer-01'));
+    assert.equal(back.last('joined').screen, undefined);
+    screens.live(sam);
+    assert.deepEqual(back.last('screen-started'), { type: 'screen-started', from: 'sam-peer-0001' });
   });
 
   it('lets the viewer pull the screen and passes its answer on', async () => {
-    await screens.publish(sam, { sdp: 'offer', mid: '0' });
+    await share(screens, sam);
     await screens.watch(salma);
     const offer = salma.last('screen-offer');
     assert.equal(offer.sdp, 'offer-sdp');
-    assert.deepEqual(relay.calls[1].share, { from: 'sam-peer-0001', sessionId: 'pub-session-1', trackName: TRACK_NAME });
+    assert.deepEqual(relay.calls[1].share, { from: 'sam-peer-0001', sessionId: 'pub-session-1', trackName: TRACK_NAME, live: true });
     await screens.answer(salma, { watch: offer.watch, sdp: 'answer' });
     assert.deepEqual(relay.calls[2], { op: 'answer', sessionId: offer.watch, sdp: 'answer' });
   });
 
   it('only answers for the session it handed out', async () => {
-    await screens.publish(sam, { sdp: 'offer', mid: '0' });
+    await share(screens, sam);
     await screens.watch(salma);
     await screens.answer(salma, { watch: 'someone-elses-session', sdp: 'answer' });
     assert.equal(salma.last('screen-error').code, 'stale');
@@ -102,7 +133,7 @@ describe('screen sharing', () => {
   });
 
   it('tells someone who joins later that a share is on', async () => {
-    await screens.publish(sam, { sdp: 'offer', mid: '0' });
+    await share(screens, sam);
     rooms.leave(salma);
     const back = new FakeConn();
     rooms.join(back, join('calm-otter-4821', 'salma-peer-01'));
@@ -117,11 +148,11 @@ describe('screen sharing', () => {
   });
 
   it('ends the share when the sharer stops or leaves', async () => {
-    await screens.publish(sam, { sdp: 'offer', mid: '0' });
+    await share(screens, sam);
     screens.stop(sam);
     assert.deepEqual(salma.last('screen-stopped'), { type: 'screen-stopped', from: 'sam-peer-0001' });
     clock += 5000;
-    await screens.publish(sam, { sdp: 'offer', mid: '0' });
+    await share(screens, sam);
     salma.sent = [];
     rooms.leave(sam);
     assert.deepEqual(salma.last('screen-stopped'), { type: 'screen-stopped', from: 'sam-peer-0001' });
@@ -134,8 +165,9 @@ describe('screen sharing', () => {
     await screens.publish(stranger, { sdp: 'offer', mid: '0' });
     assert.equal(stranger.last('error').code, 'not-in-room');
     await screens.publish(sam, { sdp: 'offer', mid: '0' });
-    await screens.publish(sam, { sdp: 'offer', mid: '0' });
-    assert.equal(sam.last('screen-error').code, 'busy');
+    await screens.publish(sam, { sdp: 'offer', mid: '0', id: 'try-2' });
+    // Says which attempt, so a sharer that has moved on to another can ignore it.
+    assert.deepEqual(sam.last('screen-error'), { type: 'screen-error', code: 'busy', message: 'Slow down.', id: 'try-2' });
     assert.equal(relay.calls.length, 1);
   });
 
@@ -151,6 +183,9 @@ describe('screen sharing', () => {
 
   it('checks the messages', () => {
     assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'screen-publish', sdp: 'v=0', mid: '0' })), { type: 'screen-publish', sdp: 'v=0', mid: '0' });
+    assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'screen-publish', sdp: 'v=0', mid: '0', id: 'a1' })), { type: 'screen-publish', sdp: 'v=0', mid: '0', id: 'a1' });
+    assert.throws(() => parseClientMessage(JSON.stringify({ type: 'screen-publish', sdp: 'v=0', mid: '0', id: 'not ok' })));
+    assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'screen-live' })), { type: 'screen-live' });
     assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'screen-watch' })), { type: 'screen-watch' });
     assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'screen-stop' })), { type: 'screen-stop' });
     assert.throws(() => parseClientMessage(JSON.stringify({ type: 'screen-publish', sdp: 'v=0' })));

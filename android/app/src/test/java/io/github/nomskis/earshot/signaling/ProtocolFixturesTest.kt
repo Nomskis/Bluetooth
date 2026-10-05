@@ -86,6 +86,8 @@ class ProtocolFixturesTest {
         assertTrue(offer.sdp.startsWith("v=0"))
         assertEquals("p8Gm2Lq0Vt-a", (decodeServerMessage(File(fixtures, "server/screen-started.json").readText()) as ServerMessage.ScreenStarted).from)
         assertEquals("in-use", (decodeServerMessage(File(fixtures, "server/screen-error.json").readText()) as ServerMessage.ScreenError).code)
+        assertEquals("k3Vb9Q", (decodeServerMessage(File(fixtures, "server/screen-published.json").readText()) as ServerMessage.ScreenPublished).id)
+        assertEquals("""{"type":"screen-live"}""", encodeClientMessage(ClientMessage.ScreenLive))
         val media = decodeServerMessage(File(fixtures, "server/signal-media-state-screen.json").readText()) as ServerMessage.Signal
         assertEquals(480, (media.data as SignalData.MediaState).screenKbps)
         // An older joined, without either, still reads.

@@ -11,7 +11,6 @@ import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Display
 import android.view.Surface
-import android.view.WindowManager
 import org.webrtc.CapturerObserver
 import org.webrtc.EglBase
 import org.webrtc.SurfaceTextureHelper
@@ -51,6 +50,8 @@ class ScreenCapture(
     private var display: VirtualDisplay? = null
     private var size = 0 to 0
     private var running = false
+    /** Given back, for good: after this nothing here runs again. */
+    private var stopped = false
 
     /** The texture timestamp of the newest content, and when it arrived. */
     private var contentTimestampNs = Long.MIN_VALUE
@@ -102,9 +103,11 @@ class ScreenCapture(
 
     fun start() {
         ThreadUtils.invokeAtFrontUninterruptibly(handler) {
+            check(!stopped) { "Screen capture already stopped" }
             // Android 14 refuses to make the display without a callback registered first.
             projection.registerCallback(projectionCallback, handler)
-            val (w, h) = ScreenTuning.captureSize(screenSize().first, screenSize().second, maxShortSide)
+            val (screenW, screenH) = screenSize()
+            val (w, h) = ScreenTuning.captureSize(screenW, screenH, maxShortSide)
             size = w to h
             helper.setTextureSize(w, h)
             helper.startListening(::onFrame)
@@ -134,8 +137,11 @@ class ScreenCapture(
         helper.dispose()
     }
 
+    /** Everything [start] set up, also after a start that failed half way. */
     private fun stopHere() {
-        if (!running && display == null) return
+        if (stopped) return
+        stopped = true
+        val wasRunning = running
         running = false
         handler.removeCallbacks(tick)
         appContext.getSystemService(DisplayManager::class.java)?.unregisterDisplayListener(displayListener)
@@ -143,8 +149,9 @@ class ScreenCapture(
         display?.release()
         display = null
         projection.unregisterCallback(projectionCallback)
+        // Gives the screen back: the status bar chip goes, and the call's service stops saying it captures.
         projection.stop()
-        observer.onCapturerStopped()
+        if (wasRunning) observer.onCapturerStopped()
     }
 
     private fun onFrame(frame: VideoFrame) {
@@ -171,15 +178,15 @@ class ScreenCapture(
         Log.i(TAG, "Screen now ${target.first}x${target.second}")
     }
 
+    /**
+     * The whole screen as it's turned now. From the display itself: a window manager from
+     * the app's context (there's no window here) can be stale after the phone turns.
+     */
     private fun screenSize(): Pair<Int, Int> {
-        val windows = appContext.getSystemService(WindowManager::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val bounds = windows.maximumWindowMetrics.bounds
-            return bounds.width() to bounds.height()
-        }
+        val display = appContext.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY) ?: return 0 to 0
         val metrics = DisplayMetrics()
         @Suppress("DEPRECATION")
-        windows.defaultDisplay.getRealMetrics(metrics)
+        display.getRealMetrics(metrics)
         return metrics.widthPixels to metrics.heightPixels
     }
 

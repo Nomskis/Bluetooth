@@ -1,5 +1,6 @@
 {
   "type": "screen-publish",
   "sdp": "v=0\r\no=- 4611731400430051336 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\nm=video 9 UDP/TLS/RTP/SAVPF 45 98\r\nc=IN IP4 0.0.0.0\r\na=mid:0\r\na=sendonly\r\na=rtpmap:45 AV1/90000\r\na=rtpmap:98 VP9/90000\r\n",
-  "mid": "0"
+  "mid": "0",
+  "id": "k3Vb9Q"
 }

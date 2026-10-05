@@ -78,6 +78,8 @@ const MAX_SDP_LENGTH = 32 * 1024;
 const MID_PATTERN = /^[A-Za-z0-9_-]{1,16}$/;
 /** Cloudflare's session ids, as handed out in `screen-offer`. */
 const SESSION_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+/** The sharer's name for one attempt at publishing, echoed with its answer. */
+const PUBLISH_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
 
 /** Why a call wasn't taken: turned down, or already on another call. */
 const RING_DECLINE_REASONS = new Set(['declined', 'busy']);
@@ -197,7 +199,10 @@ export function parseClientMessage(raw) {
       if (typeof msg.mid !== 'string' || !MID_PATTERN.test(msg.mid)) {
         throw new ProtocolError(ErrorCode.BAD_REQUEST, 'screen-publish needs the screen\'s "mid"');
       }
-      return { type: 'screen-publish', sdp: msg.sdp, mid: msg.mid };
+      if (msg.id !== undefined && (typeof msg.id !== 'string' || !PUBLISH_ID_PATTERN.test(msg.id))) {
+        throw new ProtocolError(ErrorCode.BAD_REQUEST, 'screen-publish "id" must be a short name');
+      }
+      return { type: 'screen-publish', sdp: msg.sdp, mid: msg.mid, ...(msg.id !== undefined ? { id: msg.id } : {}) };
     }
     case 'screen-answer': {
       if (typeof msg.sdp !== 'string' || msg.sdp.length === 0 || msg.sdp.length > MAX_SDP_LENGTH) {
@@ -208,6 +213,7 @@ export function parseClientMessage(raw) {
       }
       return { type: 'screen-answer', watch: msg.watch, sdp: msg.sdp };
     }
+    case 'screen-live':
     case 'screen-watch':
     case 'screen-stop':
       return { type: msg.type };
