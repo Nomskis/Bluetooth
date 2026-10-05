@@ -105,7 +105,11 @@ class CallQualityTest {
         assertTrue(text.contains("Call: video"))
         assertTrue(text.contains("Route: direct, this phone on cellular, theirs on wifi"))
         assertTrue(text.contains("Their voice reached you after: 500 ms average"))
-        assertTrue(CallQuality().report().contains("Call: voice"))
+        val voice = CallQuality(video = false, videoCodec = "VP8", sendLimitedByBandwidthPercent = 100).report()
+        assertTrue(voice.contains("Call: voice"))
+        assertTrue(!voice.contains("Our video"))
+        // Calls kept from before say neither.
+        assertTrue(!CallQuality().report().contains("Call:"))
     }
 
     @Test

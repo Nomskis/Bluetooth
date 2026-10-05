@@ -25,6 +25,7 @@ import io.github.nomskis.earshot.signaling.ServerUrls
 import io.github.nomskis.earshot.ui.EarshotRoot
 import io.github.nomskis.earshot.ui.MainViewModel
 import io.github.nomskis.earshot.ui.theme.EarshotTheme
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -59,15 +60,19 @@ class MainActivity : ComponentActivity() {
         // you can keep watching while you pick songs in your music app.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.session.collect {
-                    updatePictureInPictureParams(inCall = it != null)
-                    // Like a phone call: a call answered from the lock screen stays in front of it.
-                    showOverLockScreen(it != null)
-                }
+                viewModel.session.collect { updatePictureInPictureParams(inCall = it != null) }
             }
         }
         lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.callMinimized.collect { publishVisibility() } }
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                combine(viewModel.session, viewModel.callMinimized) { session, minimized -> session != null && !minimized }
+                    .collect { callScreen ->
+                        // Like a phone call: the call screen, and only the call screen, stays in front of the
+                        // lock screen. Your contacts and messages (the call minimized) need unlocking first.
+                        showOverLockScreen(callScreen)
+                        publishVisibility()
+                    }
+            }
         }
 
         setContent {

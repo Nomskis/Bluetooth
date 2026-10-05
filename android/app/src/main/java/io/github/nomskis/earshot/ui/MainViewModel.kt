@@ -41,12 +41,14 @@ import io.github.nomskis.earshot.turbo.TurboClient
 import io.github.nomskis.earshot.update.AppUpdater
 import io.github.nomskis.earshot.messages.Conversation
 import io.github.nomskis.earshot.messages.MessageNotifications
+import io.github.nomskis.earshot.messages.TextMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -70,6 +72,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         /** Render sleeps after 15 minutes without traffic. */
         const val WAKE_EVERY_MS = 5 * 60_000L
         const val WAKE_TIMEOUT_S = 90L
+        const val CALL_ENDED_NOTE_MS = 8_000L
     }
 
     private val graph = app.appGraph
@@ -91,9 +94,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _callMinimized.value = false
     }
 
+    private val _callEnded = MutableStateFlow<String?>(null)
+    /** "Call ended · 12:34", for a moment after a call you talked in. */
+    val callEnded: StateFlow<String?> = _callEnded.asStateFlow()
+
+    fun consumeCallEnded() {
+        _callEnded.value = null
+    }
+
     init {
-        // Each call opens on the call screen.
-        viewModelScope.launch { session.collect { if (it == null) _callMinimized.value = false } }
+        viewModelScope.launch {
+            var hadCall = false
+            session.collect { current ->
+                // Each call opens on the call screen.
+                if (current == null) _callMinimized.value = false
+                if (current == null && hadCall) {
+                    // The call is in the history by the time the session goes.
+                    val last = graph.settings.callLog.first().firstOrNull()
+                    val note = last?.let { callEndedNote(it) }
+                    _callEnded.value = note
+                    // Only for a moment: not later, on coming back to the home screen.
+                    if (note != null) {
+                        launch {
+                            delay(CALL_ENDED_NOTE_MS)
+                            if (_callEnded.value == note) _callEnded.value = null
+                        }
+                    }
+                }
+                hadCall = current != null
+            }
+        }
     }
     val lastError: StateFlow<String?> = graph.callManager.lastError
     val earbudBoost: StateFlow<EarbudBoost.Status?> = graph.callManager.earbudBoost.status
@@ -121,6 +151,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun sendMessage(address: String, text: String) = graph.messenger.send(address, text)
+
+    fun deleteMessage(address: String, message: TextMessage) = graph.messenger.deleteMessage(address, message.id, message.mine)
+
+    fun clearConversation(address: String) = graph.messenger.clear(address)
 
     fun renameContact(address: String, name: String) {
         viewModelScope.launch { graph.settings.renameContact(address, name) }

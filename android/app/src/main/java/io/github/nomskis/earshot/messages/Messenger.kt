@@ -95,6 +95,10 @@ class Messenger(
         send(ClientMessage.MessageRead(to = address, id = latest.id))
     }
 
+    fun deleteMessage(address: String, id: String, mine: Boolean) = change(address) { it.delete(id, mine) }
+
+    fun clear(address: String) = change(address) { it.cleared() }
+
     /** A message from a call's own chat, kept in the conversation with them too. */
     fun recordCallChat(address: String, id: String, text: String, mine: Boolean, atMillis: Long) = change(address) {
         if (mine) it.sending(id, text, atMillis).status(id, TextMessage.Status.DELIVERED) else it.received(id, text, atMillis)

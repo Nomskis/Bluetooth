@@ -130,6 +130,7 @@ fun SettingsScreen(
             AudioModePicker(settings.audioMode) { mode -> onUpdate { it.copy(audioMode = mode) } }
             Toggle("Noise suppression", settings.noiseSuppression) { v -> onUpdate { it.copy(noiseSuppression = v) } }
             Toggle("Automatic mic volume", settings.autoGainControl) { v -> onUpdate { it.copy(autoGainControl = v) } }
+            Toggle("Use less data", settings.lessData, "Lighter video") { v -> onUpdate { it.copy(lessData = v) } }
             Toggle("Route through relay", settings.relayRoute, "Can help calls abroad") { v -> onUpdate { it.copy(relayRoute = v) } }
             Toggle("Mobile data backup", settings.mobileDataBackup, "When Wi-Fi stalls. Uses data") { v ->
                 onUpdate { it.copy(mobileDataBackup = v) }

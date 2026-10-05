@@ -27,5 +27,6 @@
     <string name="message">Message</string>
     <string name="chat_you">You</string>
     <string name="chat_reply">Reply</string>
+    <string name="mark_read">Mark as read</string>
     <string name="chat_someone">The other person</string>
 </resources>

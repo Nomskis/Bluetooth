@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -68,6 +69,7 @@ class ContactsAndCallingTest {
         onRemove: (Contact) -> Unit = {},
         callBack: CallBackRequest? = null,
         onConsumeCallBack: () -> Unit = {},
+        inCall: Boolean = false,
     ) {
         compose.setContent {
             EarshotTheme {
@@ -88,6 +90,7 @@ class ContactsAndCallingTest {
                     onRemoveContact = onRemove,
                     callBack = callBack,
                     onConsumeCallBack = onConsumeCallBack,
+                    inCall = inCall,
                 )
             }
         }
@@ -111,6 +114,14 @@ class ContactsAndCallingTest {
         compose.onNodeWithContentDescription("More for Salma").performClick()
         compose.onNodeWithText("Remove").performClick()
         assertEquals(salma, removed)
+    }
+
+    @Test
+    fun duringACallNoNewInviteStarts() {
+        home(listOf(salma), inCall = true)
+        compose.onNodeWithText("Video call").assertIsNotEnabled()
+        compose.onNodeWithText("Voice call").assertIsNotEnabled()
+        compose.onNodeWithText("Join with a room code").assertIsNotEnabled()
     }
 
     @Test

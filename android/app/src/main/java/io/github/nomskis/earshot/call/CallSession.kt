@@ -7,6 +7,7 @@ import io.github.nomskis.earshot.BuildConfig
 import io.github.nomskis.earshot.audio.AudioProfile
 import io.github.nomskis.earshot.audio.CallAudioController
 import io.github.nomskis.earshot.audio.LinkConditions
+import io.github.nomskis.earshot.settings.LessData
 import io.github.nomskis.earshot.audio.RemoteVoiceTap
 import io.github.nomskis.earshot.audio.ReplayPlayer
 import io.github.nomskis.earshot.audio.SmartDuck
@@ -357,7 +358,7 @@ class CallSession(
             context = appContext,
             eglBase = eglBase,
             profile = profile,
-            videoQuality = settings.videoQuality,
+            videoQuality = LessData.capture(settings.lessData, settings.videoQuality),
             startWithBackCamera = settings.startWithBackCamera,
             camera = true,
             localPreview = localPreview,
@@ -759,7 +760,8 @@ class CallSession(
     }
 
     /** What we ask them to cap their video at. When mobile data is preferred we don't, so it isn't held back there. */
-    private fun RadioPlan.remoteVideoCap(): Int? = if (preferCellular || !CallTuning.RADIO_VIDEO_CAP) null else wifiVideoCapKbps
+    private fun RadioPlan.remoteVideoCap(): Int? =
+        LessData.videoKbps(settings.lessData, if (preferCellular || !CallTuning.RADIO_VIDEO_CAP) null else wifiVideoCapKbps)
 
     private fun applyVideoCap(l: Link) {
         val thermal = _state.value.thermal
@@ -769,7 +771,13 @@ class CallSession(
             l.budget.videoCapBps?.let { it / 1000 },
             airtime.capKbps,
         ).minOrNull()
-        engine.capVideoSend(l.pc, kbps, thermal?.scaleDownBy, thermal?.maxFps, active = !l.budget.videoPaused && !holding)
+        engine.capVideoSend(
+            l.pc,
+            LessData.videoKbps(settings.lessData, kbps),
+            thermal?.scaleDownBy,
+            LessData.videoFps(settings.lessData, thermal?.maxFps),
+            active = !l.budget.videoPaused && !holding,
+        )
     }
 
     private fun applyPacketPriority(l: Link) {
@@ -1396,7 +1404,16 @@ class CallSession(
         val observer = LinkObserver()
         val mobileData = mobileDataUse()
         val relayOnly = RelayRoute.use(settings.relayRoute, remote, iceServers, relayFailed)
-        val pc = engine.createPeerConnection(iceServers, observer, preferCellular, mobileDataNextToWifi = mobileData != null, relayOnly = relayOnly)
+        // Mobile data standing by next to working Wi-Fi: a second network to fail over to.
+        val standby = (settings.mobileDataBackup || settings.mobileDataOn24GHz) && LinkConditions.hasWorkingWifi(appContext)
+        val pc = engine.createPeerConnection(
+            iceServers,
+            observer,
+            preferCellular,
+            mobileDataNextToWifi = mobileData != null,
+            relayOnly = relayOnly,
+            fastFailover = standby,
+        )
             ?: error("WebRTC could not create a peer connection")
         qualityTracker.mobileData(mobileData ?: "kept off, next to working Wi-Fi")
         // Start the bandwidth estimate where this route has been, not at WebRTC's blind 300 kbps.

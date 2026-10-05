@@ -106,6 +106,17 @@ class CallingAppPartsTest {
     }
 
     @Test
+    fun aCallYouTalkedInEndsWithItsLength() {
+        val now = 10_000_000L
+        val talked = CallRecord("Sam", sam, CallRecord.Direction.OUTGOING, CallRecord.Outcome.ANSWERED, video = false, atMillis = now - 80_000, durationSeconds = 75)
+        assertEquals("Call ended · 1:15", callEndedNote(talked, now))
+        // Didn't connect: the history says what happened.
+        assertEquals(null, callEndedNote(talked.copy(outcome = CallRecord.Outcome.MISSED, durationSeconds = 0), now))
+        // Not from just now.
+        assertEquals(null, callEndedNote(talked, now + 60 * 60_000))
+    }
+
+    @Test
     fun conversationDaysReadLikeAMessagingApp() {
         val today = java.time.LocalDate.of(2026, 10, 4)
         assertEquals("Today", dayLabel(today, today))

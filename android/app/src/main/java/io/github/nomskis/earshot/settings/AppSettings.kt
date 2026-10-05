@@ -118,6 +118,8 @@ data class AppSettings(
      * connect. See [io.github.nomskis.earshot.call.RelayRoute].
      */
     val relayRoute: Boolean = false,
+    /** Lighter video both ways, like other apps' "use less data for calls"; see [LessData]. */
+    val lessData: Boolean = false,
     /** With Shizuku set up: Turbo's codec, buffer and low-latency switches for each call, undone after. */
     val turboDuringCalls: Boolean = true,
     /** Hold her video back to match the Bluetooth audio delay, so lips match words. */

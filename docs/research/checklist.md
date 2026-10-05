@@ -92,13 +92,16 @@ with a call report to show it helps.
 
 | Item | Status | Notes |
 | --- | --- | --- |
-| Fast failover, continual gathering, mobile data on standby | ✅ | |
+| Fast failover, continual gathering, mobile data on standby | ✅ | The second-quick ICE timings only with mobile data standing by next to Wi-Fi; on one network, WebRTC's own (5 s / 5 checks, 25 s backup pings), since there's nowhere to fail over to and a 1.7 s mobile round trip shouldn't read as a drop |
+| "Reconnecting" only after a 2 s drop | ✅ | A blip on mobile data keeps the timer |
+| Video degradation preference | ✔️ | WebRTC keeps the frame rate and drops resolution for camera video, which is what calling apps recommend on thin links |
+| Use less data (video 300 kbps, 15 fps both ways) | ✅ | Opt-in, like WhatsApp's and Signal's |
 | Wi-Fi power save off during calls (low-latency and high-perf locks) | ✅ | |
 | Priority marks on 5 GHz (DSCP) | ✅ | |
 | Fewer packets next to Bluetooth on 2.4 GHz | ✅ | PacketTime floor |
 | Relay over TLS on port 443 (blocked or throttled networks) | ✔️ | Cloudflare's relay offers it and the server passes it on; needs the Cloudflare key set up |
 | Opt-in route through the relay ("Calls abroad") | ✅ | |
-| Trying the relay automatically when a call is weak | 📞 | Worth it only if real calls show the relay route is better |
+| Trying the relay automatically when a call is weak | 📞 | Worth it only if real calls show the relay route is better; the call report now shows the relay's round trip, checked on the side, next to the direct one |
 | Server near both callers (Frankfurt) | ✅ | render.yaml; Test connection shows the distance |
 | IPv6 versus IPv4 on Moroccan and Finnish networks | 🔬 | Which one ICE prefers, and whether either is worse |
 
@@ -122,5 +125,5 @@ with a call report to show it helps.
 
 | Item | Status | Notes |
 | --- | --- | --- |
-| A report for every call (route, loss, repairs, freezes) | ✅ | Settings › Call reports |
+| A report for every call (route, loss, repairs, freezes) | ✅ | Settings › Last call; also voice or video, both phones' networks, the delay as heard |
 | Real Finland–Morocco calls, with and without the relay route | 📞 | The data the 📞 items wait for |

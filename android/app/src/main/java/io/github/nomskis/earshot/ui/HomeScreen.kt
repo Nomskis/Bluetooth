@@ -103,6 +103,11 @@ fun HomeScreen(
     recentCalls: List<CallRecord> = emptyList(),
     onRenameContact: ((Contact, String) -> Unit)? = null,
     onBlockContact: ((Contact) -> Unit)? = null,
+    /** "Call ended · 12:34", shown once. */
+    callEnded: String? = null,
+    onCallEndedShown: () -> Unit = {},
+    /** A call is going on (in the bar at the top): no new one starts from here. */
+    inCall: Boolean = false,
 ) {
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
@@ -127,6 +132,20 @@ fun HomeScreen(
             room = pendingRoom
             invited = pendingRoom
             onConsumePendingRoom()
+        }
+    }
+    // Taken over here at once, so it's shown once even if the screen changes while it's up.
+    var endedNote by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(callEnded) {
+        callEnded?.let {
+            endedNote = it
+            onCallEndedShown()
+        }
+    }
+    LaunchedEffect(endedNote) {
+        endedNote?.let {
+            snackbar.showSnackbar(it)
+            endedNote = null
         }
     }
     LaunchedEffect(error, permissionError) {
@@ -177,6 +196,7 @@ fun HomeScreen(
     /** One tap: a new room, the call started in it, and the link on its way to them. */
     fun invite(withVideo: Boolean) {
         val base = serverBase ?: return
+        if (inCall) return
         val code = RoomCodes.generate()
         room = code
         withPermissions(withVideo) { video ->
@@ -223,7 +243,7 @@ fun HomeScreen(
             UpdateCard(update, onUpdate)
 
             val invitedRoom = invited?.let(RoomCodes::normalize)
-            if (invitedRoom != null && serverBase != null) {
+            if (invitedRoom != null && serverBase != null && !inCall) {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("You're invited to a call", style = MaterialTheme.typography.titleMedium)
@@ -242,7 +262,7 @@ fun HomeScreen(
                 }
             }
 
-            if (interrupted != null && serverBase != null && interrupted.isRecent(System.currentTimeMillis())) {
+            if (interrupted != null && serverBase != null && !inCall && interrupted.isRecent(System.currentTimeMillis())) {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Your call was cut off", style = MaterialTheme.typography.titleMedium)
@@ -294,7 +314,7 @@ fun HomeScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(
                         onClick = { invite(withVideo = true) },
-                        enabled = serverBase != null,
+                        enabled = serverBase != null && !inCall,
                         modifier = Modifier
                             .weight(1f)
                             .height(52.dp),
@@ -305,7 +325,7 @@ fun HomeScreen(
                     }
                     OutlinedButton(
                         onClick = { invite(withVideo = false) },
-                        enabled = serverBase != null,
+                        enabled = serverBase != null && !inCall,
                         modifier = Modifier
                             .weight(1f)
                             .height(52.dp),
@@ -317,10 +337,10 @@ fun HomeScreen(
                 }
             }
 
-            TextButton(onClick = { showCode = !showCode }, enabled = serverBase != null) {
+            TextButton(onClick = { showCode = !showCode }, enabled = serverBase != null && !inCall) {
                 Text(if (showCode) "Hide room code" else "Join with a room code")
             }
-            if (showCode && serverBase != null) {
+            if (showCode && serverBase != null && !inCall) {
                 OutlinedTextField(
                     value = room,
                     onValueChange = { room = it },

@@ -17,8 +17,8 @@ data class CallQuality(
     val network: String? = null,
     /** The other phone's, as it said. */
     val theirNetwork: String? = null,
-    /** Either camera was on at some point. */
-    val video: Boolean = false,
+    /** Either camera was on at some point (null: a call from before this was kept). */
+    val video: Boolean? = null,
     /** From their mouth to your ear, averaged over the call. */
     val mouthToEarMsAvg: Int? = null,
     /** The round trip a path relayed on both ends had, while the call went another way. */
@@ -70,7 +70,7 @@ data class CallQuality(
         appendLine("Earshot call report")
         durationSeconds?.let { appendLine("Length: ${it / 60} min ${it % 60} s") }
         appendLine("Quality: ${verdict.name.lowercase()}")
-        appendLine("Call: ${if (video) "video" else "voice"}")
+        video?.let { appendLine("Call: ${if (it) "video" else "voice"}") }
         appendLine("Route: ${path ?: "?"}, this phone on ${network ?: "?"}" + (theirNetwork?.let { ", theirs on $it" } ?: ""))
         mobileData?.let { appendLine("Mobile data: $it") }
         appendLine("Round trip: ${rttMsAvg ?: "?"} ms average, ${rttMsMax ?: "?"} ms worst")
@@ -87,7 +87,8 @@ data class CallQuality(
                     "${videoFreezes ?: 0} freezes (${"%.1f".format(videoFreezeSeconds ?: 0.0)} s)",
             )
         }
-        if (videoCodec != null || sendLimitedByBandwidthPercent != null) {
+        // A voice call's idle video sender reports itself held back; that says nothing.
+        if (video != false && (videoCodec != null || sendLimitedByBandwidthPercent != null)) {
             appendLine(
                 "Our video: ${videoCodec ?: "?"}, held back by the connection ${sendLimitedByBandwidthPercent ?: 0}% " +
                     "and by the phone ${sendLimitedByCpuPercent ?: 0}% of the time",

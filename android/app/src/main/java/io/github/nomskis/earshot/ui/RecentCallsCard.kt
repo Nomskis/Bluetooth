@@ -132,3 +132,17 @@ internal fun recentWhen(atMillis: Long, now: Long, zone: ZoneId = ZoneId.systemD
 
 private const val MAX_SHOWN = 5
 private const val MAX_ALL = 50
+
+/**
+ * "Call ended · 12:34" right after a call you talked in. Nothing for one that didn't connect
+ * (the history says what happened), or for a record that isn't from just now.
+ */
+internal fun callEndedNote(call: CallRecord, now: Long = System.currentTimeMillis()): String? {
+    if (call.outcome != CallRecord.Outcome.ANSWERED || call.durationSeconds <= 0) return null
+    val endedAt = call.atMillis + call.durationSeconds * 1000
+    if (now - endedAt > ENDED_NOTE_FRESH_MS) return null
+    return "Call ended · ${callTimer(call.durationSeconds * 1000)}"
+}
+
+/** Ringing and connecting come before the talking, so the end can be a while after [CallRecord.atMillis] plus the talk. */
+private const val ENDED_NOTE_FRESH_MS = 3 * 60_000L

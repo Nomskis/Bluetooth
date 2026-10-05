@@ -18,6 +18,7 @@ are out of scope on purpose.
 | Reply with a message instead of answering | ✅ | Three quick answers or your own words |
 | Missed call notification with Call back and Message | ✅ | |
 | Recent calls (incoming, outgoing, missed in red) | ✅ | Home screen; a tap calls back the same way |
+| "Call ended" with how long you talked | ✅ | For a moment on the home screen |
 | Busy when already in a call | ✅ | Call waiting (end this call and take the new one) is 🤔 |
 | Both calling each other at once | ✅ | The phones agree on one call |
 | Block someone | ✅ | Their calls don't ring and their messages are dropped; they aren't told. Unblock in Settings |
@@ -38,6 +39,7 @@ are out of scope on purpose.
 | Chat during the call | ✅ | Lands in the conversation too |
 | Your own quick replies | ✅ | Settings; used in the call's chat and when declining |
 | Survives switching Wi-Fi and mobile data | ✅ | |
+| Use less data for calls | ✅ | Settings: video at most 300 kbps and 15 fps both ways, the voice untouched |
 | Screen sharing | 🤔 | WhatsApp, Meet and Telegram have it |
 | Background blur, filters, reactions | ⛔ | Costs CPU and battery the call quality needs |
 | Group calls | ⛔ | One-to-one by design |
@@ -48,12 +50,14 @@ are out of scope on purpose.
 | Feature | Status | Notes |
 | --- | --- | --- |
 | A conversation per contact, kept on the phone | ✅ | |
+| Calls shown between the messages | ✅ | "Missed voice call", "Video call · 12:34"; a tap calls back the same way |
 | Messages wait for a phone that's offline | ✅ | On your own server, until their phone confirms them |
 | Sent and delivered | ✅ | |
 | Read ("Seen") | ✅ | Sent when the conversation is on screen or you reply from the notification |
-| Reply from the notification | ✅ | |
+| Reply or mark as read from the notification | ✅ | Marking as read tells them, like opening the chat |
 | Unread counts and latest message on the home screen | ✅ | |
 | Date headers | ✅ | |
+| Copy or delete a message, clear a chat | ✅ | Long-press a message; Clear chat in the menu. Off this phone only |
 | Voice messages, photos | 🤔 | Need storage on the server |
 | Reactions, replies to a message, editing | 🤔 | |
 | Typing indicator | ⛔ | More traffic on a slow link, for little |
