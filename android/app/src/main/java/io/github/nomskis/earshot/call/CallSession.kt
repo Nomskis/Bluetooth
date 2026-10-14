@@ -264,6 +264,9 @@ class CallSession(
         var askedPacketMs: Int? = null
         /** When we last renegotiated for a new packet length, to retry a lost one now and then. */
         var renegotiatedAt = 0L
+        /** Our video's allowance by picture quality, once the codec is known. */
+        var governor: VideoGovernor? = null
+        var governorCodec: String? = null
 
         val isHealthy: Boolean
             get() = pc.iceConnectionState().let {
@@ -833,6 +836,7 @@ class CallSession(
             thermal?.maxKbps,
             l.budget.videoCapBps?.let { it / 1000 },
             airtime.capKbps,
+            l.governor?.capKbps?.takeIf { CallTuning.VIDEO_BY_PICTURE_QUALITY },
         ).minOrNull()
         engine.capVideoSend(
             l.pc,
@@ -880,6 +884,7 @@ class CallSession(
 
     private fun followMedia(l: Link, entries: Map<String, CallStats.Entry>) {
         followMediaBudget(l, entries)
+        followVideoGovernor(l, entries)
         qualityTracker.update(entries, voiceReduced = l.budget.voiceCapBps != null)
         if (l.isHealthy) CallStats.availableOutgoingBitrate(entries)?.let(learner::addEstimate)
         followTheirLink(l, SystemClock.elapsedRealtime())
@@ -900,6 +905,30 @@ class CallSession(
         // Earbuds can connect mid-call; keep the earbud-mic button honest.
         val micAvailable = profile.mode == AudioMode.HIFI && (_state.value.earbudMic || audioController.earbudMicAvailable())
         _state.update { it.copy(delay = delay, earbudMicAvailable = micAvailable, speakerOn = audioController.speaker()) }
+    }
+
+    /** Our video's allowance follows how finely the encoder is coding (see [VideoGovernor]). */
+    private fun followVideoGovernor(l: Link, entries: Map<String, CallStats.Entry>) {
+        if (!CallTuning.VIDEO_BY_PICTURE_QUALITY) return
+        val out = entries.values.firstOrNull { it.type == "outbound-rtp" && it.members["kind"] == "video" } ?: return
+        val codec = (entries[out.members["codecId"] as? String]?.members?.get("mimeType") as? String)?.substringAfter('/')
+        if (codec == null || VideoGovernor.bandFor(codec) == null) return
+        if (l.governorCodec != codec) {
+            l.governorCodec = codec
+            val height = LessData.capture(settings.lessData, settings.videoQuality).height
+            l.governor = VideoGovernor(WebRtcTuning.defaultVideoCeilingKbps(height))
+        }
+        val changed = l.governor?.update(
+            codec,
+            (out.members["qpSum"] as? Number)?.toDouble(),
+            (out.members["framesEncoded"] as? Number)?.toDouble(),
+            (out.members["bytesSent"] as? Number)?.toDouble(),
+            SystemClock.elapsedRealtime(),
+        )
+        if (changed != null) {
+            Log.i(TAG, "Video allowance by picture quality: $changed kbps")
+            applyVideoCap(l)
+        }
     }
 
     /**
@@ -1289,6 +1318,7 @@ class CallSession(
         if (CallTuning.ADAPTIVE_PACKET_TIME) tuned = SdpTuning.askForPacketTime(tuned, packetTime.ms)
         if (CallTuning.HD_VOICE) tuned = SdpTuning.preferHdVoice(tuned)
         if (CallTuning.AUDIO_RESENDS) tuned = SdpTuning.requestAudioResends(tuned)
+        if (CallTuning.SILENCE_AS_TINY_PACKETS) tuned = SdpTuning.enableOpusDtx(tuned)
         return SdpTuning.capVideoBandwidth(tuned, radioPlan.remoteVideoCap())
     }
 

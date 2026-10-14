@@ -78,6 +78,16 @@ object CallStats {
         )
     }
 
+    /**
+     * Everything this phone sent and received on the connection, bytes, cumulative
+     * (RTCTransportStats: media, resends, chat and control together).
+     */
+    fun transportBytes(report: Map<String, Entry>): Pair<Double, Double>? {
+        val transports = report.values.filter { it.type == "transport" }
+        if (transports.isEmpty()) return null
+        return transports.sumOf { number(it.members["bytesSent"]) ?: 0.0 } to transports.sumOf { number(it.members["bytesReceived"]) ?: 0.0 }
+    }
+
     /** WebRTC's estimate of what we can send, bits per second (RTCIceCandidatePairStats.availableOutgoingBitrate). */
     fun availableOutgoingBitrate(report: Map<String, Entry>): Double? =
         number(selectedPair(report)?.members?.get("availableOutgoingBitrate"))

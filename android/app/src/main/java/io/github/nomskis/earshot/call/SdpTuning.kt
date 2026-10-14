@@ -75,18 +75,30 @@ object SdpTuning {
      * mode the earbuds stay on the music link, so the difference is audible.
      * WebRTC encoders use it as their target. Same as web/js/sdp.js.
      */
-    fun preferHdVoice(sdp: String, bitrate: Int = HD_VOICE_BITRATE): String {
+    fun preferHdVoice(sdp: String, bitrate: Int = HD_VOICE_BITRATE): String = setOpusParam(sdp, "maxaveragebitrate", "$bitrate")
+
+    /**
+     * Asks the other side to send silence as tiny packets (Opus DTX, usedtx=1 in the Opus
+     * fmtp we send; WebRTC turns DTX on from the description it receives,
+     * audio_encoder_opus.cc). While nobody's talking, about half of any conversation, that's
+     * one small packet every 400 ms instead of 50 a second. Speech itself is coded exactly
+     * the same; see [CallTuning.SILENCE_AS_TINY_PACKETS].
+     */
+    fun enableOpusDtx(sdp: String): String = setOpusParam(sdp, "usedtx", "1")
+
+    /** Sets [key]=[value] on the Opus fmtp line, replacing it if it's there, adding the line if not. */
+    private fun setOpusParam(sdp: String, key: String, value: String): String {
         val pt = opusPayloadType(sdp) ?: return sdp
         val lines = sdp.split("\r\n").toMutableList()
         val prefix = "a=fmtp:$pt "
         val fmtp = lines.indexOfFirst { it.startsWith(prefix) }
         if (fmtp >= 0) {
             val params = lines[fmtp].removePrefix(prefix).split(';').map { it.trim() }
-                .filter { it.isNotEmpty() && !it.startsWith("maxaveragebitrate=", ignoreCase = true) }
-            lines[fmtp] = prefix + (params + "maxaveragebitrate=$bitrate").joinToString(";")
+                .filter { it.isNotEmpty() && !it.startsWith("$key=", ignoreCase = true) }
+            lines[fmtp] = prefix + (params + "$key=$value").joinToString(";")
         } else {
             val rtpmap = lines.indexOfFirst { it.startsWith("a=rtpmap:$pt ") }
-            lines.add(rtpmap + 1, "$prefix" + "maxaveragebitrate=$bitrate")
+            lines.add(rtpmap + 1, "$prefix$key=$value")
         }
         return lines.joinToString("\r\n")
     }

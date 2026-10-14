@@ -97,6 +97,16 @@ class SdpTuningTest {
     }
 
     @Test
+    fun asksForSilenceAsTinyPackets() {
+        val tuned = SdpTuning.enableOpusDtx(offer)
+        assertTrue(tuned.contains("a=fmtp:111 minptime=10;useinbandfec=1;usedtx=1"))
+        assertEquals(tuned, SdpTuning.enableOpusDtx(tuned))
+        // On the one Opus line, next to any bitrate asked for.
+        assertTrue(SdpTuning.preferHdVoice(tuned).contains("a=fmtp:111 minptime=10;useinbandfec=1;usedtx=1;maxaveragebitrate=48000"))
+        assertEquals("v=0\r\n", SdpTuning.enableOpusDtx("v=0\r\n"))
+    }
+
+    @Test
     fun asksForHdVoiceOnTheOpusLine() {
         val tuned = SdpTuning.preferHdVoice(offer)
         assertTrue(tuned.contains("a=fmtp:111 minptime=10;useinbandfec=1;maxaveragebitrate=48000"))

@@ -49,6 +49,11 @@ data class CallQuality(
     val availableKbpsAvg: Int? = null,
     /** Share of the call our voice spent stepped down by [MediaBudget]. */
     val voiceReducedPercent: Int? = null,
+    /** Data this phone sent and received over the call, MB: media, resends, chat and control. */
+    val sentMb: Double? = null,
+    val receivedMb: Double? = null,
+    /** How finely our video was coded on average (the encoder's quantizer; lower is finer). */
+    val videoQpAvg: Double? = null,
     val reconnects: Int = 0,
 ) {
     enum class Verdict { GOOD, OKAY, POOR }
@@ -91,11 +96,17 @@ data class CallQuality(
         if (video != false && (videoCodec != null || sendLimitedByBandwidthPercent != null)) {
             appendLine(
                 "Our video: ${videoCodec ?: "?"}, held back by the connection ${sendLimitedByBandwidthPercent ?: 0}% " +
-                    "and by the phone ${sendLimitedByCpuPercent ?: 0}% of the time",
+                    "and by the phone ${sendLimitedByCpuPercent ?: 0}% of the time" +
+                    (videoQpAvg?.let { ", coded at quantizer ${"%.0f".format(it)} on average" } ?: ""),
             )
         }
         appendLine("Could send: ${availableKbpsMin ?: "?"} kbps at worst, ${availableKbpsAvg ?: "?"} kbps average")
         voiceReducedPercent?.takeIf { it > 0 }?.let { appendLine("Our voice was lighter to fit the connection $it% of the time") }
+        if (sentMb != null && receivedMb != null) {
+            val total = sentMb + receivedMb
+            val perHour = durationSeconds?.takeIf { it >= 60 }?.let { " (about ${(total * 3600 / it).roundToInt()} MB an hour)" } ?: ""
+            appendLine("Data used: ${"%.0f".format(total)} MB$perHour, ${"%.0f".format(sentMb)} sent and ${"%.0f".format(receivedMb)} received")
+        }
         append("Reconnects: $reconnects")
     }
 
@@ -119,11 +130,16 @@ class CallQualityTracker {
         val limitBandwidth: Double = 0.0,
         val limitCpu: Double = 0.0,
         val limitTotal: Double = 0.0,
+        val bytesSent: Double = 0.0,
+        val bytesReceived: Double = 0.0,
+        val videoQpSum: Double = 0.0,
+        val videoFramesEncoded: Double = 0.0,
     ) {
         operator fun plus(o: Counters) = Counters(
             audioReceived + o.audioReceived, audioLost + o.audioLost, samplesReceived + o.samplesReceived,
             samplesConcealed + o.samplesConcealed, audioNacks + o.audioNacks, freezes + o.freezes,
             freezeSeconds + o.freezeSeconds, limitBandwidth + o.limitBandwidth, limitCpu + o.limitCpu, limitTotal + o.limitTotal,
+            bytesSent + o.bytesSent, bytesReceived + o.bytesReceived, videoQpSum + o.videoQpSum, videoFramesEncoded + o.videoFramesEncoded,
         )
     }
 
@@ -235,6 +251,7 @@ class CallQualityTracker {
         @Suppress("UNCHECKED_CAST")
         val limits = sending?.members?.get("qualityLimitationDurations") as? Map<String, Any?>
         if (audio?.members?.containsKey("nackCount") == true) sawNack = true
+        val (sentBytes, receivedBytes) = CallStats.transportBytes(report) ?: (null to null)
         current = Counters(
             audioReceived = num(audio, "packetsReceived") ?: current.audioReceived,
             audioLost = num(audio, "packetsLost") ?: current.audioLost,
@@ -246,6 +263,10 @@ class CallQualityTracker {
             limitBandwidth = limits?.let { (it["bandwidth"] as? Number)?.toDouble() } ?: current.limitBandwidth,
             limitCpu = limits?.let { (it["cpu"] as? Number)?.toDouble() } ?: current.limitCpu,
             limitTotal = limits?.values?.sumOf { (it as? Number)?.toDouble() ?: 0.0 } ?: current.limitTotal,
+            bytesSent = sentBytes ?: current.bytesSent,
+            bytesReceived = receivedBytes ?: current.bytesReceived,
+            videoQpSum = num(sending, "qpSum") ?: current.videoQpSum,
+            videoFramesEncoded = num(sending, "framesEncoded") ?: current.videoFramesEncoded,
         )
     }
 
@@ -277,6 +298,9 @@ class CallQualityTracker {
             availableKbpsMin = (availableMin / 1000).takeIf { availableCount > 0 }?.roundToInt(),
             availableKbpsAvg = avg(availableSum / 1000, availableCount),
             voiceReducedPercent = if (samples > 0) reducedSamples * 100 / samples else null,
+            sentMb = (total.bytesSent / 1_000_000).takeIf { total.bytesSent > 0 }?.round1(),
+            receivedMb = (total.bytesReceived / 1_000_000).takeIf { total.bytesReceived > 0 }?.round1(),
+            videoQpAvg = (total.videoQpSum / total.videoFramesEncoded).takeIf { total.videoFramesEncoded > 0 && total.videoQpSum > 0 }?.round1(),
             reconnects = reconnects,
         )
     }

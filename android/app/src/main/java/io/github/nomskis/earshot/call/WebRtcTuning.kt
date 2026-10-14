@@ -55,8 +55,24 @@ object WebRtcTuning {
      */
     const val KEYFRAME_FLUSHING = "WebRTC-Pacer-KeyframeFlushing"
 
+    /**
+     * With silence sent as tiny packets (DTX), a refresh packet louder than the noise it
+     * stands for is replaced by an empty one, so the background noise in the pauses doesn't
+     * swell (opus_interface.cc).
+     */
+    const val AVOID_NOISE_PUMPING = "WebRTC-Audio-OpusAvoidNoisePumpingDuringDtx"
+
+    /** WebRTC's own video ceilings by picture height (GetMaxDefaultVideoBitrateKbps), kbps. */
+    fun defaultVideoCeilingKbps(height: Int): Int = when {
+        height <= 240 -> 600
+        height <= 480 -> 1_700
+        height <= 540 -> 2_000
+        else -> 2_500
+    }
+
     /** WebRTC field trials: "Name/Value/" pairs, set once when WebRTC starts. */
     val fieldTrials: String = buildString {
+        if (CallTuning.SILENCE_AS_TINY_PACKETS) append("$AVOID_NOISE_PUMPING/Enabled/")
         if (CallTuning.REDUNDANT_AUDIO) append("WebRTC-Audio-Red-For-Opus/Enabled-$RED_REDUNDANCY/")
         if (CallTuning.DEEP_JITTER_BUFFER) append("WebRTC-Audio-NetEqDelayManagerConfig/quantile:$JITTER_QUANTILE/")
         append("$OPUS_CONCEALMENT/Enabled/")

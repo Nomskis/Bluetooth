@@ -20,7 +20,7 @@ class CallQualityTest {
         relay: Boolean = false,
         limits: Map<String, Double> = mapOf("none" to 10.0, "bandwidth" to 0.0, "cpu" to 0.0),
     ) = mapOf(
-        "T" to CallStats.Entry("transport", mapOf("selectedCandidatePairId" to "P")),
+        "T" to CallStats.Entry("transport", mapOf("selectedCandidatePairId" to "P", "bytesSent" to received * 1_000L, "bytesReceived" to received * 900L)),
         "P" to CallStats.Entry(
             "candidate-pair",
             mapOf("state" to "succeeded", "localCandidateId" to "L", "remoteCandidateId" to "R", "currentRoundTripTime" to rtt, "availableOutgoingBitrate" to 900_000.0),
@@ -41,7 +41,10 @@ class CallQualityTest {
             "inbound-rtp",
             mapOf("kind" to "video", "framesPerSecond" to 24.0, "frameHeight" to 480L, "freezeCount" to freezes, "totalFreezesDuration" to freezeSeconds),
         ),
-        "O" to CallStats.Entry("outbound-rtp", mapOf("kind" to "video", "codecId" to "C", "qualityLimitationDurations" to limits)),
+        "O" to CallStats.Entry(
+            "outbound-rtp",
+            mapOf("kind" to "video", "codecId" to "C", "qualityLimitationDurations" to limits, "qpSum" to received * 30.0, "framesEncoded" to received),
+        ),
         "C" to CallStats.Entry("codec", mapOf("mimeType" to "video/VP9")),
     )
 
@@ -75,6 +78,10 @@ class CallQualityTest {
         assertEquals(20, q.sendLimitedByBandwidthPercent)
         assertEquals(1, q.reconnects)
         assertEquals(CallQuality.Verdict.OKAY, q.verdict) // the reconnect
+        // 2,000,000 + 500,000 bytes sent across the two connections; 2.25 MB received, to one decimal.
+        assertEquals(2.5, q.sentMb!!, 0.01)
+        assertEquals(2.3, q.receivedMb!!, 0.01)
+        assertEquals(30.0, q.videoQpAvg!!, 0.01)
     }
 
     @Test
@@ -84,8 +91,11 @@ class CallQualityTest {
             audioNacks = 41, jitterBufferMsAvg = 85, jitterBufferMsMax = 240, videoFreezes = 1, videoFreezeSeconds = 0.6,
             receivedFps = 23.0, receivedHeight = 480, videoCodec = "VP9", sendLimitedByBandwidthPercent = 35,
             sendLimitedByCpuPercent = 0, availableKbpsMin = 310, availableKbpsAvg = 820, voiceReducedPercent = 5,
+            sentMb = 42.0, receivedMb = 38.0, videoQpAvg = 34.0,
         )
         val text = q.report(durationSeconds = 754)
+        assertTrue(text.contains("Data used: 80 MB (about 382 MB an hour), 42 sent and 38 received"))
+        assertTrue(text.contains("coded at quantizer 34 on average"))
         assertTrue(text.contains("Length: 12 min 34 s"))
         assertTrue(text.contains("Route: direct, this phone on wifi"))
         assertTrue(text.contains("Their audio: 2.4% lost on the way, 0.3% made up, 41 resend requests"))

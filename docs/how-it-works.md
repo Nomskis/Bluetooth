@@ -267,6 +267,36 @@ calls between countries over weak Wi-Fi.
   and copyable from Settings, so a bad call can be understood from what really
   happened ([`call/CallQuality.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/CallQuality.kt)).
 
+## Using little data
+
+WebRTC spends bits by habit: Opus at a steady 32 kbps whether anyone is
+talking, and video up to 2.5 Mbps at 720p whether or not the picture needs
+it. Two switches in [`call/CallTuning.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/CallTuning.kt),
+both on, put the bits where they can be seen and heard; nothing about the
+call changes:
+
+- **Silence is nearly free** (`SILENCE_AS_TINY_PACKETS`): Opus DTX
+  (`usedtx=1` in the descriptions we send). While nobody's talking, about
+  half of any conversation, one small packet every 400 ms instead of 50 a
+  second. Speech is coded exactly the same. WebRTC's
+  `OpusAvoidNoisePumpingDuringDtx` keeps the background noise in the pauses
+  steady.
+- **Bits by picture quality** (`VIDEO_BY_PICTURE_QUALITY`): WebRTC's
+  encoders use every bit they're allowed, so a mostly still picture (a
+  propped-up phone, someone talking) is coded far finer than anyone can see.
+  The average quantizer of each 2 s of our video (`qpSum` / `framesEncoded`)
+  says how fine. Below the codec's "already excellent" mark (VP8 10, H.264
+  22, VP9 60) the allowance comes down 15%. Above "still very good" (18, 28,
+  90) it goes back up at once, to WebRTC's own ceiling. All of that sits well
+  inside where WebRTC's quality scaler starts lowering the resolution (95, 37,
+  205). An encoder that reports no quantizer is left alone
+  ([`call/VideoGovernor.kt`](../android/app/src/main/java/io/github/nomskis/earshot/call/VideoGovernor.kt)).
+
+Every call report shows the data really used (sent and received, and per
+hour) and how finely our video was coded, so a real call shows what each
+switch saves and whether the picture held. **Use less data** in Settings is
+separate: it trades picture for data (300 kbps, 15 fps, 360p).
+
 ## The two phones look after each other's network
 
 Each direction of a call has its own congestion control, and each only sees

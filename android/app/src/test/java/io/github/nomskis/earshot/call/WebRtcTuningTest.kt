@@ -16,6 +16,18 @@ class WebRtcTuningTest {
     }
 
     @Test
+    fun withSilenceAsTinyPacketsTheNoiseInThePausesStaysSteady() {
+        assertEquals(CallTuning.SILENCE_AS_TINY_PACKETS, trials()[WebRtcTuning.AVOID_NOISE_PUMPING] == "Enabled")
+    }
+
+    @Test
+    fun theVideoCeilingsAreWebRtcsOwn() {
+        assertEquals(2_500, WebRtcTuning.defaultVideoCeilingKbps(720))
+        assertEquals(2_000, WebRtcTuning.defaultVideoCeilingKbps(540))
+        assertEquals(1_700, WebRtcTuning.defaultVideoCeilingKbps(360))
+    }
+
+    @Test
     fun redundantAudioUsesTheRedundancyWebRtcParsesWhenItsOn() {
         // audio_encoder_copy_red.cc: sscanf("Enabled-%zu"), at most 9, else the default of 1.
         val red = trials()["WebRTC-Audio-Red-For-Opus"]

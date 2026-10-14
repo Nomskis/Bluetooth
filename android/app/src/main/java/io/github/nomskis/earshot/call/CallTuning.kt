@@ -47,6 +47,25 @@ object CallTuning {
     const val FAST_FAILOVER_WITHOUT_STANDBY = false
 
     /**
+     * Silence as tiny packets (Opus DTX, [SdpTuning.enableOpusDtx]): while nobody talks, one
+     * small packet every 400 ms instead of 50 a second, with WebRTC's own fix that keeps the
+     * background noise in the pauses steady ([WebRtcTuning.AVOID_NOISE_PUMPING]). On: it saves
+     * data without changing how speech is coded, as other calling apps do. The call report's
+     * "Data used" line shows what it saves; if a report shows clipped words or pumping noise,
+     * this is the switch.
+     */
+    const val SILENCE_AS_TINY_PACKETS = true
+
+    /**
+     * Our video's allowance follows how finely the encoder is coding ([VideoGovernor]): a still
+     * picture coded finer than anyone can see costs less, motion gets the bits back at once.
+     * On: it only ever lowers the bitrate inside a quality band well above where WebRTC itself
+     * starts lowering the resolution. The report's video quantizer and "Data used" lines show
+     * its effect; if a report shows a softer picture, this is the switch.
+     */
+    const val VIDEO_BY_PICTURE_QUALITY = true
+
+    /**
      * No direct TCP candidates (Signal's RingRTC sets the same,
      * `tcpCandidatePolicy = DISABLED`): a call never runs over a direct TCP connection, whose
      * resends stall the voice for seconds on a lossy link. On, unlike the rest: a WebRTC option
