@@ -73,6 +73,32 @@ class VideoGovernorTest {
     }
 
     @Test
+    fun aSmallerPictureNeverGetsMoreThanWebRtcWouldGiveIt() {
+        // Scaled down from 720p to 360p: WebRTC's own ceiling is 1,700, and ours replaces it.
+        val governor = VideoGovernor(ceilingKbps = 2_500)
+        assertEquals(1_700, governor.setCeiling(1_700))
+        assertEquals(1_700, governor.capKbps)
+        // Back up to full size: the allowance follows.
+        assertEquals(2_500, governor.setCeiling(2_500))
+        assertNull(governor.setCeiling(2_500))
+    }
+
+    @Test
+    fun aLoweredAllowanceStaysLoweredAcrossASizeChange() {
+        interval(qp = 40.0)
+        repeat(6) { interval(qp = 40.0) } // three steps down: 920
+        val low = governor.capKbps
+        assertTrue(low < 1_000)
+        // A bigger ceiling doesn't hand a still picture the bits back; a smaller one still clamps.
+        assertNull(governor.setCeiling(2_500))
+        assertEquals(low, governor.capKbps)
+        assertEquals(600, governor.setCeiling(600))
+        // Motion raises up to the new ceiling only.
+        repeat(10) { interval(qp = 120.0) }
+        assertEquals(600, governor.capKbps)
+    }
+
+    @Test
     fun aPausedCameraTellsNothing() {
         interval(qp = 40.0)
         now += 2_000

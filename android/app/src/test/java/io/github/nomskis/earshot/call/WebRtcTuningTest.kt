@@ -22,9 +22,14 @@ class WebRtcTuningTest {
 
     @Test
     fun theVideoCeilingsAreWebRtcsOwn() {
-        assertEquals(2_500, WebRtcTuning.defaultVideoCeilingKbps(720))
-        assertEquals(2_000, WebRtcTuning.defaultVideoCeilingKbps(540))
-        assertEquals(1_700, WebRtcTuning.defaultVideoCeilingKbps(360))
+        // By pixel count, so a portrait picture gets the same as a landscape one.
+        assertEquals(2_500, WebRtcTuning.defaultVideoCeilingKbps(1280, 720))
+        assertEquals(2_500, WebRtcTuning.defaultVideoCeilingKbps(720, 1280))
+        assertEquals(2_000, WebRtcTuning.defaultVideoCeilingKbps(960, 540))
+        assertEquals(2_000, WebRtcTuning.defaultVideoCeilingKbps(848, 480))
+        assertEquals(1_700, WebRtcTuning.defaultVideoCeilingKbps(640, 480))
+        assertEquals(1_700, WebRtcTuning.defaultVideoCeilingKbps(360, 640))
+        assertEquals(600, WebRtcTuning.defaultVideoCeilingKbps(320, 180))
     }
 
     @Test

@@ -915,16 +915,25 @@ class CallSession(
         if (codec == null || VideoGovernor.bandFor(codec) == null) return
         if (l.governorCodec != codec) {
             l.governorCodec = codec
-            val height = LessData.capture(settings.lessData, settings.videoQuality).height
-            l.governor = VideoGovernor(WebRtcTuning.defaultVideoCeilingKbps(height))
+            val camera = LessData.capture(settings.lessData, settings.videoQuality)
+            l.governor = VideoGovernor(WebRtcTuning.defaultVideoCeilingKbps(camera.width, camera.height))
         }
-        val changed = l.governor?.update(
+        val governor = l.governor ?: return
+        // The size actually sent: WebRTC, the thermal plan or less data may have scaled it down.
+        val width = (out.members["frameWidth"] as? Number)?.toInt()
+        val height = (out.members["frameHeight"] as? Number)?.toInt()
+        val resized = if (width != null && height != null && width > 0 && height > 0) {
+            governor.setCeiling(WebRtcTuning.defaultVideoCeilingKbps(width, height))
+        } else {
+            null
+        }
+        val changed = governor.update(
             codec,
             (out.members["qpSum"] as? Number)?.toDouble(),
             (out.members["framesEncoded"] as? Number)?.toDouble(),
             (out.members["bytesSent"] as? Number)?.toDouble(),
             SystemClock.elapsedRealtime(),
-        )
+        ) ?: resized
         if (changed != null) {
             Log.i(TAG, "Video allowance by picture quality: $changed kbps")
             applyVideoCap(l)

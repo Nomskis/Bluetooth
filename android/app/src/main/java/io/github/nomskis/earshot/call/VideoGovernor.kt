@@ -16,10 +16,26 @@ import kotlin.math.min
  * WebRTC's own bandwidth estimate still has the last word: the allowance
  * only ever lowers what it would send.
  */
-class VideoGovernor(private val ceilingKbps: Int, private val floorKbps: Int = FLOOR_KBPS) {
+class VideoGovernor(ceilingKbps: Int, private val floorKbps: Int = FLOOR_KBPS) {
+    /** WebRTC's own ceiling for the size being sent: the allowance replaces it, so never above it. */
+    var ceilingKbps: Int = ceilingKbps
+        private set
+
     /** The allowance in force, kbps. */
     var capKbps: Int = ceilingKbps
         private set
+
+    /**
+     * The picture is sent at another size, so WebRTC's ceiling for it is [kbps]. An allowance
+     * at the old ceiling moves with it; a lowered one never ends up above the new ceiling.
+     * Returns the new allowance when it changes.
+     */
+    fun setCeiling(kbps: Int): Int? {
+        if (kbps == ceilingKbps) return null
+        val atCeiling = capKbps >= ceilingKbps
+        ceilingKbps = kbps
+        return set(if (atCeiling) kbps else min(capKbps, kbps))
+    }
 
     private var last: Sample? = null
     private var calmIntervals = 0

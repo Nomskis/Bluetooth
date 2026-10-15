@@ -62,12 +62,18 @@ object WebRtcTuning {
      */
     const val AVOID_NOISE_PUMPING = "WebRTC-Audio-OpusAvoidNoisePumpingDuringDtx"
 
-    /** WebRTC's own video ceilings by picture height (GetMaxDefaultVideoBitrateKbps), kbps. */
-    fun defaultVideoCeilingKbps(height: Int): Int = when {
-        height <= 240 -> 600
-        height <= 480 -> 1_700
-        height <= 540 -> 2_000
-        else -> 2_500
+    /**
+     * WebRTC's own video ceiling for a picture of this size, kbps, by pixel count as
+     * GetMaxDefaultVideoBitrateKbps (encoder_stream_factory.cc) has it. Any ceiling we set
+     * replaces WebRTC's, so ours has to follow the size actually sent.
+     */
+    fun defaultVideoCeilingKbps(width: Int, height: Int): Int = (width * height).let { pixels ->
+        when {
+            pixels <= 320 * 240 -> 600
+            pixels <= 640 * 480 -> 1_700
+            pixels <= 960 * 540 -> 2_000
+            else -> 2_500
+        }
     }
 
     /** WebRTC field trials: "Name/Value/" pairs, set once when WebRTC starts. */
